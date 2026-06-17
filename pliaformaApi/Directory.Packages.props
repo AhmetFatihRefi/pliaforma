@@ -1,0 +1,31 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!--
+    Sürümler kurulu .NET 10 shared framework (Microsoft.AspNetCore.App 10.0.2) ile HİZALI tutulur.
+    Paketleri runtime'dan ileri bir patch'e (örn. 10.0.4) sabitlemek, framework-sağlanan assembly'lerin
+    (Logging.Abstractions vb.) runtime'da çözülememesine yol açar (FileNotFoundException).
+  -->
+  <ItemGroup>
+    <!-- EF Core / PostgreSQL -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2" />
+    <!-- Npgsql 10.0.2, EF Relational >= 10.0.4 ister; runtime 10.0.2 ile hizalı kalmak için 10.0.0 (EF 10.0.x uyumlu). -->
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+
+    <!-- Auth -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.2" />
+    <PackageVersion Include="BCrypt.Net-Next" Version="4.0.3" />
+
+    <!-- Validation -->
+    <PackageVersion Include="FluentValidation" Version="12.0.0" />
+    <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.0.0" />
+
+    <!-- API / OpenAPI / Health -->
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.2" />
+  </ItemGroup>
+</Project>

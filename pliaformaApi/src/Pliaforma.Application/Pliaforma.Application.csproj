@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pliaforma.Domain\Pliaforma.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- EF Core CORE only (DbSet<T> in IAppDbContext). Provider (Npgsql) stays in Persistence. -->
+    <!-- Extensions.* abstraction'lar (DI/Logging/Configuration) EF Core'dan TRANSITIVE gelir;
+         framework-sağlanan bu assembly'leri explicit referanslamak runtime load hatasına yol açıyordu. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+  </ItemGroup>
+
+</Project>

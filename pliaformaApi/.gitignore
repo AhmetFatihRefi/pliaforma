@@ -1,0 +1,22 @@
+## .NET / build
+bin/
+obj/
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
+
+## Rider / VS Code
+.idea/
+.vscode/
+
+## Env / secrets (user-secrets zaten repo dışında saklanır)
+appsettings.*.local.json
+*.env
+.env
+.env.local
+
+## OS
+Thumbs.db
+.DS_Store

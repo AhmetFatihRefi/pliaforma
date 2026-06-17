@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* Sınıf tabanlı koyu tema (prefers-color-scheme yerine .dark) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ===== Pliaforma Design Tokens — Blush/Rose + Krem ===== */
+:root {
+  color-scheme: light; /* native kontroller (tarih ikonu, takvim, scrollbar) açık temaya uysun */
+  --background: #faf6f2; /* sıcak krem */
+  --surface: #ffffff;
+  --surface-muted: #f6efea;
+  --foreground: #3d3438; /* sıcak antrasit */
+  --muted: #8a7d81;
+  --border: #ece1db;
+  --primary: #c97c8a; /* dusty rose */
+  --primary-hover: #bd6b7a;
+  --primary-foreground: #ffffff;
+  --primary-soft: #f7e7e9; /* blush */
+  --ring: #d98a94;
+  --success: #6f9e7d;
+  --danger: #c2606a;
+  --warning: #c79a5a;
+}
+
+.dark {
+  color-scheme: dark; /* dark mode: native tarih/saat ikonu ve takvim popup'ı açık renkte → görünür */
+  --background: #181317;
+  --surface: #221d21;
+  --surface-muted: #2b2429;
+  --foreground: #f0e8e9;
+  --muted: #a99ca0;
+  --border: #342c31;
+  --primary: #e0909c;
+  --primary-hover: #e9a1ac;
+  --primary-foreground: #2a1d21;
+  --primary-soft: #3a2a30;
+  --ring: #e0909c;
+  --success: #87b594;
+  --danger: #db7b85;
+  --warning: #d9b072;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Yumuşak, premium odak halkası */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}

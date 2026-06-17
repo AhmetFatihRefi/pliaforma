@@ -1,0 +1,36 @@
+using Microsoft.EntityFrameworkCore;
+using Pliaforma.Domain.Entities;
+
+namespace Pliaforma.Application.Common.Interfaces;
+
+/// <summary>
+/// Application katmanının veriye eriştiği soyutlama. Generic repository yerine doğrudan
+/// DbSet kullanılır. EF Core sağlayıcı detayları (DatabaseFacade vb.) buraya SIZMAZ;
+/// transaction yönetimi ayrı ITransactionManager soyutlaması ile yapılır.
+/// </summary>
+public interface IAppDbContext
+{
+    DbSet<User> Users { get; }
+    DbSet<Studio> Studios { get; }
+    DbSet<StudioMembership> StudioMemberships { get; }
+    DbSet<RefreshToken> RefreshTokens { get; }
+    DbSet<InstructorProfile> InstructorProfiles { get; }
+    DbSet<ClassType> ClassTypes { get; }
+    DbSet<InstructorClassType> InstructorClassTypes { get; }
+    DbSet<StudentProfile> StudentProfiles { get; }
+    DbSet<InstructorAvailability> InstructorAvailabilities { get; }
+    DbSet<ClassSession> ClassSessions { get; }
+    DbSet<ClassBooking> ClassBookings { get; }
+    DbSet<MakeupCreditTransaction> MakeupCreditTransactions { get; }
+    DbSet<StudioClosure> StudioClosures { get; }
+    DbSet<StudioMakeupPolicy> StudioMakeupPolicies { get; }
+    DbSet<Attendance> Attendances { get; }
+    DbSet<PackagePlan> PackagePlans { get; }
+    DbSet<StudentPackage> StudentPackages { get; }
+    DbSet<StudentPackageTransaction> StudentPackageTransactions { get; }
+    DbSet<Payment> Payments { get; }
+    DbSet<Notification> Notifications { get; }
+    DbSet<PlatformSubscription> PlatformSubscriptions { get; }
+
+    Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+}

@@ -1,0 +1,30 @@
+# Pliaforma — repo kökü hijyen koruması.
+# NOT: backend (pliaformaApi/) ve frontend (pliaformaFrontend/) AYRI git repolarıdır ve kendi
+# .gitignore'larına sahiptir. Bu dosya, kökteki deploy altyapısı (compose + deploy/) bir repoya
+# alınırsa GERÇEK SECRET'ların yanlışlıkla commit edilmesini engeller.
+
+# --- Gerçek secret / env dosyaları (örnekler hariç) ---
+.env
+.env.*
+!.env.example
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+
+# --- TLS sertifikaları / anahtarlar ---
+deploy/certs/
+*.pem
+*.key
+*.crt
+
+# --- DB yedekleri / dump'lar ---
+*.sql
+*.dump
+backups/
+ops/backups/
+
+# --- OS / editör ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

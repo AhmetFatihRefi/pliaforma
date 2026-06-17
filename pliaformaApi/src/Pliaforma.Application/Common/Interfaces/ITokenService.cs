@@ -1,0 +1,24 @@
+using Pliaforma.Domain.Entities;
+
+namespace Pliaforma.Application.Common.Interfaces;
+
+/// <summary>Üretilen access token ve son kullanma anı.</summary>
+public sealed record AccessToken(string Token, DateTime ExpiresAt);
+
+/// <summary>Üretilen refresh token: ham değer (yalnızca istemciye), hash (DB'ye) ve süre.</summary>
+public sealed record GeneratedRefreshToken(string RawToken, string TokenHash, DateTime ExpiresAt);
+
+/// <summary>JWT access ve refresh token üretimi/doğrulaması. Somut uygulama Infrastructure'da.</summary>
+public interface ITokenService
+{
+    /// <summary>
+    /// Kullanıcı için kısa ömürlü access token üretir. activeMembership verilirse
+    /// token'a studio_id/studio_role/membership_id claim'leri eklenir.
+    /// </summary>
+    AccessToken GenerateAccessToken(User user, StudioMembership? activeMembership);
+
+    GeneratedRefreshToken GenerateRefreshToken();
+
+    /// <summary>Ham refresh token'ın DB'de aranacak hash'ini üretir (deterministik).</summary>
+    string HashRefreshToken(string rawToken);
+}

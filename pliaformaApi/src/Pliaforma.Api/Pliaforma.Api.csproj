@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup>  <UserSecretsId>05388e41-dc25-4956-8c12-753c60979e1a</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pliaforma.Application\Pliaforma.Application.csproj" />
+    <ProjectReference Include="..\Pliaforma.Persistence\Pliaforma.Persistence.csproj" />
+    <ProjectReference Include="..\Pliaforma.Infrastructure\Pliaforma.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+  </ItemGroup>
+
+</Project>
