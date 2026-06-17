@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { classTypeService, instructorService, memberService } from "@/lib/studioApi";
+import { classTypeService, instructorService, memberService, membershipService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import { useRole } from "@/lib/useRole";
 import {
   type ClassTypeDto,
   type InstructorAssignmentDto,
+  type JoinRequestDto,
   type MemberDto,
   type RateType,
   rateTypeLabels,
@@ -36,6 +37,7 @@ export default function InstructorsPage() {
   const isOwner = myRole === "Owner";
 
   const [members, setMembers] = useState<MemberDto[]>([]);
+  const [joinRequests, setJoinRequests] = useState<JoinRequestDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,14 +57,29 @@ export default function InstructorsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setMembers(await memberService.list(true));
+      const [mem, reqs] = await Promise.all([
+        memberService.list(true),
+        canManage ? memberService.joinRequests() : Promise.resolve([] as JoinRequestDto[]),
+      ]);
+      setMembers(mem);
+      setJoinRequests(reqs);
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Üyeler yüklenemedi.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canManage]);
+
+  const decideRequest = async (r: JoinRequestDto, accept: boolean) => {
+    try {
+      if (accept) await membershipService.accept(r.membershipId);
+      else await membershipService.reject(r.membershipId);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "İşlem yapılamadı.");
+    }
+  };
 
   useEffect(() => {
     load();
@@ -141,6 +158,30 @@ export default function InstructorsPage() {
       </div>
 
       {error && <Alert kind="error">{error}</Alert>}
+
+      {canManage && joinRequests.length > 0 && (
+        <div className="rounded-2xl border border-warning/30 bg-warning/5 p-4">
+          <h2 className="mb-3 text-sm font-semibold text-foreground">
+            Bekleyen katılım istekleri <Badge tone="warning">{joinRequests.length}</Badge>
+          </h2>
+          <ul className="space-y-2">
+            {joinRequests.map((r) => (
+              <li key={r.membershipId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-surface px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    {r.applicantName} <Badge tone="rose">{r.requestedRole === "Instructor" ? "Hoca" : "Öğrenci"}</Badge>
+                  </p>
+                  <p className="text-xs text-muted">{r.applicantEmail} · {r.requestedAt.slice(0, 10)}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => decideRequest(r, true)}>Kabul et</Button>
+                  <Button variant="ghost" size="sm" onClick={() => decideRequest(r, false)}>Reddet</Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <Table>
         <THead>

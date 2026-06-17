@@ -24,7 +24,7 @@ export default function LoginPage() {
       if (auth.user.globalRole === "PlatformAdmin" && !auth.activeStudio) router.replace("/platform");
       else if (auth.activeStudio) router.replace("/dashboard");
       else if (auth.memberships.length > 1) router.replace("/select-studio");
-      else router.replace("/dashboard");
+      else router.replace("/join-studio"); // aktif stüdyo üyeliği yok → katılım ekranı (Sprint 15)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Giriş yapılamadı.");
     } finally {
@@ -68,7 +68,13 @@ export default function LoginPage() {
       </form>
 
       <p className="mt-6 text-center text-sm text-muted">
-        Stüdyonuz yok mu?{" "}
+        Hesabınız yok mu?{" "}
+        <Link href="/register" className="font-medium text-primary hover:text-primary-hover">
+          Hesap oluşturun
+        </Link>
+      </p>
+      <p className="mt-2 text-center text-sm text-muted">
+        Stüdyo sahibi misiniz?{" "}
         <Link href="/register-studio" className="font-medium text-primary hover:text-primary-hover">
           Stüdyo oluşturun
         </Link>

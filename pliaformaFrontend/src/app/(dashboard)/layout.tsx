@@ -9,19 +9,22 @@ import { LicenseBanner } from "@/components/layout/LicenseBanner";
 import { FullscreenLoader } from "@/components/layout/FullscreenLoader";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, activeStudio, loading } = useAuth();
+  const { user, activeStudio, memberships, loading } = useAuth();
   const router = useRouter();
 
   // Stüdyo bağlamı olmayan PlatformAdmin'i platform paneline yönlendir (tenant dashboard'u onun için anlamsız).
   const platformOnly = user?.globalRole === "PlatformAdmin" && !activeStudio;
+  // Aktif stüdyo üyeliği olmayan normal kullanıcı → katılım ekranı (Sprint 15).
+  const needsJoin = !!user && !platformOnly && !activeStudio && memberships.length === 0;
 
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace("/login");
     else if (platformOnly) router.replace("/platform");
-  }, [loading, user, platformOnly, router]);
+    else if (needsJoin) router.replace("/join-studio");
+  }, [loading, user, platformOnly, needsJoin, router]);
 
-  if (loading || !user || platformOnly) return <FullscreenLoader />;
+  if (loading || !user || platformOnly || needsJoin) return <FullscreenLoader />;
 
   return (
     <div className="flex min-h-dvh bg-background">

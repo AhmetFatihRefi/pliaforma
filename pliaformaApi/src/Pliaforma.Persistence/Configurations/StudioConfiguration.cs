@@ -26,6 +26,12 @@ public sealed class StudioConfiguration : IEntityTypeConfiguration<Studio>
         b.Property(x => x.SuspendedReason).HasMaxLength(500);
         b.Ignore(x => x.IsActive); // hesaplanan (Status == Active); kolona yansıtılmaz.
 
+        // Self-service katılım kodu (Sprint 15): global benzersiz (dolu + silinmemiş kayıtlar arasında).
+        b.Property(x => x.JoinCode).HasMaxLength(16);
+        b.HasIndex(x => x.JoinCode)
+            .IsUnique()
+            .HasFilter("\"JoinCode\" IS NOT NULL AND \"IsDeleted\" = false");
+
         b.HasOne(x => x.Owner)
             .WithMany()
             .HasForeignKey(x => x.OwnerUserId)

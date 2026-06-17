@@ -4,6 +4,9 @@ import type {
   AttendanceStatus,
   AttendanceSummaryDto,
   BulkGenerateResult,
+  JoinRequestDto,
+  JoinCodeDto,
+  MyJoinRequestDto,
   PackagePlanDto,
   PackagePlanInput,
   PackagePlanPriceVersionDto,
@@ -75,13 +78,19 @@ export const memberService = {
     api<null>(`/api/studio/memberships/${membershipId}/role`, { method: "PATCH", body: { role } }),
   remove: (membershipId: string) =>
     api<null>(`/api/studio/memberships/${membershipId}/remove`, { method: "POST", body: {} }),
+  // Sprint 15: bekleyen katılım istekleri + katılım kodu (Owner/StudioAdmin)
+  joinRequests: () => api<JoinRequestDto[]>("/api/studio/join-requests"),
+  joinCode: () => api<JoinCodeDto>("/api/studio/join-code"),
+  regenerateJoinCode: () => api<JoinCodeDto>("/api/studio/join-code/regenerate", { method: "POST", body: {} }),
 };
 
 // Kullanıcı tarafı üyelik aksiyonları (/api/members)
 export const membershipService = {
-  apply: (studioSlug: string) =>
-    api<PendingInvitationDto>("/api/members/apply", { method: "POST", body: { studioSlug } }),
+  // Sprint 15: JoinCode + rol ile katılım başvurusu
+  apply: (joinCode: string, role: StudioRole) =>
+    api<PendingInvitationDto>("/api/members/apply", { method: "POST", body: { joinCode, role } }),
   myInvitations: () => api<PendingInvitationDto[]>("/api/members/my-invitations"),
+  myJoinRequests: () => api<MyJoinRequestDto[]>("/api/members/my-join-requests"),
   accept: (membershipId: string) =>
     api<null>(`/api/members/${membershipId}/accept`, { method: "POST", body: {} }),
   reject: (membershipId: string) =>

@@ -49,5 +49,15 @@ public class Studio : BaseEntity
     public Guid OwnerUserId { get; set; }
     public User? Owner { get; set; }
 
+    /// <summary>
+    /// Self-service katılım kodu (Sprint 15): kullanıcı bu kodu girip stüdyoya hoca/öğrenci olarak
+    /// başvurur. Tahmin edilemez (CSPRNG), global benzersiz; slug yerine kullanılır (slug sızdırmaz).
+    /// </summary>
+    public string? JoinCode { get; set; }
+    public DateTime? JoinCodeUpdatedAt { get; set; }
+
+    /// <summary>false → kod ile başvuru kabul edilmez (pasifleştirilmiş).</summary>
+    public bool JoinCodeIsActive { get; set; } = true;
+
     public ICollection<StudioMembership> Memberships { get; set; } = new List<StudioMembership>();
 }

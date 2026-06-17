@@ -64,6 +64,35 @@ export interface PendingInvitationDto {
   role: StudioRole;
 }
 
+// Sprint 15: self-service kayıt & katılım isteği
+export interface JoinRequestDto {
+  membershipId: string;
+  applicantName: string;
+  applicantEmail: string;
+  requestedRole: StudioRole;
+  requestedAt: string;
+  direction: MembershipDirection;
+  status: MembershipStatus;
+}
+
+export interface MyJoinRequestDto {
+  membershipId: string;
+  studioId: string;
+  studioName: string;
+  requestedRole: StudioRole;
+  status: MembershipStatus;
+  requestedAt: string;
+  rejectedAt?: string | null;
+  message?: string | null;
+}
+
+export interface JoinCodeDto {
+  joinCode: string;
+  formattedJoinCode: string;
+  isActive: boolean;
+  updatedAt?: string | null;
+}
+
 // Etiketler (UI)
 export const equipmentLabels: Record<EquipmentType, string> = {
   Mat: "Mat", Reformer: "Reformer", Cadillac: "Cadillac", Chair: "Sandalye", Barrel: "Barrel",

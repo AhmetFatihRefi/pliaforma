@@ -75,6 +75,8 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
             Name = request.StudioName.Trim(),
             Slug = await GenerateUniqueSlugAsync(request.StudioName, cancellationToken),
             OwnerUserId = user.Id,
+            JoinCode = await GenerateUniqueJoinCodeAsync(cancellationToken),
+            JoinCodeUpdatedAt = _clock.UtcNow,
         };
 
         var membership = new StudioMembership
@@ -135,5 +137,13 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
             slug = $"{baseSlug}-{++suffix}";
 
         return slug;
+    }
+
+    private async Task<string> GenerateUniqueJoinCodeAsync(CancellationToken ct)
+    {
+        string code;
+        do { code = Common.Text.JoinCode.Generate(); }
+        while (await _db.Studios.AnyAsync(s => s.JoinCode == code, ct));
+        return code;
     }
 }

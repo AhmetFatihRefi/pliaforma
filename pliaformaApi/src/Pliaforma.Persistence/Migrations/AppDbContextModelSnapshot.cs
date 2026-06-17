@@ -1253,6 +1253,16 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("JoinCode")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<bool>("JoinCodeIsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("JoinCodeUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
@@ -1293,6 +1303,10 @@ namespace Pliaforma.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("JoinCode")
+                        .IsUnique()
+                        .HasFilter("\"JoinCode\" IS NOT NULL AND \"IsDeleted\" = false");
 
                     b.HasIndex("OwnerUserId");
 

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
 
@@ -38,8 +39,57 @@ public sealed class AcceptMembershipHandler : ICommandHandler<AcceptMembershipCo
 
         membership.Status = MembershipStatus.Active;
         membership.AcceptedAt = _clock.UtcNow;
+
+        // Profil onayda oluşur (idempotent): self-service başvuruda profil yaratılmamıştı; invite yolu
+        // Instructor profili önceden oluşturduysa burada no-op olur (çift profil yok).
+        await EnsureRoleProfileAsync(membership, cancellationToken);
+
         await _db.SaveChangesAsync(cancellationToken);
         return Unit.Value;
+    }
+
+    /// <summary>Üyelik rolüne göre eksik profili (Student/Instructor) onay sırasında oluşturur. Varsa dokunmaz.</summary>
+    private async Task EnsureRoleProfileAsync(StudioMembership membership, CancellationToken ct)
+    {
+        var deciderUserId = _currentUser.RequireUserId();
+
+        if (membership.Role == StudioRole.Instructor)
+        {
+            var hasProfile = await _db.InstructorProfiles
+                .AnyAsync(p => p.StudioId == membership.StudioId && p.UserId == membership.UserId, ct);
+            if (hasProfile) return;
+
+            var user = await _db.Users.FirstAsync(u => u.Id == membership.UserId, ct);
+            _db.InstructorProfiles.Add(new InstructorProfile
+            {
+                StudioId = membership.StudioId,
+                UserId = membership.UserId,
+                DisplayName = user.FullName,
+                Rate = 0m,                 // stüdyo onayladıktan sonra ücreti belirler
+                RateType = RateType.PerSession,
+            });
+        }
+        else if (membership.Role == StudioRole.Student)
+        {
+            var hasProfile = await _db.StudentProfiles
+                .AnyAsync(p => p.StudioId == membership.StudioId && p.UserId == membership.UserId, ct);
+            if (hasProfile) return;
+
+            var user = await _db.Users.FirstAsync(u => u.Id == membership.UserId, ct);
+            _db.StudentProfiles.Add(new StudentProfile
+            {
+                StudioId = membership.StudioId,
+                UserId = membership.UserId,
+                StudioMembershipId = membership.Id,
+                FullName = user.FullName,
+                Phone = user.Phone,
+                Email = user.Email,
+                Status = StudentStatus.Active,
+                Source = StudentSource.Web,
+                CreatedByUserId = deciderUserId,
+                ConvertedAt = _clock.UtcNow,
+            });
+        }
     }
 }
 

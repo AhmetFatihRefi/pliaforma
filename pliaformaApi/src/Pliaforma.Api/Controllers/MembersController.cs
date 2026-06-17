@@ -11,7 +11,7 @@ public sealed class MembersController : ApiControllerBase
 {
     public MembersController(IDispatcher dispatcher) : base(dispatcher) { }
 
-    // Kullanıcının bir stüdyoya başvurusu (tenant-öncesi).
+    // Kullanıcının bir stüdyoya JoinCode + rol ile katılım başvurusu (tenant-öncesi).
     [HttpPost("apply")]
     public Task<IActionResult> Apply(ApplyToStudioCommand command, CancellationToken ct) =>
         Send(command, "Başvurunuz alındı.", ct);
@@ -19,6 +19,11 @@ public sealed class MembersController : ApiControllerBase
     [HttpGet("my-invitations")]
     public Task<IActionResult> MyInvitations(CancellationToken ct) =>
         Send(new GetMyPendingInvitationsQuery(), ct: ct);
+
+    // Kullanıcının kendi katılım başvuruları (bekleyen/reddedilen) — yalnız kendi kayıtları.
+    [HttpGet("my-join-requests")]
+    public Task<IActionResult> MyJoinRequests(CancellationToken ct) =>
+        Send(new GetMyJoinRequestsQuery(), ct: ct);
 
     [HttpPost("{id:guid}/accept")]
     public Task<IActionResult> Accept(Guid id, CancellationToken ct) =>

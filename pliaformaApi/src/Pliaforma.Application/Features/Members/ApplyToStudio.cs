@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Common.Text;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -9,17 +10,21 @@ using Pliaforma.Domain.Exceptions;
 namespace Pliaforma.Application.Features.Members;
 
 /// <summary>
-/// Kullanıcının bir stüdyoya (slug ile) hoca olarak başvurusu. Pending Instructor üyeliği
-/// (RequestedByUser) + InstructorProfile (ücret 0; stüdyo onaylarken/ardından belirler) oluşturur.
-/// Bu komut tenant-öncesidir (kullanıcının o stüdyoda üyeliği yoktur) — IStudioWriteRequest DEĞİL.
+/// Self-service stüdyoya katılım isteği (Sprint 15). Kullanıcı **JoinCode** + **rol** (yalnız Student/
+/// Instructor) ile başvurur → Pending üyelik (RequestedByUser) oluşur. **Profil oluşturulmaz** — Student/
+/// InstructorProfile yalnızca stüdyo onayında (AcceptMembership) yaratılır. Tenant-öncesidir (kullanıcının o
+/// stüdyoda üyeliği yoktur) → IStudioWriteRequest DEĞİL. Geçersiz/pasif kod generic 404 (stüdyo sızdırmaz).
 /// </summary>
-public sealed record ApplyToStudioCommand(string StudioSlug) : ICommand<PendingInvitationDto>;
+public sealed record ApplyToStudioCommand(string JoinCode, StudioRole Role) : ICommand<PendingInvitationDto>;
 
 public sealed class ApplyToStudioValidator : AbstractValidator<ApplyToStudioCommand>
 {
     public ApplyToStudioValidator()
     {
-        RuleFor(x => x.StudioSlug).NotEmpty().MaximumLength(180);
+        RuleFor(x => x.JoinCode).NotEmpty().MaximumLength(40);
+        RuleFor(x => x.Role)
+            .Must(r => r is StudioRole.Student or StudioRole.Instructor)
+            .WithMessage("Yalnızca Öğrenci veya Hoca olarak başvurabilirsiniz.");
     }
 }
 
@@ -38,37 +43,43 @@ public sealed class ApplyToStudioHandler : ICommandHandler<ApplyToStudioCommand,
     {
         var userId = _currentUser.RequireUserId();
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken)
-            ?? throw new UnauthorizedException("Oturum geçersiz.");
+        // Güvenlik: yalnız Student/Instructor (validator de engeller; handler ikinci kapı).
+        if (request.Role is not (StudioRole.Student or StudioRole.Instructor))
+            throw new BusinessRuleException("Yalnızca Öğrenci veya Hoca olarak başvurabilirsiniz.");
 
-        var studio = await _db.Studios.FirstOrDefaultAsync(s => s.Slug == request.StudioSlug.Trim(), cancellationToken)
-            ?? throw new NotFoundException("Stüdyo bulunamadı.");
+        var code = JoinCode.Normalize(request.JoinCode);
+        // Geçersiz/pasif kod → generic 404 (stüdyo varlığı/ismi sızdırılmaz).
+        var studio = await _db.Studios.FirstOrDefaultAsync(
+            s => s.JoinCode == code && s.JoinCodeIsActive, cancellationToken);
+        if (studio is null || string.IsNullOrEmpty(code))
+            throw new NotFoundException("Geçersiz veya pasif katılım kodu.");
 
         var existing = await _db.StudioMemberships
             .FirstOrDefaultAsync(m => m.StudioId == studio.Id && m.UserId == userId, cancellationToken);
+
         if (existing is not null)
-            throw new ConflictException("Bu stüdyoya zaten üyesiniz veya bekleyen bir başvurunuz var.");
+        {
+            // Active/Pending → tekrar başvurulamaz. Rejected/Removed → mevcut satır Pending'e döner.
+            if (existing.Status is MembershipStatus.Active or MembershipStatus.Pending)
+                throw new ConflictException("Bu stüdyoya zaten üyesiniz veya bekleyen başvurunuz var.");
+
+            existing.Role = request.Role;
+            existing.Status = MembershipStatus.Pending;
+            existing.Direction = MembershipDirection.RequestedByUser;
+            existing.AcceptedAt = null;
+            await _db.SaveChangesAsync(cancellationToken);
+            return new PendingInvitationDto(existing.Id, studio.Id, studio.Name, studio.Slug, existing.Role);
+        }
 
         var membership = new StudioMembership
         {
             StudioId = studio.Id,
             UserId = userId,
-            Role = StudioRole.Instructor,
+            Role = request.Role,
             Status = MembershipStatus.Pending,
             Direction = MembershipDirection.RequestedByUser,
         };
-
-        var profile = new InstructorProfile
-        {
-            StudioId = studio.Id,
-            UserId = userId,
-            DisplayName = user.FullName,
-            Rate = 0m,
-            RateType = RateType.PerSession,
-        };
-
         _db.StudioMemberships.Add(membership);
-        _db.InstructorProfiles.Add(profile);
         await _db.SaveChangesAsync(cancellationToken);
 
         return new PendingInvitationDto(membership.Id, studio.Id, studio.Name, studio.Slug, membership.Role);

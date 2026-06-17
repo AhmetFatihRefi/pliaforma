@@ -262,6 +262,30 @@ limit zorlaması, otomatik fiyat-geçiş job'u. **Regresyon notu:** Regular self
 sprint4/5/6 smoke'larına ilgili öğrenciye paket satışı eklendi (bilinçli, davranış değişikliği). Detay:
 [SPRINT-14-SPEC.md](SPRINT-14-SPEC.md), [packages-and-payments.md](packages-and-payments.md).
 
+## Sprint 15 — Tamamlanan kapsam
+**Yapıldı:** **Self-service kayıt & stüdyoya katılım isteği.** Kullanıcılar kendi hesaplarını açar (`POST
+/api/auth/register` artık frontend'de `/register`), **JoinCode + rol** (Student/Instructor) ile bir stüdyoya
+katılım isteği gönderir; **stüdyo onaylamadan aktif üye olmaz**; onayda role göre **StudentProfile veya
+InstructorProfile oluşur**. Yeni: `Studio.JoinCode` (10 karakter, Base32-benzeri, 0/1/O/I/L yok, CSPRNG,
+global benzersiz) + `JoinCodeUpdatedAt`/`JoinCodeIsActive`; `JoinCode` helper (üret/normalize/format —
+tireli/tiresiz girdi normalize). **`ApplyToStudio` revize** (slug→JoinCode, +rol, yalnız Student/Instructor,
+**başvuruda profil OLUŞMAZ**; Active/Pending→409, Rejected/Removed→mevcut satır Pending'e döner). **`AcceptMembership`
+idempotent profil oluşturma** (profil yoksa oluştur; invite yolu önceden oluşturduysa no-op → çakışma yok).
+Yeni uçlar: `GET /api/studio/join-requests` (Owner/StudioAdmin; applicant ad/e-posta/rol/tarih), `GET/POST
+/api/studio/join-code[/regenerate]` (Owner/StudioAdmin; regenerate eski kodu geçersizleştirir), `GET
+/api/members/my-join-requests` (yalnız kendi başvuruları). Migration `Sprint15_JoinCode` + **backfill**
+(mevcut her stüdyoya benzersiz JoinCode, PL/pgSQL döngü → **322/322 stüdyo kodlandı, 0 karışan karakter,
+hepsi benzersiz**). Frontend: `/register`, `/join-studio` (JoinCode+rol+bekleyen/reddedilen başvurularım),
+**üyeliksiz kullanıcı login/register sonrası `/join-studio`'ya yönlenir** (PlatformAdmin→/platform korunur;
+çok-üyelik→select-studio korunur), ayarlarda **Katılım kodu kartı** (göster/kopyala/yenile), Hocalar&Üyeler
+ekranında **"Bekleyen katılım istekleri"** (Kabul/Reddet). **Güvenlik:** geçersiz/pasif kod → generic 404
+(stüdyo sızmaz); Student/Instructor join-requests/regenerate → 403; cross-tenant join-requests görünmez;
+my-join-requests yalnız kendi. smoke `sprint15-smoke.sh` (**32 kontrol**) + **16 smoke (15 + sprint15) + 34
+E2E (31 + 3, 2x deterministic)** + same-origin (:3000) yeşil; backend 0/0, frontend build temiz (35 rota).
+**Email doğrulaması YOK** (ileride `User.EmailVerifiedAt`; register/login doğrulamasız çalışır). **Bilinçli
+yapılmadı:** password reset, public stüdyo dizini/arama, davet-linki token sistemi, gerçek email gönderimi.
+Detay: [SPRINT-15-SPEC.md](SPRINT-15-SPEC.md), [identity-and-membership.md](identity-and-membership.md).
+
 ## Pilot Handoff (deploy öncesi hazırlık)
 **Yapıldı (yalnız doküman; kod değişmedi):** `FINAL-HANDOFF.md` + `PILOT-DEPLOY-DRY-RUN.md` (kopyala-yapıştır
 komutlar + TLS checklist). **Infra versioning durumu netleştirildi:** kök git repo DEĞİL; `pliaformaApi` +

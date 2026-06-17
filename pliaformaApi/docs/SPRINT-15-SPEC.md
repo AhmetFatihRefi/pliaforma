@@ -1,8 +1,7 @@
 # Sprint 15 — Self-Service Kayıt & Stüdyoya Katılım İsteği
 
-> **Durum:** SPEC TASLAĞI · Kodlama onayı bekleniyor.
-> **Önemli:** Bu belge yalnızca **karar/kapsam** içerir. Henüz kod/migration yazılmadı.
-> Sprint 15 kodlaması için **ayrı onay** beklenecek.
+> **Durum:** ✅ UYGULANDI. Tüm kod/migration/test yazıldı ve doğrulandı.
+> sprint15-smoke 32✓ · 16/16 smoke · 34/34 E2E (2x) · same-origin · backend 0/0. Detay: [sprints.md](sprints.md#sprint-15--tamamlanan-kapsam).
 
 ---
 
