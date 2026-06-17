@@ -5,6 +5,8 @@ import type {
   AttendanceSummaryDto,
   BulkGenerateResult,
   PackagePlanDto,
+  PackagePlanInput,
+  PackagePlanPriceVersionDto,
   PaymentDto,
   PaymentMethod,
   PaymentStatus,
@@ -31,6 +33,7 @@ import type {
   ReminderRunResultDto,
   StudentDashboardDto,
   StudioDashboardDto,
+  StudioSubscriptionViewDto,
   MemberDto,
   MyAttendanceDto,
   MyBookingDto,
@@ -187,11 +190,16 @@ export const studentAttendanceService = {
 // Paket planları (/api/studio/package-plans) — Owner/StudioAdmin
 export const packagePlanService = {
   list: (onlyActive?: boolean) => api<PackagePlanDto[]>(`/api/studio/package-plans${onlyActive ? "?onlyActive=true" : ""}`),
-  create: (input: { name: string; description?: string; creditCount: number; price: number; validityDays?: number | null }) =>
+  get: (id: string) => api<PackagePlanDto>(`/api/studio/package-plans/${id}`),
+  create: (input: PackagePlanInput) =>
     api<PackagePlanDto>("/api/studio/package-plans", { method: "POST", body: input }),
-  update: (id: string, input: { name: string; description?: string; creditCount: number; price: number; validityDays?: number | null; isActive: boolean }) =>
+  update: (id: string, input: PackagePlanInput) =>
     api<PackagePlanDto>(`/api/studio/package-plans/${id}`, { method: "PUT", body: input }),
   remove: (id: string) => api<null>(`/api/studio/package-plans/${id}`, { method: "DELETE" }),
+  // Sprint 14: fiyat versiyonları
+  priceVersions: (id: string) => api<PackagePlanPriceVersionDto[]>(`/api/studio/package-plans/${id}/price-versions`),
+  addPriceVersion: (id: string, input: { price: number; effectiveFrom: string }) =>
+    api<PackagePlanPriceVersionDto>(`/api/studio/package-plans/${id}/price-versions`, { method: "POST", body: input }),
 };
 
 // Öğrenci paketleri (/api/studio) — Owner/StudioAdmin
@@ -259,6 +267,12 @@ export const notificationService = {
   markRead: (id: string) => api<null>(`/api/notifications/${id}/read`, { method: "POST", body: {} }),
   markAllRead: () => api<null>("/api/notifications/read-all", { method: "POST", body: {} }),
   runReminders: () => api<ReminderRunResultDto>("/api/studio/notifications/run-reminders", { method: "POST", body: {} }),
+};
+
+// Stüdyo aboneliği — Owner self (/api/studio/subscription)
+export const studioSubscriptionService = {
+  mine: () => api<StudioSubscriptionViewDto>("/api/studio/subscription"),
+  cancel: () => api<StudioSubscriptionViewDto>("/api/studio/subscription/cancel", { method: "POST", body: {} }),
 };
 
 // Rezervasyon — personel tarafı (/api/studio)

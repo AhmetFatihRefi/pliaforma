@@ -13,7 +13,10 @@ public sealed record ClassBookingDto(
     DateTime EndAt,
     string ClassTypeName,
     string InstructorName,
-    DateTime? CancelledAt);
+    DateTime? CancelledAt,
+    bool RequiresPayment = false,
+    PackageEligibilityStatus? PackageEligibilityStatus = null,
+    Guid? ExpectedStudentPackageId = null);
 
 /// <summary>Öğrencinin kendi rezervasyonu (yaklaşan).</summary>
 public sealed record MyBookingDto(
@@ -25,7 +28,7 @@ public sealed record MyBookingDto(
     DateTime EndAt,
     ClassBookingStatus Status);
 
-/// <summary>Öğrencinin rezerve edebileceği seans (doluluk + kendi rezervasyon durumu + makeup bilgisi).</summary>
+/// <summary>Öğrencinin rezerve edebileceği seans (doluluk + kendi rezervasyon durumu + makeup + paket uygunluğu).</summary>
 public sealed record StudentSessionDto(
     Guid Id,
     string ClassTypeName,
@@ -36,7 +39,11 @@ public sealed record StudentSessionDto(
     int BookedCount,
     ClassSessionKind SessionKind,
     Guid? BookingId,
-    bool AlreadyBooked)
+    bool AlreadyBooked,
+    PackageEligibilityStatus PackageEligibility = PackageEligibilityStatus.Eligible,
+    string? PackageEligibilityMessage = null,
+    string? ExpectedPackageName = null,
+    int AvailableCredit = 0)
 {
     public int RemainingCapacity => Math.Max(Capacity - BookedCount, 0);
     public bool IsFull => BookedCount >= Capacity;
@@ -44,5 +51,8 @@ public sealed record StudentSessionDto(
     /// <summary>Makeup seansı rezervasyonu 1 telafi kredisi gerektirir.</summary>
     public bool RequiresMakeupCredit => SessionKind == ClassSessionKind.Makeup;
 
-    public bool CanBook => !AlreadyBooked && !IsFull;
+    /// <summary>Paket uygun mu? (Regular dışı seanslarda — Makeup/Trial/Special — paket kapısı yoktur → her zaman uygun.)</summary>
+    public bool PackageEligible => PackageEligibility == PackageEligibilityStatus.Eligible;
+
+    public bool CanBook => !AlreadyBooked && !IsFull && PackageEligible;
 }

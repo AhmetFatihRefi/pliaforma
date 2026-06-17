@@ -31,6 +31,7 @@ const nav: NavItem[] = [
   { href: "/dashboard/closures", label: "Kapalı Günler", icon: "⊘", roles: MANAGER },
   { href: "/dashboard/instructors", label: "Hocalar", icon: "✦", roles: MANAGER },
   { href: "/dashboard/class-types", label: "Gruplar", icon: "❀", roles: STAFF },
+  { href: "/dashboard/subscription", label: "Abonelik", icon: "◈", roles: ["Owner"] },
   { href: "/dashboard/settings", label: "Ayarlar", icon: "⚙", roles: MANAGER },
   { href: "/dashboard/book-classes", label: "Ders Bul", icon: "✛", roles: ["Student"] },
   { href: "/dashboard/my-bookings", label: "Rezervasyonlarım", icon: "✓", roles: ["Student"] },
@@ -83,7 +84,7 @@ export function Sidebar() {
           </Link>
         )}
       </nav>
-      <div className="px-6 py-4 text-xs text-muted">Sprint 10 · Platform Admin</div>
+      <div className="px-6 py-4 text-xs text-muted">Sprint 13 · Abonelik & Lisans</div>
     </aside>
   );
 }

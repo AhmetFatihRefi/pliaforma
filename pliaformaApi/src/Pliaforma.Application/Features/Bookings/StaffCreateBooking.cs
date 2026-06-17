@@ -71,6 +71,7 @@ public sealed class StaffCreateBookingHandler : ICommandHandler<StaffCreateBooki
         var instructorName = await _db.InstructorProfiles.Where(p => p.Id == session.InstructorProfileId).Select(p => p.DisplayName).FirstAsync(cancellationToken);
 
         return new ClassBookingDto(booking.Id, session.Id, student.Id, student.FullName, booking.Status,
-            session.StartAt, session.EndAt, classTypeName, instructorName, null);
+            session.StartAt, session.EndAt, classTypeName, instructorName, null,
+            booking.RequiresPayment, booking.PackageEligibilityStatus, booking.ExpectedStudentPackageId);
     }
 }

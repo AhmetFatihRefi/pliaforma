@@ -125,3 +125,51 @@ Manuel doğrulama: `scripts/sprint7-smoke.sh` (plan CRUD, paket sat/bakiye, atte
 belirtilen paketten düşüm, bakiye 0 → 409, iptal paket → 409, manuel adjust, ödeme create/mark-paid/cancel,
 Overdue dinamik, student self, instructor/student 403, tenant 404). Not: attendance "başlamış seans" ister →
 smoke seansı ileri açıp psql ile geçmişe çeker.
+
+---
+
+## Sprint 14 — Paket Planı V2: ders grubu kapsamı + fiyat geçerlilikleri
+
+**Ders grubu kapsamı.** `PackagePlan.AllowAllClassTypes` (true → tüm gruplar; false → yalnız
+`PackagePlanClassType` kayıtları). Satışta kapsam **snapshot**'lanır: `StudentPackage.AllowAllClassTypesSnapshot`
++ `StudentPackageAllowedClassType`. Plan sonradan değişse de satılan paketin hakları değişmez.
+
+**Booking paket uygunluğu (yalnız Regular seans; Makeup telafi kredisi kullanır, Trial/Special muaf).**
+`PackageEligibilityChecker.EvaluateAsync(classTypeId)` →
+`Eligible | NoPackageAtAll | NoBalance | WrongClassType`.
+**Kullanılabilir hak = `CurrentCreditBalance − aynı ExpectedStudentPackageId'ye bağlı, iptal edilmemiş VE
+henüz paket consume ile kapanmamış booking sayısı`** (gelecek + geçmiş kapanmamış Booked dahil; consume olmuş
+ayrıca sayılmaz; Cancelled sayılmaz). Kredi **yine yoklamada** düşer; booking yalnız hakkı "rezerve" eder →
+öğrenci hak sayısından fazla rezervasyon yapamaz. Hesap + booking **aynı transaction** içinde, öğrenci satırı
+**row-lock** ile (mevcut makeup-credit deseni). Self/Instructor uygun değilse **409**; Owner/StudioAdmin yazabilir
+→ `ClassBooking.RequiresPayment=true` (+`PackageEligibilityStatus`). İptalde kredi düşmediği için iade gerekmez;
+booking iptal → o paketin available hakkı geri gelir.
+
+**Attendance consume (güncel).** Öncelik: açık `studentPackageId` > booking'in `ExpectedStudentPackageId`'si >
+otomatik seçim. Seçilen/expected paket seansın `ClassTypeId`'sini kapsamalı; değilse **409** "Seçili paket bu ders
+grubu için geçerli değil." Beklenen paket geçersiz/balance 0 ise **sessiz fallback yok → 409** (staff bilinçli
+seçer). Başarılı consume `RequiresPayment`'ı temizler (`false` + `PackageEligibilityStatus=Resolved`). Aynı
+yoklama için ikinci düşüm hâlâ engelli (idempotent).
+
+**Fiyat versiyonlama (source of truth = versiyon tablosu).** `PackagePlanPriceVersion` (Price, Currency,
+EffectiveFrom). Effective fiyat = `EffectiveFrom <= today` olan en güncel versiyon. **Satış daima computed
+effective price'tan snapshot alır**; `PackagePlan.Price` yalnız legacy/görüntü cache'idir (stale olsa bile satış
+etkilenmez). Gelecek-tarihli zam, tarihi gelince **job olmadan** otomatik geçer. DTO: `currentEffectivePrice`,
+`currentEffectivePriceCurrency`, `nextEffectivePrice?`, `nextEffectiveFrom?`. `StudentPackage.Price` snapshot
+plan fiyat değişiminden etkilenmez.
+
+| Endpoint (Sprint 14) | Açıklama |
+|---|---|
+| `GET /api/studio/package-plans/{id}` | tek plan (kapsam + effective/next fiyat) |
+| `GET /api/studio/package-plans/{id}/price-versions` | fiyat versiyonları (isCurrent işaretli) |
+| `POST /api/studio/package-plans/{id}/price-versions` | fiyat versiyonu ekle/güncelle (aynı tarih → günceller) |
+| `POST/PUT /api/studio/package-plans[/{id}]` | +`allowAllClassTypes`, `classTypeIds[]`, opsiyonel future/new fiyat |
+
+Migration `Sprint14_PackagePlanV2` + backfill: mevcut planlar `AllowAllClassTypes=true`, mevcut paketler
+`AllowAllClassTypesSnapshot=true`, mevcut bookingler `RequiresPayment=false`, her plana bugünden geçerli initial
+price version → kimse kilitlenmez (doğrulandı: 30/30 plan versiyonlandı, 0 kilitli).
+
+Manuel doğrulama: `scripts/sprint14-smoke.sh` (37 kontrol: kapsam create/snapshot, plan değişince eski paket
+etkilenmez, self-booking eligible/wrong-classtype/no-package/kullanılabilir-hak, staff RequiresPayment, instructor
+bypass yok, consume expected-package/wrong-classtype/Resolved, fiyat effective/future/stale-cache, yetki+tenant).
+Regresyon: Regular self-booking artık geçerli paket ister → sprint4/5/6 smoke'larına paket satışı eklendi.

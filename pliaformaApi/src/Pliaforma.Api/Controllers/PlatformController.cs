@@ -40,6 +40,23 @@ public sealed class PlatformController : ApiControllerBase
     public Task<IActionResult> Reactivate(Guid id, CancellationToken ct) =>
         Send(new ReactivateStudioCommand(id), ct: ct);
 
+    // ---- Plan kataloğu ----
+    [HttpGet("plans")]
+    public Task<IActionResult> Plans([FromQuery] bool onlyActive, CancellationToken ct) =>
+        Send(new GetSubscriptionPlansQuery(onlyActive), ct: ct);
+
+    [HttpPost("plans")]
+    public Task<IActionResult> CreatePlan([FromBody] SubscriptionPlanInput body, CancellationToken ct) =>
+        Send(new CreateSubscriptionPlanCommand(body), ct: ct);
+
+    [HttpPut("plans/{id:guid}")]
+    public Task<IActionResult> UpdatePlan(Guid id, [FromBody] SubscriptionPlanInput body, CancellationToken ct) =>
+        Send(new UpdateSubscriptionPlanCommand(id, body), ct: ct);
+
+    [HttpDelete("plans/{id:guid}")]
+    public Task<IActionResult> DeletePlan(Guid id, CancellationToken ct) =>
+        Send(new DeleteSubscriptionPlanCommand(id), ct: ct);
+
     // ---- Subscriptions ----
     [HttpGet("studios/{id:guid}/subscription")]
     public Task<IActionResult> GetSubscription(Guid id, CancellationToken ct) =>
@@ -50,6 +67,18 @@ public sealed class PlatformController : ApiControllerBase
         Send(new UpdateStudioSubscriptionCommand(
             id, body.PlanName, body.Tier, body.Status, body.MonthlyPrice, body.Currency, body.BillingPeriod,
             body.CurrentPeriodStart, body.CurrentPeriodEnd, body.TrialEndsAt, body.Notes), ct: ct);
+
+    [HttpPut("studios/{id:guid}/subscription/plan")]
+    public Task<IActionResult> AssignPlan(Guid id, [FromBody] AssignPlanRequest body, CancellationToken ct) =>
+        Send(new AssignSubscriptionPlanCommand(id, body.PlanId), ct: ct);
+
+    [HttpPost("studios/{id:guid}/subscription/record-payment")]
+    public Task<IActionResult> RecordPayment(Guid id, [FromBody] RecordPaymentRequest body, CancellationToken ct) =>
+        Send(new RecordSubscriptionPaymentCommand(id, body.Amount, body.Notes), ct: ct);
+
+    [HttpGet("studios/{id:guid}/subscription/payments")]
+    public Task<IActionResult> SubscriptionPayments(Guid id, CancellationToken ct) =>
+        Send(new GetSubscriptionPaymentsQuery(id), ct: ct);
 
     [HttpPost("studios/{id:guid}/subscription/cancel")]
     public Task<IActionResult> CancelSubscription(Guid id, CancellationToken ct) =>
@@ -66,6 +95,8 @@ public sealed class PlatformController : ApiControllerBase
 }
 
 public sealed record SuspendStudioRequest(string Reason);
+public sealed record AssignPlanRequest(Guid PlanId);
+public sealed record RecordPaymentRequest(decimal? Amount, string? Notes);
 
 public sealed record UpdateSubscriptionRequest(
     string PlanName,

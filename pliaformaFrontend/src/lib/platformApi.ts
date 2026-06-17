@@ -9,6 +9,9 @@ import type {
   PlatformSubscriptionDto,
   StudioStatus,
   SubscriptionInput,
+  SubscriptionPaymentDto,
+  SubscriptionPlanDto,
+  SubscriptionPlanInput,
 } from "./domain-types";
 
 // Platform (cross-tenant) yönetim uçları (/api/platform/*) — yalnızca PlatformAdmin.
@@ -31,12 +34,26 @@ export const platformService = {
   reactivate: (id: string) =>
     api<PlatformStudioStatusDto>(`/api/platform/studios/${id}/reactivate`, { method: "POST", body: {} }),
 
+  // --- Plan kataloğu ---
+  plans: (onlyActive?: boolean) =>
+    api<SubscriptionPlanDto[]>(`/api/platform/plans${onlyActive ? "?onlyActive=true" : ""}`),
+  createPlan: (input: SubscriptionPlanInput) =>
+    api<SubscriptionPlanDto>("/api/platform/plans", { method: "POST", body: input }),
+  updatePlan: (id: string, input: SubscriptionPlanInput) =>
+    api<SubscriptionPlanDto>(`/api/platform/plans/${id}`, { method: "PUT", body: input }),
+  deletePlan: (id: string) => api<null>(`/api/platform/plans/${id}`, { method: "DELETE" }),
+
+  // --- Stüdyo aboneliği ---
   getSubscription: (id: string) =>
     api<PlatformSubscriptionDto | null>(`/api/platform/studios/${id}/subscription`),
-
   updateSubscription: (id: string, input: SubscriptionInput) =>
     api<PlatformSubscriptionDto>(`/api/platform/studios/${id}/subscription`, { method: "PUT", body: input }),
-
+  assignPlan: (id: string, planId: string) =>
+    api<PlatformSubscriptionDto>(`/api/platform/studios/${id}/subscription/plan`, { method: "PUT", body: { planId } }),
+  recordPayment: (id: string, input: { amount?: number | null; notes?: string } = {}) =>
+    api<PlatformSubscriptionDto>(`/api/platform/studios/${id}/subscription/record-payment`, { method: "POST", body: input }),
+  subscriptionPayments: (id: string) =>
+    api<SubscriptionPaymentDto[]>(`/api/platform/studios/${id}/subscription/payments`),
   cancelSubscription: (id: string) =>
     api<PlatformSubscriptionDto>(`/api/platform/studios/${id}/subscription/cancel`, { method: "POST", body: {} }),
 

@@ -29,6 +29,8 @@ guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\
 mkactive(){ local g; g=$(guest "$1"); post "/api/studio/students/$g/convert-to-user" "{\"email\":\"$1+$TS@pf.local\",\"initialPassword\":\"$PW\"}" "$ATOK" >/dev/null; echo "$g"; }
 SA=$(mkactive "sa"); SATOK=$(login "sa+$TS@pf.local")
 SB=$(mkactive "sb"); SBTOK=$(login "sb+$TS@pf.local")
+# Sprint 14: Regular self-booking artık geçerli paket ister. SB regular self-book yapacağı için paket sat.
+post "/api/studio/students/$SB/packages" '{"name":"S14 selfbook","creditCount":5}' "$ATOK" >/dev/null
 
 echo "--- Makeup seansı: kredi yokken 409, grant, kredi tüket, iptalde restore ---"
 MS=$(mksess "$I1P" "$D" "09:00" 2 "Makeup")

@@ -208,7 +208,61 @@ regresyon:** dotnet 0/0 + npm temiz + compose dev/prod config + **13 smoke (:300
 tema scripti nonce ister — ertelendi), backend HTTP healthcheck (aspnet imajında araç yok). Detay:
 [SECURITY-REVIEW.md](SECURITY-REVIEW.md), [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md), [RELEASE-NOTES-MVP.md](RELEASE-NOTES-MVP.md).
 
-## Pilot Handoff (Sprint 13 değil — deploy öncesi hazırlık)
+## Sprint 13 — Tamamlanan kapsam
+**Yapıldı:** Gerçek **abonelik yaşam döngüsü + plan kataloğu + tahsilat defteri + lisans kontrolü** (gateway YOK;
+tahsilat manuel "ödeme kaydet", Sprint 14 webhook aynı kontratı besler). Yeni entity: **`SubscriptionPlan`**
+(dinamik katalog; IsDefault tekil filtered-unique; intro fiyat), **`PlatformSubscriptionPayment`** (ledger;
+`Source: Manual|Gateway|Adjustment`; **öğrenci Payment'tan ayrı**). `PlatformSubscription` genişletildi
+(SubscriptionPlanId snapshot, IntroMonthlyPrice/IntroPeriodsRemaining, **CancelAtPeriodEnd/CancelRequestedAt**).
+**Lisans (dinamik, kalıcı job yok):** `SubscriptionRules.Evaluate` → effectiveStatus (Trialing/Active/
+PastDueGrace/CancelPending/Expired/FailOpenLicensed) + isLicensed/isReadOnlyByLicense/daysRemaining/licenseMessage.
+**`SubscriptionLicenseBehavior`** (pipeline: StudioStatus→**SubscriptionLicense**→MembershipGuard): lisanssız
+yazma **403**, okuma+login açık; **admin-suspend'den bağımsız ikinci kapı**; **fail-open** (aboneliksiz=lisanslı,
+ama overview/health **missingSubscriptionCount** + detayda uyarı ile görünür). **register-studio otomatik 14g
+trial** (default plan; yoksa fail-etmez+log). **record-payment** = ledger satırı + dönem ilerletme **aynı
+transaction** + intro fiyatı + bekleyen-cancel temizleme. **cancel-at-period-end** (Owner self `/api/studio/
+subscription/cancel` + admin): Status değişmez, CancelAtPeriodEnd=true, dönem sonuna kadar lisanslı→sonra Expired.
+**Fiyat snapshot** (plan değişse abonelik sabit). Migration `Sprint13_Subscriptions` + **default plan seed (4
+paket: Başlangıç 1.490/Stüdyo 2.990 intro 1.990×3 default/Profesyonel 4.990/Kurumsal 7.990 teklif)** + **backfill
+(mevcut tüm stüdyolar Active+1yıl → 260/260, kimse kilitlenmedi)**. Yetki: plan CRUD + abonelik yönetimi yalnız
+**PlatformAdmin**; stüdyo abonelik görüntüleme/iptal yalnız **Owner** (StudioAdmin/Instructor/Student 403).
+Frontend: `/platform/plans` (plan CRUD), `/dashboard/subscription` (Owner: durum+lisans+ödeme geçmişi+iptal),
+global **LicenseBanner** (Owner, Active dışı durumlar), studio-detail abonelik kartı (plan ata/ödeme kaydet/iptal/
+tahsilat geçmişi + missing uyarısı), overview/health missingCount + manuel tahsilat. smoke `sprint13-smoke.sh`
+(31 kontrol) + **14 smoke (12 sprint + sprint13 + security)** + **28 E2E** (2x deterministic + prod compose) +
+same-origin + full compose up --build yeşil. **Davranış değişikliği:** abonelik cancel artık cancel-at-period-end
+(sprint10-smoke cancel assertion güncellendi). **Bilinçli yapılmadı:** gerçek kart/online tahsilat & webhook
+(Sprint 14), fatura/e-arşiv, plan **limit zorlaması** (sakla/göster), gerçek SMS/e-posta. Detay:
+[SPRINT-13-SPEC.md](SPRINT-13-SPEC.md), [platform-admin-and-observability.md](platform-admin-and-observability.md).
+
+## Sprint 14 — Tamamlanan kapsam
+**Yapıldı:** **Paket Planı V2 — ders grubu kapsamı + tarih-bazlı fiyat geçerlilikleri + booking paket uygunluğu**
+(gerçek online ödeme YOK). Yeni entity: **`PackagePlanClassType`** (plan↔ClassType kapsamı), **`StudentPackageAllowedClassType`**
+(satışta snapshot'lanan kapsam), **`PackagePlanPriceVersion`** (tarih-bazlı fiyat — **fiyatın source of truth'u**).
+`PackagePlan` +`AllowAllClassTypes` (true→tüm gruplar, false→yalnız kapsam); `StudentPackage` +`AllowAllClassTypesSnapshot`;
+`ClassBooking` +`ExpectedStudentPackageId`/`RequiresPayment`/`PackageEligibilityStatus`. **Booking eligibility (Regular
+seans):** `PackageEligibilityChecker` → Eligible/NoPackageAtAll/NoBalance/WrongClassType; **kullanılabilir hak =
+CurrentCreditBalance − kapanmamış (iptal edilmemiş + henüz consume edilmemiş) açık bookingler** → öğrenci hak sayısından
+fazla rezervasyon yapamaz (kredi yine yoklamada düşer, **row-lock + aynı transaction**). Self/Instructor uygun değilse
+**409**; Owner/StudioAdmin yazabilir → `RequiresPayment=true`. **Attendance consume:** açık paket > booking'in
+`ExpectedStudentPackageId`'si > otomatik; seçilen paket ders grubunu kapsamalı (yoksa 409); beklenen paket
+geçersiz/balance 0 → **sessiz fallback yok, 409**; başarılı consume `RequiresPayment`'ı temizler (**Resolved**).
+**Snapshot:** satışta fiyat **computed effective price** (versiyondan) + kapsam snapshot'lanır → plan sonradan değişse de
+mevcut paket etkilenmez. **Fiyat:** effective = `EffectiveFrom<=today` en güncel versiyon; `PackagePlan.Price` yalnız
+cache (stale olsa bile satış computed fiyatı kullanır); gelecek zam job'suz otomatik geçer; DTO `currentEffectivePrice`/
+`nextEffectivePrice`/`nextEffectiveFrom`. Endpoint: `GET/POST /api/studio/package-plans/{id}/price-versions`,
+`GET /api/studio/package-plans/{id}`. Migration `Sprint14_PackagePlanV2` + **backfill** (AllowAllClassTypes=true,
+AllowAllClassTypesSnapshot=true, RequiresPayment=false, her plana initial price version) → **30/30 plan versiyonlandı,
+0 plan/paket kilitlenmedi**. Frontend: `/dashboard/package-plans` (ClassType multi-select + AllowAll toggle + mevcut/gelecek
+fiyat), `book-classes` (uygun olmayan seans disabled + neden + "kullanılacak paket"), schedule rezervasyon listesinde
+"Ödeme gerekli" rozeti. smoke `sprint14-smoke.sh` (**37 kontrol**) + **15 smoke (14 + sprint14)** + **31 E2E (28 + 3,
+2x deterministic)** + same-origin (:3000) yeşil; backend 0/0, frontend build temiz (33 rota). **Bilinçli yapılmadı:**
+gerçek gateway, rezervasyonda kredi fiilen düşürme/iade (kredi yoklamada düşer; booking yalnız hak rezerve eder), plan
+limit zorlaması, otomatik fiyat-geçiş job'u. **Regresyon notu:** Regular self-booking artık geçerli paket ister →
+sprint4/5/6 smoke'larına ilgili öğrenciye paket satışı eklendi (bilinçli, davranış değişikliği). Detay:
+[SPRINT-14-SPEC.md](SPRINT-14-SPEC.md), [packages-and-payments.md](packages-and-payments.md).
+
+## Pilot Handoff (deploy öncesi hazırlık)
 **Yapıldı (yalnız doküman; kod değişmedi):** `FINAL-HANDOFF.md` + `PILOT-DEPLOY-DRY-RUN.md` (kopyala-yapıştır
 komutlar + TLS checklist). **Infra versioning durumu netleştirildi:** kök git repo DEĞİL; `pliaformaApi` +
 `pliaformaFrontend` ayrı repolar (`main`, **0 commit**); **compose + `deploy/` + `ops/` HİÇBİR repoda tracked

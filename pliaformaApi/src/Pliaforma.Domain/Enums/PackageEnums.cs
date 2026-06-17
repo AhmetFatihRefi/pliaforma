@@ -66,6 +66,32 @@ public enum StudentPackageTransactionReason
     Other = 7,
 }
 
+/// <summary>
+/// Rezervasyon anındaki paket uygunluk sonucu (Sprint 14). Checker ilk dört değerden birini döner;
+/// booking üzerinde ayrıca <c>RequiresPayment</c> (staff override) ve <c>Resolved</c> (sonradan tüketildi)
+/// saklanabilir.
+/// </summary>
+public enum PackageEligibilityStatus
+{
+    /// <summary>Uygun paket + kullanılabilir hak var.</summary>
+    Eligible = 0,
+
+    /// <summary>Öğrencinin hiç aktif/geçerli paketi yok.</summary>
+    NoPackageAtAll = 1,
+
+    /// <summary>Bu ders grubu için paket var ama kullanılabilir hak kalmamış.</summary>
+    NoBalance = 2,
+
+    /// <summary>Yalnızca başka ders grubu için paketi var.</summary>
+    WrongClassType = 3,
+
+    /// <summary>Paketsiz/yetersiz hakla (staff) yapıldı; ödeme gerekiyor.</summary>
+    RequiresPayment = 4,
+
+    /// <summary>Önce ödeme gerekiyordu; sonradan geçerli paketle yoklama tüketimiyle çözüldü.</summary>
+    Resolved = 5,
+}
+
 /// <summary>Ödeme durumu. Overdue genelde DİNAMİK hesaplanır (Pending + DueDate geçmiş), kalıcı tutulmaz.</summary>
 public enum PaymentStatus
 {

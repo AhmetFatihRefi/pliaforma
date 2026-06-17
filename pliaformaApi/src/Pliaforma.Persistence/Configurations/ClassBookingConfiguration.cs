@@ -13,6 +13,11 @@ public sealed class ClassBookingConfiguration : IEntityTypeConfiguration<ClassBo
 
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(24);
         b.Property(x => x.CancellationReason).HasMaxLength(500);
+        b.Property(x => x.PackageEligibilityStatus).HasConversion<string>().HasMaxLength(24);
+
+        // ExpectedStudentPackageId: plain referans (FK yok — paket soft-delete edilir, hard-delete olmaz).
+        // Yoklama tüketiminde kullanılabilir hak hesabı için indekslenir.
+        b.HasIndex(x => new { x.StudioId, x.ExpectedStudentPackageId });
 
         b.HasOne(x => x.Studio)
             .WithMany()

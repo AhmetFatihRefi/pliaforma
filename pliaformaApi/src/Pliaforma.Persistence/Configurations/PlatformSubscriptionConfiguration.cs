@@ -16,6 +16,7 @@ public sealed class PlatformSubscriptionConfiguration : IEntityTypeConfiguration
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
         b.Property(x => x.BillingPeriod).HasConversion<string>().HasMaxLength(16);
         b.Property(x => x.MonthlyPrice).HasColumnType("numeric(12,2)");
+        b.Property(x => x.IntroMonthlyPrice).HasColumnType("numeric(12,2)");
         b.Property(x => x.Currency).IsRequired().HasMaxLength(3);
         b.Property(x => x.Notes).HasMaxLength(1000);
 
@@ -23,6 +24,11 @@ public sealed class PlatformSubscriptionConfiguration : IEntityTypeConfiguration
             .WithMany()
             .HasForeignKey(x => x.StudioId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        b.HasOne(x => x.SubscriptionPlan)
+            .WithMany()
+            .HasForeignKey(x => x.SubscriptionPlanId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // Bir stüdyonun yalnızca bir (silinmemiş) aboneliği olur. PostgreSQL filtered (partial) unique index.
         b.HasIndex(x => x.StudioId)

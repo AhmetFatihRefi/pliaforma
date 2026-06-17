@@ -103,7 +103,17 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("ExpectedStudentPackageId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PackageEligibilityStatus")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<bool>("RequiresPayment")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Status")
@@ -129,6 +139,8 @@ namespace Pliaforma.Persistence.Migrations
                         .HasFilter("\"Status\" = 'Booked' AND \"IsDeleted\" = false");
 
                     b.HasIndex("StudioId", "ClassSessionId");
+
+                    b.HasIndex("StudioId", "ExpectedStudentPackageId");
 
                     b.HasIndex("StudioId", "StudentProfileId");
 
@@ -561,6 +573,9 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AllowAllClassTypes")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -601,6 +616,88 @@ namespace Pliaforma.Persistence.Migrations
                         .HasFilter("\"IsDeleted\" = false");
 
                     b.ToTable("PackagePlans", (string)null);
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.PackagePlanClassType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClassTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("PackagePlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClassTypeId");
+
+                    b.HasIndex("StudioId");
+
+                    b.HasIndex("PackagePlanId", "ClassTypeId")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.ToTable("PackagePlanClassTypes", (string)null);
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.PackagePlanPriceVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("PackagePlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudioId");
+
+                    b.HasIndex("PackagePlanId", "EffectiveFrom");
+
+                    b.ToTable("PackagePlanPriceVersions", (string)null);
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.Payment", b =>
@@ -681,6 +778,12 @@ namespace Pliaforma.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<bool>("CancelAtPeriodEnd")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("CancelRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -697,6 +800,12 @@ namespace Pliaforma.Persistence.Migrations
 
                     b.Property<DateOnly>("CurrentPeriodStart")
                         .HasColumnType("date");
+
+                    b.Property<decimal?>("IntroMonthlyPrice")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int?>("IntroPeriodsRemaining")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
@@ -721,6 +830,9 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<Guid>("StudioId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("SubscriptionPlanId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Tier")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -737,7 +849,78 @@ namespace Pliaforma.Persistence.Migrations
                         .IsUnique()
                         .HasFilter("\"IsDeleted\" = false");
 
+                    b.HasIndex("SubscriptionPlanId");
+
                     b.ToTable("PlatformSubscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.PlatformSubscriptionPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("BillingPeriod")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("PaidAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("PeriodEnd")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("PeriodStart")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("PlatformSubscriptionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProviderRef")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("RecordedByPlatformAdminUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlatformSubscriptionId");
+
+                    b.HasIndex("Source", "PaidAt");
+
+                    b.HasIndex("StudioId", "PaidAt");
+
+                    b.ToTable("PlatformSubscriptionPayments", (string)null);
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.RefreshToken", b =>
@@ -790,6 +973,9 @@ namespace Pliaforma.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("AllowAllClassTypesSnapshot")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -846,6 +1032,42 @@ namespace Pliaforma.Persistence.Migrations
                     b.HasIndex("StudioId", "StudentProfileId");
 
                     b.ToTable("StudentPackages", (string)null);
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudentPackageAllowedClassType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClassTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("StudentPackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClassTypeId");
+
+                    b.HasIndex("StudioId");
+
+                    b.HasIndex("StudentPackageId", "ClassTypeId")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.ToTable("StudentPackageAllowedClassTypes", (string)null);
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.StudentPackageTransaction", b =>
@@ -1236,6 +1458,83 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("StudioMemberships", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.SubscriptionPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BillingPeriod")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FeaturesJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<decimal?>("IntroMonthlyPrice")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<int?>("IntroPeriodCount")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsCustomQuote")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("MaxInstructors")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxStudents")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("MonthlyPrice")
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Tier")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasFilter("\"IsDefault\" = true AND \"IsActive\" = true AND \"IsDeleted\" = false");
+
+                    b.ToTable("SubscriptionPlans", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1482,6 +1781,52 @@ namespace Pliaforma.Persistence.Migrations
                     b.Navigation("Studio");
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.PackagePlanClassType", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.ClassType", "ClassType")
+                        .WithMany()
+                        .HasForeignKey("ClassTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.PackagePlan", "PackagePlan")
+                        .WithMany("ClassTypes")
+                        .HasForeignKey("PackagePlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClassType");
+
+                    b.Navigation("PackagePlan");
+
+                    b.Navigation("Studio");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.PackagePlanPriceVersion", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.PackagePlan", "PackagePlan")
+                        .WithMany("PriceVersions")
+                        .HasForeignKey("PackagePlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PackagePlan");
+
+                    b.Navigation("Studio");
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.Payment", b =>
                 {
                     b.HasOne("Pliaforma.Domain.Entities.StudentPackage", "StudentPackage")
@@ -1515,6 +1860,32 @@ namespace Pliaforma.Persistence.Migrations
                         .HasForeignKey("StudioId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.SubscriptionPlan", "SubscriptionPlan")
+                        .WithMany()
+                        .HasForeignKey("SubscriptionPlanId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Studio");
+
+                    b.Navigation("SubscriptionPlan");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.PlatformSubscriptionPayment", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.PlatformSubscription", "PlatformSubscription")
+                        .WithMany()
+                        .HasForeignKey("PlatformSubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PlatformSubscription");
 
                     b.Navigation("Studio");
                 });
@@ -1552,6 +1923,33 @@ namespace Pliaforma.Persistence.Migrations
                     b.Navigation("PackagePlan");
 
                     b.Navigation("StudentProfile");
+
+                    b.Navigation("Studio");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudentPackageAllowedClassType", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.ClassType", "ClassType")
+                        .WithMany()
+                        .HasForeignKey("ClassTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.StudentPackage", "StudentPackage")
+                        .WithMany("AllowedClassTypes")
+                        .HasForeignKey("StudentPackageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClassType");
+
+                    b.Navigation("StudentPackage");
 
                     b.Navigation("Studio");
                 });
@@ -1660,6 +2058,18 @@ namespace Pliaforma.Persistence.Migrations
             modelBuilder.Entity("Pliaforma.Domain.Entities.InstructorProfile", b =>
                 {
                     b.Navigation("ClassTypes");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.PackagePlan", b =>
+                {
+                    b.Navigation("ClassTypes");
+
+                    b.Navigation("PriceVersions");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudentPackage", b =>
+                {
+                    b.Navigation("AllowedClassTypes");
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.Studio", b =>

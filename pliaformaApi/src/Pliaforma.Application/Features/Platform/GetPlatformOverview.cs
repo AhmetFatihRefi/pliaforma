@@ -61,12 +61,21 @@ public sealed class GetPlatformOverviewHandler : IQueryHandler<GetPlatformOvervi
         var lastNotificationActivity = await _db.Notifications.AsNoTracking()
             .OrderByDescending(n => n.CreatedAt).Select(n => (DateTime?)n.CreatedAt).FirstOrDefaultAsync(ct);
 
+        // Abonelik kaydı olmayan stüdyolar (fail-open lisanslı — görünür).
+        var subStudioCount = await _db.PlatformSubscriptions.AsNoTracking().Select(s => s.StudioId).Distinct().CountAsync(ct);
+        var missingSubscriptionCount = Math.Max(totalStudios - subStudioCount, 0);
+        // Bu ay manuel abonelik tahsilatı (ledger'dan).
+        var manualRevenueThisMonth = await _db.PlatformSubscriptionPayments.AsNoTracking()
+            .Where(p => p.Source == PlatformSubscriptionPaymentSource.Manual && p.PaidAt >= monthStart && p.PaidAt < monthEnd)
+            .SumAsync(p => (decimal?)p.Amount, ct) ?? 0m;
+
         return new PlatformOverviewDto(
             totalStudios, activeStudios, suspendedStudios, cancelledStudios,
             totalUsers, totalStudents, totalInstructors,
             bookingsThisMonth, paymentsThisMonth, overdueAmount,
             notificationsPending, notificationsFailed, lastNotificationActivity,
             DatabaseHealthy: true,
+            missingSubscriptionCount, manualRevenueThisMonth,
             PeriodLabel: $"{nowUtc:yyyy-MM} (UTC)");
     }
 }

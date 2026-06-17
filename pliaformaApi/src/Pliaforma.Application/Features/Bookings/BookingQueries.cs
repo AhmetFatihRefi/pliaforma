@@ -13,7 +13,8 @@ internal static class BookingProjection
         q.Select(b => new ClassBookingDto(
             b.Id, b.ClassSessionId, b.StudentProfileId, b.StudentProfile!.FullName, b.Status,
             b.ClassSession!.StartAt, b.ClassSession.EndAt,
-            b.ClassSession.ClassType!.Name, b.ClassSession.InstructorProfile!.DisplayName, b.CancelledAt));
+            b.ClassSession.ClassType!.Name, b.ClassSession.InstructorProfile!.DisplayName, b.CancelledAt,
+            b.RequiresPayment, b.PackageEligibilityStatus, b.ExpectedStudentPackageId));
 }
 
 // ---- Stüdyo rezervasyon listesi (Instructor → yalnızca kendi seansları) ----

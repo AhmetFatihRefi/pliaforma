@@ -9,11 +9,15 @@ namespace Pliaforma.Application.Features.Packages;
 
 /// <summary>
 /// Yoklamadan paket hakkı tüketiminin çekirdeği (AttendanceMarker tarafından çağrılır). Bir yoklama için
-/// **en fazla bir** Used hareketi oluşturur (idempotent). Paket bakiyesinden ATOMİK düşer (race-safe);
-/// kullanılabilir paket yoksa/bakiye yetmezse/paketin süresi dolmuşsa ConflictException fırlatır →
-/// çağıranın transaction'ı geri alınır (yoklama da kaydedilmez), kullanıcı paket seçer/oluşturur.
-/// SaveChanges ÇAĞIRMAZ.
-/// Kullanılabilir paket: Status=Active, CurrentCreditBalance>0, ValidUntil null ya da bugün/ileri.
+/// **en fazla bir** Used hareketi oluşturur (idempotent). Paket bakiyesinden ATOMİK düşer (race-safe).
+/// SaveChanges ÇAĞIRMAZ — çağıranın transaction'ında.
+/// <para>
+/// <b>Paket seçimi (Sprint 14):</b> açık <c>explicitPackageId</c> &gt; booking'in
+/// <see cref="ClassBooking.ExpectedStudentPackageId"/>'si &gt; otomatik seçim. Seçilen paket seansın ders
+/// grubu (ClassType) için geçerli olmalı; değilse 409. Beklenen paket artık geçersiz/hakkı bittiyse
+/// **sessiz fallback yapılmaz** → 409 (staff bilinçli paket seçsin). Tüketim başarılıysa booking'in
+/// ExpectedStudentPackageId'si kullanılan pakete bağlanır; booking RequiresPayment ise temizlenir (Resolved).
+/// </para>
 /// </summary>
 public sealed class StudentPackageConsumer
 {
@@ -29,9 +33,11 @@ public sealed class StudentPackageConsumer
     }
 
     public async Task ConsumeForAttendanceAsync(
-        Guid studioId, Guid studentProfileId, Guid attendanceId, Guid bookingId, Guid? studentPackageId,
-        Guid byUserId, StudentPackageTransactionReason reason, CancellationToken ct)
+        Guid studioId, ClassBooking booking, Guid classTypeId, Guid attendanceId,
+        Guid? explicitPackageId, Guid byUserId, StudentPackageTransactionReason reason, CancellationToken ct)
     {
+        var studentProfileId = booking.StudentProfileId;
+
         // Aynı yoklama için ikinci kez düşme yok.
         var already = await _db.StudentPackageTransactions.AnyAsync(
             t => t.StudioId == studioId && t.SourceAttendanceId == attendanceId
@@ -39,36 +45,53 @@ public sealed class StudentPackageConsumer
         if (already)
             return;
 
-        // Stüdyo-yerel bugün (geçerlilik karşılaştırması için). ValidUntil değişmez → kilit gerekmez.
         var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
 
+        // Hedef: açık seçim > beklenen paket > otomatik.
+        var targetId = explicitPackageId ?? booking.ExpectedStudentPackageId;
+        var fromExpected = explicitPackageId is null && booking.ExpectedStudentPackageId is not null;
+
         StudentPackage pkg;
-        if (studentPackageId is { } pid)
+        if (targetId is { } pid)
         {
             pkg = await _db.StudentPackages
                 .FirstOrDefaultAsync(p => p.Id == pid && p.StudioId == studioId && p.StudentProfileId == studentProfileId, ct)
                 ?? throw new NotFoundException("Öğrenci paketi", pid);
-            if (pkg.Status != StudentPackageStatus.Active)
-                throw new ConflictException("Seçili paket aktif değil.");
-            if (pkg.ValidUntil is { } vu && vu < today)
-                throw new ConflictException("Seçili paketin geçerlilik süresi dolmuş.");
+
+            if (pkg.Status != StudentPackageStatus.Active || (pkg.ValidUntil is { } vu && vu < today))
+                throw new ConflictException(fromExpected
+                    ? "Beklenen paket artık geçerli değil veya hakkı kalmamış; lütfen geçerli bir paket seçin."
+                    : pkg.Status != StudentPackageStatus.Active ? "Seçili paket aktif değil." : "Seçili paketin geçerlilik süresi dolmuş.");
+
+            if (!await CoversClassTypeAsync(studioId, pkg, classTypeId, ct))
+                throw new ConflictException("Seçili paket bu ders grubu için geçerli değil.");
         }
         else
         {
-            // Otomatik seçim: aktif + bakiyesi olan + SÜRESİ DOLMAMIŞ, en yakın bitiş tarihli (süresizler en sonda).
-            pkg = await _db.StudentPackages
+            // Otomatik seçim: aktif + bakiyesi olan + süresi dolmamış, bu ders grubu için geçerli olan,
+            // en yakın bitiş tarihli (süresizler en sonda).
+            var candidates = await _db.StudentPackages
                 .Where(p => p.StudioId == studioId && p.StudentProfileId == studentProfileId
                             && p.Status == StudentPackageStatus.Active && p.CurrentCreditBalance > 0
                             && (p.ValidUntil == null || p.ValidUntil >= today))
                 .OrderBy(p => p.ValidUntil == null).ThenBy(p => p.ValidUntil).ThenBy(p => p.CreatedAt)
-                .FirstOrDefaultAsync(ct)
-                ?? throw new ConflictException("Öğrencinin kullanılabilir (süresi geçmemiş, bakiyesi olan) aktif paketi yok.");
+                .ToListAsync(ct);
+
+            StudentPackage? chosen = null;
+            foreach (var c in candidates)
+            {
+                if (await CoversClassTypeAsync(studioId, c, classTypeId, ct)) { chosen = c; break; }
+            }
+            pkg = chosen ?? throw new ConflictException(
+                "Öğrencinin bu ders grubu için kullanılabilir (süresi geçmemiş, bakiyesi olan) aktif paketi yok.");
         }
 
         // Atomik düşüm (bakiye>0 && Active ise). Yarış/boş bakiyede false → reddet.
         var ok = await _credit.TryConsumeAsync(studioId, pkg.Id, ct);
         if (!ok)
-            throw new ConflictException("Paket bakiyesi yetersiz.");
+            throw new ConflictException(fromExpected
+                ? "Beklenen paket artık geçerli değil veya hakkı kalmamış; lütfen geçerli bir paket seçin."
+                : "Paket bakiyesi yetersiz.");
 
         _db.StudentPackageTransactions.Add(new StudentPackageTransaction
         {
@@ -79,8 +102,22 @@ public sealed class StudentPackageConsumer
             Type = StudentPackageTransactionType.Used,
             Reason = reason,
             SourceAttendanceId = attendanceId,
-            SourceClassBookingId = bookingId,
+            SourceClassBookingId = booking.Id,
             CreatedByUserId = byUserId,
         });
+
+        // Booking'i fiilen kullanılan pakete bağla; ödeme gerekiyorduysa çözüldü olarak işaretle.
+        booking.ExpectedStudentPackageId = pkg.Id;
+        if (booking.RequiresPayment)
+        {
+            booking.RequiresPayment = false;
+            booking.PackageEligibilityStatus = PackageEligibilityStatus.Resolved;
+        }
     }
+
+    /// <summary>Paket (snapshot'lanmış kapsamına göre) verilen ders grubunu kapsıyor mu?</summary>
+    private async Task<bool> CoversClassTypeAsync(Guid studioId, StudentPackage pkg, Guid classTypeId, CancellationToken ct) =>
+        pkg.AllowAllClassTypesSnapshot
+        || await _db.StudentPackageAllowedClassTypes.AnyAsync(
+               a => a.StudioId == studioId && a.StudentPackageId == pkg.Id && a.ClassTypeId == classTypeId, ct);
 }

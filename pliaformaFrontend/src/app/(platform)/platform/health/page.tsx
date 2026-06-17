@@ -74,6 +74,7 @@ export default function PlatformHealthPage() {
             <Stat label="Başarısız bildirim" value={d.notificationsFailed} />
             <Stat label="Son 24s gönderilen" value={d.notificationsSentLast24h} />
             <Stat label="Son bildirim" value={fmt(d.lastNotificationActivityUtc)} />
+            <Stat label="Aboneliksiz stüdyo" value={d.missingSubscriptionCount} hint="fail-open lisanslı" />
           </div>
 
           <Card>

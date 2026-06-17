@@ -80,7 +80,8 @@ expect "subscription get planName=Pro" Pro "$(get "/api/platform/studios/$AID/su
 BADSUB='{"planName":"X","status":"Active","monthlyPrice":10,"currency":"TRY","billingPeriod":"Monthly","currentPeriodStart":"2026-06-30","currentPeriodEnd":"2026-06-01"}'
 expect "geçersiz dönem (bitiş<başlangıç) → 400" 400 "$(putcode "/api/platform/studios/$AID/subscription" "$BADSUB" "$PTOK")"
 CA=$(post "/api/platform/studios/$AID/subscription/cancel" '{}' "$PTOK")
-expect "subscription cancel → status Cancelled" Cancelled "$(body "$CA" | jget status)"
+# Sprint 13: cancel artık "cancel-at-period-end" (Status değişmez; cancelAtPeriodEnd=true).
+expect "subscription cancel → cancelAtPeriodEnd=true" true "$(body "$CA" | grep -o '\"cancelAtPeriodEnd\":\(true\|false\)' | head -1 | sed 's/.*://')"
 
 echo "--- Suspend / Reactivate ---"
 # Aktifken yazma çalışır (kontrol)

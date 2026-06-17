@@ -36,14 +36,11 @@ public sealed class GetPlatformStudioDetailHandler : IQueryHandler<GetPlatformSt
             .FirstOrDefaultAsync(ct)
             ?? new PlatformOwnerDto(studio.OwnerUserId, "—", "—", null);
 
-        var sub = await _db.PlatformSubscriptions.AsNoTracking()
-            .Where(x => x.StudioId == sid)
-            .Select(x => new PlatformSubscriptionDto(
-                x.Id, x.StudioId, x.PlanName, x.Tier, x.Status, x.MonthlyPrice, x.Currency,
-                x.BillingPeriod, x.CurrentPeriodStart, x.CurrentPeriodEnd, x.TrialEndsAt, x.CancelledAt, x.Notes))
-            .FirstOrDefaultAsync(ct);
-
         var nowUtc = _clock.UtcNow;
+        var subEntity = await _db.PlatformSubscriptions.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.StudioId == sid, ct);
+        var sub = subEntity is null ? null : SubscriptionMapping.ToDto(subEntity, DateOnly.FromDateTime(nowUtc));
+
         var monthStart = new DateTime(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var monthEnd = monthStart.AddMonths(1);
         var monthStartDate = DateOnly.FromDateTime(monthStart);

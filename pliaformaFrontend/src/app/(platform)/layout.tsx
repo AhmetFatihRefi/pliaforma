@@ -13,6 +13,7 @@ import { FullscreenLoader } from "@/components/layout/FullscreenLoader";
 const nav = [
   { href: "/platform", label: "Genel Bakış", icon: "▦" },
   { href: "/platform/studios", label: "Stüdyolar", icon: "❖" },
+  { href: "/platform/plans", label: "Planlar", icon: "◈" },
   { href: "/platform/health", label: "Sistem Sağlığı", icon: "✚" },
 ];
 

@@ -45,10 +45,13 @@ public sealed class GetHealthSummaryHandler : IQueryHandler<GetHealthSummaryQuer
         var lastActivity = await _db.Notifications.AsNoTracking()
             .OrderByDescending(n => n.CreatedAt).Select(n => (DateTime?)n.CreatedAt).FirstOrDefaultAsync(ct);
 
+        var subStudioCount = await _db.PlatformSubscriptions.AsNoTracking().Select(s => s.StudioId).Distinct().CountAsync(ct);
+        var missingSubscriptionCount = Math.Max(totalStudios - subStudioCount, 0);
+
         return new PlatformHealthSummaryDto(
             DatabaseHealthy: true,
             totalStudios, activeStudios, suspendedStudios,
             notificationsPending, notificationsFailed, sentLast24h, lastActivity,
-            _workerInfo.WorkerEnabled, _workerInfo.IntervalSeconds, nowUtc);
+            _workerInfo.WorkerEnabled, _workerInfo.IntervalSeconds, missingSubscriptionCount, nowUtc);
     }
 }

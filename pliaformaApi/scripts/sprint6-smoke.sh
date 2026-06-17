@@ -89,6 +89,8 @@ expect "GA özet excusedCount=1" 1 "$(echo "$SUM" | jnum excusedCount)"
 expect "GA özet totalMarked=1" 1 "$(echo "$SUM" | jnum totalMarked)"
 # Student self: aktif öğrenci self-book → backdate → staff Present → kendi özeti
 SE=$(mkactive "se"); SETOK=$(login "se+$TS@pf.local")
+# Sprint 14: Regular self-booking artık geçerli paket ister. SE'ye paket sat.
+post "/api/studio/students/$SE/packages" '{"name":"S14 selfbook","creditCount":5}' "$ATOK" >/dev/null
 PSE=$(mksess "$I1P" "13:00"); BE=$(body "$(post "/api/student/class-sessions/$PSE/book" '{}' "$SETOK")" | jget id)
 backdate "$PSE"
 putj "/api/studio/class-sessions/$PSE/attendance" "{\"items\":[{\"bookingId\":\"$BE\",\"status\":\"Present\"}]}" "$ATOK" >/dev/null

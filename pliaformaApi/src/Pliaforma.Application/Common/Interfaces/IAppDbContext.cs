@@ -26,11 +26,16 @@ public interface IAppDbContext
     DbSet<StudioMakeupPolicy> StudioMakeupPolicies { get; }
     DbSet<Attendance> Attendances { get; }
     DbSet<PackagePlan> PackagePlans { get; }
+    DbSet<PackagePlanClassType> PackagePlanClassTypes { get; }
+    DbSet<PackagePlanPriceVersion> PackagePlanPriceVersions { get; }
     DbSet<StudentPackage> StudentPackages { get; }
+    DbSet<StudentPackageAllowedClassType> StudentPackageAllowedClassTypes { get; }
     DbSet<StudentPackageTransaction> StudentPackageTransactions { get; }
     DbSet<Payment> Payments { get; }
     DbSet<Notification> Notifications { get; }
     DbSet<PlatformSubscription> PlatformSubscriptions { get; }
+    DbSet<SubscriptionPlan> SubscriptionPlans { get; }
+    DbSet<PlatformSubscriptionPayment> PlatformSubscriptionPayments { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -66,9 +66,38 @@ Currency, BillingPeriod, CurrentPeriodStart, CurrentPeriodEnd, TrialEndsAt?, Can
 - **Status** (`SubscriptionStatus`): `Trialing | Active | PastDue | Suspended | Cancelled`. **StudioStatus ile
   birebir aynı olmak zorunda değildir** — ayrı yönetilir. Bir stüdyoyu suspend etmek aboneliği otomatik
   değiştirmez (istenirse admin abonelik Status'unu da elle Suspended yapabilir).
-- **Bir stüdyo = bir abonelik:** `(StudioId) WHERE IsDeleted=false` filtered unique index. `PUT .../subscription`
-  **upsert**'tir (yoksa oluşturur, varsa günceller). `POST .../subscription/cancel` Status=Cancelled +
-  CancelledAt yazar (kayıt silinmez).
+- **Bir stüdyo = bir abonelik:** `(StudioId) WHERE IsDeleted=false` filtered unique index.
+
+> **Sprint 13 güncellemesi:** Artık gerçek bir **yaşam döngüsü + lisans kontrolü** var (gateway hâlâ yok). Bkz.
+> aşağıdaki bölüm.
+
+## Abonelik yaşam döngüsü & lisans kontrolü (Sprint 13)
+Gerçek kart tahsilatı **yok** (gateway Sprint 14); tahsilat manuel "ödeme kaydet" ile işaretlenir. Ama
+**lisans/yaşam döngüsü** tam çalışır.
+- **Plan kataloğu** (`SubscriptionPlan`): dinamik (PlatformAdmin `/api/platform/plans` CRUD). Aynı anda tek aktif
+  **default plan** (filtered unique). register-studio default plan ile **14 gün otomatik trial** açar (default
+  yoksa fail-etmez + log → fail-open lisanslı).
+- **Tahsilat defteri** (`PlatformSubscriptionPayment`): stüdyo↔**platform** ödemesi — **öğrenci `Payment`'tan
+  ayrı**. `record-payment` aynı transaction'da ledger satırı yazar + dönemi ilerletir + intro fiyatı uygular +
+  bekleyen iptali temizler. `Source: Manual|Gateway|Adjustment` (Sprint 14 webhook `Gateway` ile yazar).
+- **Fiyat snapshot:** plana atama/tahsilat anında fiyat aboneliğe kopyalanır → plan sonradan değişse mevcut
+  abonelik/ödeme **etkilenmez**.
+- **Lisans (dinamik, kalıcı job yok)** `SubscriptionRules.Evaluate(sub, today)` → **effectiveStatus**
+  (`Trialing/Active/PastDueGrace/CancelPending/Expired/FailOpenLicensed`) + **isLicensed / isReadOnlyByLicense /
+  daysRemaining / licenseMessage**. Lisanslı = dönem içi **veya** (dönem bitti + **7g grace**, iptal değilse)
+  **veya** trial içi. UI kilit davranışı backend'in `isLicensed/isReadOnlyByLicense` alanlarına bağlanır.
+- **Lisans kapısı** `SubscriptionLicenseBehavior` (pipeline `StudioStatus → SubscriptionLicense → MembershipGuard`):
+  lisanssız stüdyo **yazma 403**, okuma+login açık, veri silinmez. **Admin-suspend'den BAĞIMSIZ ikinci kapı**.
+- **Fail-open + görünür:** aboneliği OLMAYAN (legacy) stüdyo **lisanslı** sayılır (yanlış kilit yok) ama
+  overview/health **`missingSubscriptionCount`** + studio-detail uyarısıyla görünür. **Geçici/koruyucu** davranış.
+- **Cancel-at-period-end:** Owner (`/api/studio/subscription/cancel`) veya admin iptal edince `Status` DEĞİŞMEZ;
+  `CancelAtPeriodEnd=true`, `CancelRequestedAt`, dönem sonuna kadar **lisanslı** (effectiveStatus=CancelPending),
+  dönem sonrası **Expired** (isLicensed=false). Kalıcı job yok; effectiveStatus DTO'da hesaplanır.
+- **Stüdyo-tarafı (yalnız Owner):** `GET /api/studio/subscription` (durum+lisans+ödeme geçmişi), `POST .../cancel`.
+- **Migration backfill (kritik):** lisans kapısı sonradan geldiği için, deploy'da mevcut TÜM stüdyolara `Active +
+  bugün..+1 yıl` abonelik backfill'lenir → kimse kilitlenmez. (Sprint 13 migration: 4 paket seed + backfill.)
+- **Bilinçli yapılmadı:** gerçek kart/online tahsilat & recurring & webhook (Sprint 14), fatura/e-arşiv, plan
+  **limit zorlaması** (yalnız sakla/göster), PlatformAdmin'in anında suspend/cancel'ı (cancel-at-period-end yeterli).
 
 ## Platform Overview neyi gösterir?
 `GET /api/platform/overview` — basit count/summary (ağır sorgu yok): toplam/aktif/askıda/iptal stüdyo, toplam

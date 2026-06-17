@@ -19,16 +19,19 @@ public static class DependencyInjection
         services.AddScoped<Features.MakeupCredits.MakeupCreditService>();
         services.AddScoped<Features.Scheduling.SessionCancellationService>();
         services.AddScoped<Features.Packages.StudentPackageConsumer>();
+        services.AddScoped<Features.Packages.PackageEligibilityChecker>();
         services.AddScoped<Features.Attendance.AttendanceMarker>();
         services.AddScoped<Features.Notifications.ReminderScanner>();
 
         RegisterHandlers(services, assembly);
 
         // Pipeline sırası (dıştan içe çalışır): Logging → Validation → StudioStatus →
-        // MembershipGuard → Transaction → Handler.
+        // SubscriptionLicense → MembershipGuard → Transaction → Handler.
+        // (StudioStatus = admin-suspend kapısı; SubscriptionLicense = abonelik lisans kapısı — bağımsız.)
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(StudioStatusBehavior<,>));
+        services.AddScoped(typeof(IPipelineBehavior<,>), typeof(SubscriptionLicenseBehavior<,>));
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(MembershipGuardBehavior<,>));
         services.AddScoped(typeof(IPipelineBehavior<,>), typeof(TransactionBehavior<,>));
 

@@ -119,6 +119,9 @@ export default function BookClassesPage() {
                       <p className="mt-1 text-xs text-muted">
                         Kalan {s.remainingCapacity}/{s.capacity}
                         {s.requiresMakeupCredit && <span className="ml-2">· 1 telafi kredisi</span>}
+                        {!s.requiresMakeupCredit && s.packageEligible && s.expectedPackageName && (
+                          <span className="ml-2">· Paket: {s.expectedPackageName} ({s.availableCredit} hak)</span>
+                        )}
                       </p>
                     </div>
                     {s.alreadyBooked ? (
@@ -127,6 +130,8 @@ export default function BookClassesPage() {
                       <Badge tone="neutral">Dolu</Badge>
                     ) : s.requiresMakeupCredit && credit <= 0 ? (
                       <span className="text-xs text-muted">Telafi krediniz yok</span>
+                    ) : !s.requiresMakeupCredit && !s.packageEligible ? (
+                      <span className="max-w-[9rem] text-right text-xs text-warning">{s.packageEligibilityMessage ?? "Paketiniz uygun değil"}</span>
                     ) : (
                       <Button size="sm" loading={busyId === s.id} onClick={() => book(s)}>Rezerve et</Button>
                     )}

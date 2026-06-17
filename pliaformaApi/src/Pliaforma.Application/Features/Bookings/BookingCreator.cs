@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.MakeupCredits;
+using Pliaforma.Application.Features.Packages;
 using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
@@ -9,10 +10,12 @@ using Pliaforma.Domain.Exceptions;
 namespace Pliaforma.Application.Features.Bookings;
 
 /// <summary>
-/// Staff ve self rezervasyonun ortak çekirdeği: seansın rezerve edilebilirliğini doğrular,
-/// kapasiteyi ATOMİK tüketir, MAKEUP seansında telafi kredisi düşer ve rezervasyonu ekler. Aktif
-/// transaction içinde çağrılır (TransactionBehavior); herhangi bir hata rollback ile hem koltuk
-/// artışını hem kredi tüketimini geri alır → "kredi düştü ama booking patladı" durumu oluşmaz.
+/// Staff ve self rezervasyonun ortak çekirdeği: seansın rezerve edilebilirliğini doğrular, paket
+/// uygunluğu + kullanılabilir hakkı değerlendirir (Regular seans, Sprint 14), kapasiteyi ATOMİK tüketir,
+/// MAKEUP seansında telafi kredisi düşer ve rezervasyonu ekler. Aktif transaction içinde çağrılır
+/// (TransactionBehavior); öğrenci satırı kilitlenerek (row-lock) kullanılabilir-hak hesabı + booking
+/// yaratma serileşir → iki eşzamanlı self-booking aynı hakkı iki kez rezerve edemez. Herhangi bir hata
+/// rollback ile koltuk artışını ve kredi tüketimini geri alır.
 /// </summary>
 public sealed class BookingCreator
 {
@@ -21,16 +24,18 @@ public sealed class BookingCreator
     private readonly IDateTime _clock;
     private readonly MakeupCreditService _credits;
     private readonly IMakeupCreditLock _creditLock;
+    private readonly PackageEligibilityChecker _eligibility;
 
     public BookingCreator(
         IAppDbContext db, IClassSessionCapacityService capacity, IDateTime clock,
-        MakeupCreditService credits, IMakeupCreditLock creditLock)
+        MakeupCreditService credits, IMakeupCreditLock creditLock, PackageEligibilityChecker eligibility)
     {
         _db = db;
         _capacity = capacity;
         _clock = clock;
         _credits = credits;
         _creditLock = creditLock;
+        _eligibility = eligibility;
     }
 
     public async Task<ClassBooking> CreateAsync(
@@ -49,6 +54,34 @@ public sealed class BookingCreator
         if (dup)
             throw new ConflictException("Bu öğrencinin bu seansta zaten aktif bir rezervasyonu var.");
 
+        // Kullanılabilir-hak hesabı + makeup kredisi tüketimi için öğrenci satırını kilitle (serileştirme).
+        await _creditLock.LockStudentAsync(studioId, student.Id, ct);
+
+        // Paket uygunluğu yalnızca Regular seanslarda (Makeup telafi kredisi kullanır; Trial/Special muaf).
+        Guid? expectedPackageId = null;
+        bool requiresPayment = false;
+        PackageEligibilityStatus? eligStatus = null;
+        if (session.SessionKind == ClassSessionKind.Regular)
+        {
+            var today = DateOnly.FromDateTime(nowLocal);
+            var elig = await _eligibility.EvaluateAsync(studioId, student.Id, session.ClassTypeId, today, ct);
+            if (elig.IsEligible)
+            {
+                expectedPackageId = elig.ExpectedStudentPackageId;
+                eligStatus = PackageEligibilityStatus.Eligible;
+            }
+            else if (bookerRole is StudioRole.Owner or StudioRole.StudioAdmin)
+            {
+                // Staff yetersiz/paketsiz hakla yazabilir → ödeme gerekli işaretle (Instructor/Student yapamaz).
+                requiresPayment = true;
+                eligStatus = PackageEligibilityStatus.RequiresPayment;
+            }
+            else
+            {
+                throw new ConflictException(elig.Message);
+            }
+        }
+
         // Atomik koltuk rezervasyonu (BookedCount < Capacity ise artırır). Doluysa reddet.
         var reserved = await _capacity.TryReserveSeatAsync(studioId, session.Id, ct);
         if (!reserved)
@@ -61,6 +94,9 @@ public sealed class BookingCreator
             StudentProfileId = student.Id,
             Status = ClassBookingStatus.Booked,
             BookedByUserId = bookedByUserId,
+            ExpectedStudentPackageId = expectedPackageId,
+            RequiresPayment = requiresPayment,
+            PackageEligibilityStatus = eligStatus,
         };
 
         // MAKEUP seansı: 1 telafi kredisi tüket. Booking ile aynı transaction'da (rollback ikisini de geri alır).
@@ -86,8 +122,7 @@ public sealed class BookingCreator
     private async Task ConsumeMakeupCreditAsync(
         Guid studioId, Guid studentProfileId, Guid bookingId, Guid bookedByUserId, StudioRole bookerRole, CancellationToken ct)
     {
-        // Son krediyi iki eşzamanlı rezervasyonun birden harcamasını engelle: öğrenci satırını kilitle.
-        await _creditLock.LockStudentAsync(studioId, studentProfileId, ct);
+        // Son krediyi iki eşzamanlı rezervasyonun birden harcamasını engelle: öğrenci satırı zaten kilitli.
         var balance = await _credits.GetBalanceAsync(studioId, studentProfileId, ct);
 
         if (balance > 0)

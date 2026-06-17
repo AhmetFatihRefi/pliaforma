@@ -28,3 +28,19 @@ public enum BillingPeriod
     Monthly = 0,
     Yearly = 1,
 }
+
+/// <summary>
+/// Abonelik tahsilat defteri kaynağı. Öğrenci <c>Payment</c> entity'siyle KARIŞTIRILMAZ
+/// (o stüdyo↔öğrenci; bu stüdyo↔platform). Gateway (Sprint 14) <c>Gateway</c> ile yazar.
+/// </summary>
+public enum PlatformSubscriptionPaymentSource
+{
+    /// <summary>Platform admin manuel kaydetti (gateway öncesi).</summary>
+    Manual = 0,
+
+    /// <summary>Ödeme geçidi webhook'u (Sprint 14).</summary>
+    Gateway = 1,
+
+    /// <summary>Düzeltme/iade kaydı.</summary>
+    Adjustment = 2,
+}

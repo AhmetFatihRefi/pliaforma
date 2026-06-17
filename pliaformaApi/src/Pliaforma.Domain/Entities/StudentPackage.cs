@@ -39,4 +39,13 @@ public class StudentPackage : BaseEntity, ITenantScoped
     public StudentPackageStatus Status { get; set; } = StudentPackageStatus.Active;
 
     public Guid CreatedByUserId { get; set; }
+
+    /// <summary>
+    /// Satın alma anında plandan snapshot'lanan ders grubu kapsamı (Sprint 14). true → tüm gruplarda
+    /// geçerli; false → yalnızca <see cref="AllowedClassTypes"/> kayıtları. Plan sonradan değişse de bu
+    /// snapshot sabit kalır.
+    /// </summary>
+    public bool AllowAllClassTypesSnapshot { get; set; } = true;
+
+    public ICollection<StudentPackageAllowedClassType> AllowedClassTypes { get; set; } = new List<StudentPackageAllowedClassType>();
 }

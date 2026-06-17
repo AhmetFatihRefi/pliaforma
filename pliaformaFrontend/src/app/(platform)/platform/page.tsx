@@ -62,10 +62,14 @@ export default function PlatformOverviewPage() {
             <Stat label="Hoca" value={d.totalInstructors} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Bu ay abonelik tahsilatı" value={money(d.manualSubscriptionRevenueThisMonth)} hint="manuel (ledger)" />
+            <Stat label="Aboneliksiz stüdyo" value={d.missingSubscriptionCount} hint="fail-open lisanslı" />
+            <Stat label="Gecikmiş ödeme (öğrenci)" value={money(d.overduePaymentAmount)} />
+            <Stat label="İptal stüdyo" value={d.cancelledStudios} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Bu ay rezervasyon" value={d.totalBookingsThisMonth} />
             <Stat label="Bu ay ödeme kaydı" value={d.totalPaymentsThisMonth} />
-            <Stat label="Gecikmiş ödeme" value={money(d.overduePaymentAmount)} />
-            <Stat label="İptal stüdyo" value={d.cancelledStudios} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Bekleyen bildirim" value={d.notificationsPending} />

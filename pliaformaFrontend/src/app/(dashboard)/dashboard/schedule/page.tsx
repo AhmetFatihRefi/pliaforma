@@ -546,7 +546,12 @@ function SessionBookingsModal({ session, onClose, onChanged }: { session: ClassS
               items.map((b) => (
                 <TR key={b.id}>
                   <TD className="font-medium">{b.studentName}</TD>
-                  <TD><Badge tone={b.status === "Booked" ? "success" : "neutral"}>{bookingStatusLabels[b.status]}</Badge></TD>
+                  <TD>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={b.status === "Booked" ? "success" : "neutral"}>{bookingStatusLabels[b.status]}</Badge>
+                      {b.requiresPayment && <Badge tone="warning">Ödeme gerekli</Badge>}
+                    </div>
+                  </TD>
                   <TD className="text-right">
                     {b.status === "Booked" && <Button variant="ghost" size="sm" onClick={() => cancel(b)}>İptal</Button>}
                   </TD>

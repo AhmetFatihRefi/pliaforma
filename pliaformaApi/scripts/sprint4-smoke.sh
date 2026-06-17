@@ -34,6 +34,8 @@ SG=$(guest "GuestS"); SI=$(guest "InactiveS"); pcode "/api/studio/students/$SI/d
 mkactive(){ local g; g=$(guest "$1"); post "/api/studio/students/$g/convert-to-user" "{\"email\":\"$1+$TS@pf.local\",\"initialPassword\":\"$PW\"}" "$ATOK" >/dev/null; echo "$g"; }
 SA=$(mkactive "sa"); SATOK=$(login "sa+$TS@pf.local")
 SOTH=$(mkactive "sb"); SOTOK=$(login "sb+$TS@pf.local")
+# Sprint 14: Regular self-booking artık geçerli paket ister (paketsiz self-booking 409). SA'ya paket sat.
+post "/api/studio/students/$SA/packages" '{"name":"S14 selfbook","creditCount":5}' "$ATOK" >/dev/null
 
 echo "--- Kapasite & çift booking ---"
 R=$(post "/api/studio/class-sessions/$SESS1/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")

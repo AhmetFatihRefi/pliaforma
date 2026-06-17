@@ -27,4 +27,20 @@ public class ClassBooking : BaseEntity, ITenantScoped
     public Guid? CancelledByUserId { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
+
+    /// <summary>
+    /// Rezervasyonun kullanmayı planladığı <see cref="StudentPackage"/> (Sprint 14). Self/staff booking
+    /// uygun paket bulduğunda yazılır; yoklama tüketiminde **öncelikli** kullanılır. Plain referans
+    /// (FK yok — paket hard-delete edilmez, soft-delete edilir). null → bağlı paket yok.
+    /// </summary>
+    public Guid? ExpectedStudentPackageId { get; set; }
+
+    /// <summary>
+    /// true → bu rezervasyon paketsiz/yetersiz hakla (yalnız Owner/StudioAdmin) yapıldı; ödeme gerekiyor.
+    /// Sonradan geçerli paketle yoklama tüketimi başarılı olursa false'a çekilir (PackageEligibilityStatus=Resolved).
+    /// </summary>
+    public bool RequiresPayment { get; set; }
+
+    /// <summary>Rezervasyon anındaki paket uygunluk değerlendirmesi (görünürlük/raporlama için saklanır).</summary>
+    public PackageEligibilityStatus? PackageEligibilityStatus { get; set; }
 }

@@ -12,7 +12,8 @@ namespace Pliaforma.Application.Features.Packages;
 public sealed record StudentPackageDto(
     Guid Id, Guid StudentProfileId, string StudentName, Guid? PackagePlanId, string Name,
     int InitialCreditCount, int CurrentCreditBalance, decimal Price,
-    DateOnly ValidFrom, DateOnly? ValidUntil, StudentPackageStatus Status, StudentPackageStatus EffectiveStatus, DateTime CreatedAt);
+    DateOnly ValidFrom, DateOnly? ValidUntil, StudentPackageStatus Status, StudentPackageStatus EffectiveStatus, DateTime CreatedAt,
+    bool AllowAllClassTypesSnapshot, IReadOnlyList<Guid> AllowedClassTypeIds);
 
 public sealed record StudentPackageTransactionDto(
     Guid Id, int Amount, StudentPackageTransactionType Type, StudentPackageTransactionReason Reason,
@@ -39,7 +40,9 @@ internal static class PackageRules
             p.Status == StudentPackageStatus.Active && p.ValidUntil != null && p.ValidUntil < today
                 ? StudentPackageStatus.Expired
                 : p.Status,
-            p.CreatedAt));
+            p.CreatedAt,
+            p.AllowAllClassTypesSnapshot,
+            p.AllowedClassTypes.Select(a => a.ClassTypeId).ToList()));
 
     public static void ApplyBalance(StudentPackage pkg, int newBalance)
     {
@@ -133,19 +136,34 @@ public sealed class SellStudentPackageHandler : ICommandHandler<SellStudentPacka
         if (student.Status == StudentStatus.Inactive)
             throw new BusinessRuleException("Pasif öğrenciye yeni paket tanımlanamaz.");
 
+        var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, ct);
+        var validFrom = DateOnly.FromDateTime(nowLocal);
+
         string name;
         int credits;
         decimal price;
         int? validityDays;
 
+        // Kapsam snapshot (Sprint 14): plansız satış → tüm gruplarda geçerli; planlı → planın o anki kapsamı.
+        bool allowAllSnapshot = true;
+        List<Guid> snapshotClassTypeIds = [];
+
         if (request.PackagePlanId is { } planId)
         {
-            var plan = await _db.PackagePlans.FirstOrDefaultAsync(p => p.Id == planId && p.StudioId == studioId, ct)
+            var plan = await _db.PackagePlans
+                .Include(p => p.PriceVersions).Include(p => p.ClassTypes)
+                .FirstOrDefaultAsync(p => p.Id == planId && p.StudioId == studioId, ct)
                 ?? throw new NotFoundException("Paket planı", planId);
             name = (request.Name ?? plan.Name).Trim();
             credits = request.CreditCount ?? plan.CreditCount;
-            price = request.Price ?? plan.Price;
+            // Fiyat: source of truth = versiyonlardan hesaplanan effective fiyat (plan.Price cache'ine güvenilmez).
+            var effective = PackagePricing.CurrentVersion(plan.PriceVersions, validFrom);
+            price = request.Price ?? effective?.Price ?? plan.Price;
             validityDays = request.ValidityDays ?? plan.ValidityDays;
+
+            allowAllSnapshot = plan.AllowAllClassTypes;
+            if (!allowAllSnapshot)
+                snapshotClassTypeIds = plan.ClassTypes.Where(c => c.IsActive).Select(c => c.ClassTypeId).Distinct().ToList();
         }
         else
         {
@@ -160,8 +178,6 @@ public sealed class SellStudentPackageHandler : ICommandHandler<SellStudentPacka
         if (credits <= 0)
             throw new BusinessRuleException("Kredi sayısı 0'dan büyük olmalı.");
 
-        var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, ct);
-        var validFrom = DateOnly.FromDateTime(nowLocal);
         var validUntil = validityDays.HasValue ? validFrom.AddDays(validityDays.Value) : (DateOnly?)null;
 
         var pkg = new StudentPackage
@@ -177,8 +193,14 @@ public sealed class SellStudentPackageHandler : ICommandHandler<SellStudentPacka
             ValidUntil = validUntil,
             Status = StudentPackageStatus.Active,
             CreatedByUserId = userId,
+            AllowAllClassTypesSnapshot = allowAllSnapshot,
         };
         _db.StudentPackages.Add(pkg);
+        foreach (var ctId in snapshotClassTypeIds)
+            _db.StudentPackageAllowedClassTypes.Add(new StudentPackageAllowedClassType
+            {
+                StudioId = studioId, StudentPackageId = pkg.Id, ClassTypeId = ctId,
+            });
         _db.StudentPackageTransactions.Add(new StudentPackageTransaction
         {
             StudioId = studioId,
@@ -193,7 +215,8 @@ public sealed class SellStudentPackageHandler : ICommandHandler<SellStudentPacka
         await _db.SaveChangesAsync(ct);
         var eff = PackageRules.Effective(pkg.Status, pkg.ValidUntil, validFrom);
         return new StudentPackageDto(pkg.Id, student.Id, student.FullName, pkg.PackagePlanId, pkg.Name,
-            pkg.InitialCreditCount, pkg.CurrentCreditBalance, pkg.Price, pkg.ValidFrom, pkg.ValidUntil, pkg.Status, eff, pkg.CreatedAt);
+            pkg.InitialCreditCount, pkg.CurrentCreditBalance, pkg.Price, pkg.ValidFrom, pkg.ValidUntil, pkg.Status, eff, pkg.CreatedAt,
+            pkg.AllowAllClassTypesSnapshot, snapshotClassTypeIds);
     }
 }
 
@@ -271,7 +294,10 @@ public sealed class AdjustStudentPackageHandler : ICommandHandler<AdjustStudentP
         var name = await _db.StudentProfiles.Where(s => s.Id == pkg.StudentProfileId).Select(s => s.FullName).FirstAsync(ct);
         var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
         var eff = PackageRules.Effective(pkg.Status, pkg.ValidUntil, today);
+        var allowedIds = await _db.StudentPackageAllowedClassTypes
+            .Where(a => a.StudentPackageId == pkg.Id).Select(a => a.ClassTypeId).ToListAsync(ct);
         return new StudentPackageDto(pkg.Id, pkg.StudentProfileId, name, pkg.PackagePlanId, pkg.Name,
-            pkg.InitialCreditCount, pkg.CurrentCreditBalance, pkg.Price, pkg.ValidFrom, pkg.ValidUntil, pkg.Status, eff, pkg.CreatedAt);
+            pkg.InitialCreditCount, pkg.CurrentCreditBalance, pkg.Price, pkg.ValidFrom, pkg.ValidUntil, pkg.Status, eff, pkg.CreatedAt,
+            pkg.AllowAllClassTypesSnapshot, allowedIds);
     }
 }

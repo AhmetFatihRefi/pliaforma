@@ -26,11 +26,16 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<StudioMakeupPolicy> StudioMakeupPolicies => Set<StudioMakeupPolicy>();
     public DbSet<Attendance> Attendances => Set<Attendance>();
     public DbSet<PackagePlan> PackagePlans => Set<PackagePlan>();
+    public DbSet<PackagePlanClassType> PackagePlanClassTypes => Set<PackagePlanClassType>();
+    public DbSet<PackagePlanPriceVersion> PackagePlanPriceVersions => Set<PackagePlanPriceVersion>();
     public DbSet<StudentPackage> StudentPackages => Set<StudentPackage>();
+    public DbSet<StudentPackageAllowedClassType> StudentPackageAllowedClassTypes => Set<StudentPackageAllowedClassType>();
     public DbSet<StudentPackageTransaction> StudentPackageTransactions => Set<StudentPackageTransaction>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<PlatformSubscription> PlatformSubscriptions => Set<PlatformSubscription>();
+    public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
+    public DbSet<PlatformSubscriptionPayment> PlatformSubscriptionPayments => Set<PlatformSubscriptionPayment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

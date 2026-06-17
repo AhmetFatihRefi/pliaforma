@@ -119,7 +119,7 @@ public sealed class AttendanceMarker
                     _ => StudentPackageTransactionReason.Other,
                 };
                 await _packages.ConsumeForAttendanceAsync(
-                    studioId, booking.StudentProfileId, att.Id, booking.Id, item.StudentPackageId,
+                    studioId, booking, session.ClassTypeId, att.Id, item.StudentPackageId,
                     markedByUserId, pkgReason, ct);
             }
         }

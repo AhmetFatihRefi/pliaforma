@@ -180,6 +180,19 @@ export const sessionStatusLabels: Record<ClassSessionStatus, string> = {
 // ===== Sprint 4: Rezervasyon =====
 export type ClassBookingStatus = "Booked" | "CancelledByStudent" | "CancelledByStudio";
 
+/** Sprint 14: paket uygunluk değerlendirmesi. */
+export type PackageEligibilityStatus =
+  | "Eligible" | "NoPackageAtAll" | "NoBalance" | "WrongClassType" | "RequiresPayment" | "Resolved";
+
+export const packageEligibilityLabels: Record<PackageEligibilityStatus, string> = {
+  Eligible: "Uygun",
+  NoPackageAtAll: "Yeni paket almanız gerekiyor",
+  NoBalance: "Paket hakkınız bitmiş",
+  WrongClassType: "Paketiniz bu ders için geçerli değil",
+  RequiresPayment: "Ödeme gerekli (paketsiz rezervasyon)",
+  Resolved: "Çözüldü (pakete bağlandı)",
+};
+
 export interface ClassBookingDto {
   id: string;
   classSessionId: string;
@@ -191,6 +204,10 @@ export interface ClassBookingDto {
   classTypeName: string;
   instructorName: string;
   cancelledAt?: string | null;
+  /** Sprint 14: paketsiz/yetersiz hakla (staff) yapıldıysa ödeme gerekir. */
+  requiresPayment?: boolean;
+  packageEligibilityStatus?: PackageEligibilityStatus | null;
+  expectedStudentPackageId?: string | null;
 }
 
 export interface MyBookingDto {
@@ -218,6 +235,12 @@ export interface StudentSessionDto {
   bookingId?: string | null;
   alreadyBooked: boolean;
   canBook: boolean;
+  /** Sprint 14: paket uygunluğu (Regular seans). Makeup/Trial/Special → her zaman Eligible. */
+  packageEligibility: PackageEligibilityStatus;
+  packageEligibilityMessage?: string | null;
+  expectedPackageName?: string | null;
+  availableCredit: number;
+  packageEligible: boolean;
 }
 
 export const bookingStatusLabels: Record<ClassBookingStatus, string> = {
@@ -402,6 +425,36 @@ export interface PackagePlanDto {
   price: number;
   validityDays?: number | null;
   isActive: boolean;
+  // Sprint 14: ders grubu kapsamı + fiyat versiyonlama
+  allowAllClassTypes: boolean;
+  classTypeIds: string[];
+  currentEffectivePrice: number;
+  currentEffectivePriceCurrency: string;
+  nextEffectivePrice?: number | null;
+  nextEffectiveFrom?: string | null;
+}
+
+export interface PackagePlanInput {
+  name: string;
+  description?: string | null;
+  creditCount: number;
+  price: number;
+  validityDays?: number | null;
+  isActive?: boolean;
+  allowAllClassTypes: boolean;
+  classTypeIds: string[];
+  /** Opsiyonel gelecek fiyat (Create: Future*, Update: New*). */
+  futurePrice?: number | null;
+  futureEffectiveFrom?: string | null;
+}
+
+export interface PackagePlanPriceVersionDto {
+  id: string;
+  price: number;
+  currency: string;
+  effectiveFrom: string;
+  isCurrent: boolean;
+  createdAt: string;
 }
 
 export type StudentPackageStatus = "Active" | "UsedUp" | "Expired" | "Cancelled";
@@ -424,6 +477,9 @@ export interface StudentPackageDto {
   /** DB status Active ama ValidUntil geçmişse Expired döner (dinamik; bkz. packages-and-payments.md). */
   effectiveStatus: StudentPackageStatus;
   createdAt: string;
+  /** Sprint 14: satın alma anında snapshot'lanan ders grubu kapsamı. */
+  allowAllClassTypesSnapshot: boolean;
+  allowedClassTypeIds: string[];
 }
 
 export type PackageTxType = "Granted" | "Used" | "Restored" | "Adjusted" | "Revoked";
@@ -648,6 +704,8 @@ export interface PlatformOverviewDto {
   notificationsFailed: number;
   lastNotificationActivityUtc?: string | null;
   databaseHealthy: boolean;
+  missingSubscriptionCount: number;
+  manualSubscriptionRevenueThisMonth: number;
   periodLabel: string;
 }
 
@@ -675,20 +733,97 @@ export interface PlatformOwnerDto {
   phone?: string | null;
 }
 
+// ===== Sprint 13: Abonelik yaşam döngüsü, plan kataloğu, lisans =====
+export type EffectiveSubscriptionStatus =
+  | "Trialing" | "Active" | "PastDueGrace" | "CancelPending" | "Expired" | "FailOpenLicensed";
+
+export const effectiveStatusLabels: Record<EffectiveSubscriptionStatus, string> = {
+  Trialing: "Deneme",
+  Active: "Aktif",
+  PastDueGrace: "Ödeme bekleniyor",
+  CancelPending: "Dönem sonunda iptal",
+  Expired: "Süresi doldu",
+  FailOpenLicensed: "Abonelik yok (geçici)",
+};
+
 export interface PlatformSubscriptionDto {
   id: string;
   studioId: string;
+  subscriptionPlanId?: string | null;
   planName: string;
   tier?: string | null;
   status: SubscriptionStatus;
   monthlyPrice: number;
+  introMonthlyPrice?: number | null;
+  introPeriodsRemaining?: number | null;
   currency: string;
   billingPeriod: BillingPeriod;
   currentPeriodStart: string;
   currentPeriodEnd: string;
   trialEndsAt?: string | null;
+  cancelAtPeriodEnd: boolean;
+  cancelRequestedAt?: string | null;
   cancelledAt?: string | null;
   notes?: string | null;
+  effectiveStatus: EffectiveSubscriptionStatus;
+  isLicensed: boolean;
+  isReadOnlyByLicense: boolean;
+  daysRemaining: number;
+  licenseMessage: string;
+}
+
+export interface SubscriptionPlanDto {
+  id: string;
+  name: string;
+  tier?: string | null;
+  monthlyPrice: number;
+  currency: string;
+  billingPeriod: BillingPeriod;
+  introMonthlyPrice?: number | null;
+  introPeriodCount?: number | null;
+  isCustomQuote: boolean;
+  isDefault: boolean;
+  isActive: boolean;
+  displayOrder: number;
+  description?: string | null;
+  featuresJson?: string | null;
+  maxInstructors?: number | null;
+  maxStudents?: number | null;
+}
+
+export type SubscriptionPlanInput = Omit<SubscriptionPlanDto, "id">;
+
+export interface SubscriptionPaymentDto {
+  id: string;
+  amount: number;
+  currency: string;
+  billingPeriod: BillingPeriod;
+  periodStart: string;
+  periodEnd: string;
+  paidAt: string;
+  source: "Manual" | "Gateway" | "Adjustment";
+  notes?: string | null;
+}
+
+export interface StudioSubscriptionViewDto {
+  hasSubscription: boolean;
+  planName?: string | null;
+  tier?: string | null;
+  status?: SubscriptionStatus | null;
+  monthlyPrice?: number | null;
+  currency?: string | null;
+  billingPeriod?: BillingPeriod | null;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+  trialEndsAt?: string | null;
+  cancelAtPeriodEnd: boolean;
+  cancelRequestedAt?: string | null;
+  effectiveStatus: EffectiveSubscriptionStatus;
+  isLicensed: boolean;
+  isReadOnlyByLicense: boolean;
+  daysRemaining: number;
+  licenseMessage: string;
+  payments: SubscriptionPaymentDto[];
 }
 
 export interface PlatformStudioCountsDto {
@@ -748,6 +883,7 @@ export interface PlatformHealthSummaryDto {
   lastNotificationActivityUtc?: string | null;
   reminderWorkerEnabled: boolean;
   reminderIntervalSeconds: number;
+  missingSubscriptionCount: number;
   serverTimeUtc: string;
 }
 

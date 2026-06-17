@@ -6,21 +6,19 @@ import { useParams } from "next/navigation";
 import { platformService } from "@/lib/platformApi";
 import { ApiError } from "@/lib/api";
 import {
-  type BillingPeriod,
   type PlatformStudioDetailDto,
   type StudioStatus,
-  type SubscriptionInput,
-  type SubscriptionStatus,
+  type SubscriptionPaymentDto,
+  type SubscriptionPlanDto,
   billingPeriodLabels,
+  effectiveStatusLabels,
   studioStatusLabels,
-  subscriptionStatusLabels,
 } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Textarea } from "@/components/ui";
 
 const money = (n: number) => `${n.toLocaleString("tr-TR")} ₺`;
 const fmt = (iso?: string | null) => (iso ? `${iso.slice(0, 10)} ${iso.slice(11, 16)}` : "—");
 const statusTone = (s: StudioStatus) => (s === "Active" ? "success" : s === "Suspended" ? "warning" : "danger");
-const today = () => new Date().toISOString().slice(0, 10);
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -199,112 +197,109 @@ function SubscriptionCard({
   initial?: PlatformStudioDetailDto["subscription"];
   onChange: () => void;
 }) {
-  const [form, setForm] = useState<SubscriptionInput>(() => ({
-    planName: initial?.planName ?? "Free",
-    tier: initial?.tier ?? "",
-    status: (initial?.status ?? "Trialing") as SubscriptionStatus,
-    monthlyPrice: initial?.monthlyPrice ?? 0,
-    currency: initial?.currency ?? "TRY",
-    billingPeriod: (initial?.billingPeriod ?? "Monthly") as BillingPeriod,
-    currentPeriodStart: initial?.currentPeriodStart ?? today(),
-    currentPeriodEnd: initial?.currentPeriodEnd ?? today(),
-    trialEndsAt: initial?.trialEndsAt ?? null,
-    notes: initial?.notes ?? "",
-  }));
+  const [plans, setPlans] = useState<SubscriptionPlanDto[]>([]);
+  const [payments, setPayments] = useState<SubscriptionPaymentDto[]>([]);
+  const [planId, setPlanId] = useState("");
+  const [amount, setAmount] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const set = <K extends keyof SubscriptionInput>(k: K, v: SubscriptionInput[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  useEffect(() => {
+    platformService.plans(true).then(setPlans).catch(() => {});
+    platformService.subscriptionPayments(studioId).then(setPayments).catch(() => {});
+  }, [studioId]);
 
-  const save = async () => {
+  const after = async (msg: string) => {
+    setInfo(msg);
+    try { setPayments(await platformService.subscriptionPayments(studioId)); } catch { /* yut */ }
+    onChange();
+  };
+  const act = async (fn: () => Promise<unknown>, msg: string, failMsg: string) => {
     setBusy(true); setErr(null); setInfo(null);
-    try {
-      await platformService.updateSubscription(studioId, { ...form, tier: form.tier || null, notes: form.notes || null });
-      setInfo("Abonelik kaydedildi.");
-      onChange();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Kaydedilemedi.");
-    } finally {
-      setBusy(false);
-    }
+    try { await fn(); await after(msg); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : failMsg); }
+    finally { setBusy(false); }
   };
 
-  const cancel = async () => {
-    setBusy(true); setErr(null); setInfo(null);
-    try {
-      const updated = await platformService.cancelSubscription(studioId);
-      set("status", updated.status);
-      setInfo("Abonelik iptal edildi.");
-      onChange();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "İptal edilemedi.");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const effTone = !initial ? "neutral"
+    : initial.effectiveStatus === "Active" || initial.effectiveStatus === "Trialing" ? "success"
+    : initial.effectiveStatus === "Expired" ? "danger" : "warning";
 
   return (
     <Card>
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm font-semibold text-foreground">Abonelik</p>
-        <Badge tone={initial ? "rose" : "neutral"}>{initial ? subscriptionStatusLabels[initial.status] : "Yok"}</Badge>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-sm font-semibold text-foreground">Abonelik & Lisans</p>
+        <Badge tone={effTone}>{initial ? effectiveStatusLabels[initial.effectiveStatus] : "Abonelik yok"}</Badge>
       </div>
-      <p className="mb-4 text-xs text-muted">
-        Takip amaçlı iskelet — gerçek tahsilat/online ödeme yoktur.
-      </p>
 
       {err && <Alert kind="error">{err}</Alert>}
       {info && <Alert kind="success">{info}</Alert>}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <FormField label="Plan adı" htmlFor="planName">
-          <Input id="planName" value={form.planName} onChange={(e) => set("planName", e.target.value)} />
-        </FormField>
-        <FormField label="Kademe" htmlFor="tier">
-          <Input id="tier" value={form.tier ?? ""} onChange={(e) => set("tier", e.target.value)} placeholder="Örn. Pro" />
-        </FormField>
-        <FormField label="Durum" htmlFor="status">
-          <Select id="status" value={form.status} onChange={(e) => set("status", e.target.value as SubscriptionStatus)}>
-            {(["Trialing", "Active", "PastDue", "Suspended", "Cancelled"] as SubscriptionStatus[]).map((s) => (
-              <option key={s} value={s}>{subscriptionStatusLabels[s]}</option>
-            ))}
-          </Select>
-        </FormField>
-        <FormField label="Dönem" htmlFor="billing">
-          <Select id="billing" value={form.billingPeriod} onChange={(e) => set("billingPeriod", e.target.value as BillingPeriod)}>
-            {(["Monthly", "Yearly"] as BillingPeriod[]).map((p) => (
-              <option key={p} value={p}>{billingPeriodLabels[p]}</option>
-            ))}
-          </Select>
-        </FormField>
-        <FormField label="Aylık ücret" htmlFor="price">
-          <Input id="price" type="number" min={0} step="0.01" value={form.monthlyPrice}
-            onChange={(e) => set("monthlyPrice", Number(e.target.value))} />
-        </FormField>
-        <FormField label="Para birimi" htmlFor="currency">
-          <Input id="currency" maxLength={3} value={form.currency} onChange={(e) => set("currency", e.target.value.toUpperCase())} />
-        </FormField>
-        <FormField label="Dönem başı" htmlFor="start">
-          <Input id="start" type="date" value={form.currentPeriodStart} onChange={(e) => set("currentPeriodStart", e.target.value)} />
-        </FormField>
-        <FormField label="Dönem sonu" htmlFor="end">
-          <Input id="end" type="date" value={form.currentPeriodEnd} onChange={(e) => set("currentPeriodEnd", e.target.value)} />
-        </FormField>
-        <FormField label="Deneme bitişi" htmlFor="trial">
-          <Input id="trial" type="date" value={form.trialEndsAt ?? ""} onChange={(e) => set("trialEndsAt", e.target.value || null)} />
-        </FormField>
-        <FormField label="Not" htmlFor="notes">
-          <Input id="notes" value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />
-        </FormField>
+      {!initial ? (
+        <Alert kind="info">Abonelik kaydı yok — <strong>fail-open lisanslı</strong> (yazma açık). Aşağıdan bir plan atayın.</Alert>
+      ) : (
+        <div className="rounded-xl border border-border p-3">
+          <Row label="Plan" value={`${initial.planName}${initial.tier ? ` · ${initial.tier}` : ""}`} />
+          <Row label="Fiyat" value={`${money(initial.monthlyPrice)} / ${billingPeriodLabels[initial.billingPeriod]}`} />
+          <Row label="Dönem sonu" value={`${initial.currentPeriodEnd} (${initial.daysRemaining} gün)`} />
+          {initial.introPeriodsRemaining != null && initial.introPeriodsRemaining > 0 && (
+            <Row label="Intro kalan" value={`${initial.introPeriodsRemaining} dönem`} />
+          )}
+          <Row label="Lisans" value={initial.isLicensed ? "Lisanslı" : "Lisanssız (yazma kısıtlı)"} />
+          {initial.cancelAtPeriodEnd && <Row label="İptal" value="Dönem sonunda iptal edilecek" />}
+          <p className="mt-2 text-xs text-muted">{initial.licenseMessage}</p>
+        </div>
+      )}
+
+      {/* Plan ata */}
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <div className="min-w-[12rem] flex-1">
+          <FormField label="Plan ata" htmlFor="assignPlan">
+            <Select id="assignPlan" value={planId} onChange={(e) => setPlanId(e.target.value)}>
+              <option value="">Plan seç…</option>
+              {plans.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.isCustomQuote ? "teklif" : money(p.monthlyPrice)}</option>)}
+            </Select>
+          </FormField>
+        </div>
+        <Button variant="secondary" size="sm" disabled={!planId} loading={busy}
+          onClick={() => act(() => platformService.assignPlan(studioId, planId), "Plan atandı.", "Atanamadı.")}>Ata</Button>
       </div>
 
-      <div className="mt-4 flex justify-end gap-2">
-        {initial && initial.status !== "Cancelled" && (
-          <Button variant="ghost" size="sm" loading={busy} onClick={cancel}>Aboneliği iptal et</Button>
+      {/* Ödeme kaydet + iptal */}
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <div className="w-32">
+          <FormField label="Tutar (ops.)" htmlFor="payAmt">
+            <Input id="payAmt" type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="oto" />
+          </FormField>
+        </div>
+        <Button size="sm" loading={busy} disabled={!initial}
+          onClick={() => act(() => platformService.recordPayment(studioId, { amount: amount ? Number(amount) : null }), "Ödeme kaydedildi.", "Kaydedilemedi.")}>
+          Ödeme kaydet
+        </Button>
+        {initial && !initial.cancelAtPeriodEnd && (
+          <Button variant="ghost" size="sm" loading={busy}
+            onClick={() => act(() => platformService.cancelSubscription(studioId), "İptal (dönem sonu) işlendi.", "İptal edilemedi.")}>
+            Dönem sonunda iptal
+          </Button>
         )}
-        <Button size="sm" loading={busy} onClick={save}>{initial ? "Kaydet" : "Abonelik oluştur"}</Button>
+      </div>
+
+      {/* Tahsilat geçmişi */}
+      <div className="mt-4">
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Tahsilat geçmişi</p>
+        {payments.length === 0 ? (
+          <p className="text-sm text-muted">Henüz tahsilat yok.</p>
+        ) : (
+          <div className="space-y-1">
+            {payments.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-foreground">{money(p.amount)} <span className="text-xs text-muted">({p.source})</span></span>
+                <span className="text-xs text-muted">{p.periodStart} → {p.periodEnd} · {p.paidAt.slice(0, 10)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Card>
   );
