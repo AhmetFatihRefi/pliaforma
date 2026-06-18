@@ -42,15 +42,19 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
     private readonly AuthSessionService _session;
     private readonly IDateTime _clock;
     private readonly ILogger<RegisterStudioHandler> _logger;
+    private readonly EmailTokenIssuer _tokens;
+    private readonly IEmailSender _email;
 
     public RegisterStudioHandler(IAppDbContext db, IPasswordHasher hasher, AuthSessionService session,
-        IDateTime clock, ILogger<RegisterStudioHandler> logger)
+        IDateTime clock, ILogger<RegisterStudioHandler> logger, EmailTokenIssuer tokens, IEmailSender email)
     {
         _db = db;
         _hasher = hasher;
         _session = session;
         _clock = clock;
         _logger = logger;
+        _tokens = tokens;
+        _email = email;
     }
 
     public async Task<AuthResult> Handle(RegisterStudioCommand request, CancellationToken cancellationToken)
@@ -122,7 +126,12 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
             _logger.LogWarning("Varsayılan abonelik planı (IsDefault) bulunamadı — '{Studio}' için trial başlatılamadı (fail-open lisanslı).", studio.Name);
         }
 
+        // Sprint 16 (Seçenek A): stüdyo akışı bozulmaz; owner EmailVerifiedAt=null kalır + doğrulama maili
+        // gönderilir. Dashboard'da uyarı gösterilir; doğrulama bu sprintte ZORUNLU değil.
+        var rawToken = await _tokens.IssueAsync(
+            user.Id, AuthTokenPurpose.EmailVerification, AuthTokenRules.EmailVerificationTtl, request.Ip, null, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
+        await _email.SendEmailVerificationAsync(user.Email, user.FullName, rawToken, cancellationToken);
 
         return await _session.IssueAsync(user, membership, request.Ip, cancellationToken);
     }

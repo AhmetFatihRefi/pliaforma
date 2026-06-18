@@ -73,7 +73,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services
     .AddApplication()
     .AddPersistence(connectionString)
-    .AddInfrastructure(builder.Configuration);
+    .AddInfrastructure(builder.Configuration, builder.Environment.IsProduction());
 
 // Hatırlatma worker'ı (idempotent; Notifications:WorkerEnabled ile kapatılabilir).
 builder.Services.AddHostedService<Pliaforma.Api.Workers.ReminderBackgroundService>();

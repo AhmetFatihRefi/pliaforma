@@ -29,7 +29,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register({ ...form, phone: form.phone || undefined });
-      router.replace("/join-studio");
+      router.replace("/check-email"); // Sprint 16: önce e-posta doğrulama ekranı
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);

@@ -14,6 +14,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Studio> Studios => Set<Studio>();
     public DbSet<StudioMembership> StudioMemberships => Set<StudioMembership>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<AuthToken> AuthTokens => Set<AuthToken>();
     public DbSet<InstructorProfile> InstructorProfiles => Set<InstructorProfile>();
     public DbSet<ClassType> ClassTypes => Set<ClassType>();
     public DbSet<InstructorClassType> InstructorClassTypes => Set<InstructorClassType>();

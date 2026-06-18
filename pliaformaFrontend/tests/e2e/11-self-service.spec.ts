@@ -9,7 +9,7 @@ test.describe("Self-service kayıt & katılım (Sprint 15)", () => {
     await expect(page.getByRole("heading", { name: "Hesap oluşturun" })).toBeVisible();
   });
 
-  test("yeni kullanıcı kayıt olunca /join-studio'ya yönlenir", async ({ page }) => {
+  test("yeni kullanıcı kayıt olunca /check-email'e yönlenir (Sprint 16)", async ({ page }) => {
     // Benzersiz e-posta (seed e2e-% kullanıcılarını siler → sonraki koşuda temizlenir).
     const email = `e2e-ss-${Date.now()}@pliaforma.local`;
     await page.goto("/register");
@@ -17,9 +17,9 @@ test.describe("Self-service kayıt & katılım (Sprint 15)", () => {
     await page.locator("#email").fill(email);
     await page.locator("#password").fill(PW);
     await page.getByRole("button", { name: "Hesap oluştur" }).click();
-    await expect(page).toHaveURL(/\/join-studio$/);
-    await expect(page.getByRole("heading", { name: "Bir stüdyoya katılın" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Başvuru gönder" })).toBeVisible();
+    // Sprint 16: register sonrası önce e-posta doğrulama ekranı.
+    await expect(page).toHaveURL(/\/check-email$/);
+    await expect(page.getByRole("heading", { name: "E-posta adresinizi doğrulayın" })).toBeVisible();
   });
 
   test("Owner ayarlarda katılım kodunu görür + yenileyebilir", async ({ page }) => {

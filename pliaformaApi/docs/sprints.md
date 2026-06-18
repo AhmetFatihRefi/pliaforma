@@ -286,6 +286,31 @@ E2E (31 + 3, 2x deterministic)** + same-origin (:3000) yeşil; backend 0/0, fron
 yapılmadı:** password reset, public stüdyo dizini/arama, davet-linki token sistemi, gerçek email gönderimi.
 Detay: [SPRINT-15-SPEC.md](SPRINT-15-SPEC.md), [identity-and-membership.md](identity-and-membership.md).
 
+## Sprint 16 — Tamamlanan kapsam
+**Yapıldı:** **E-posta doğrulama + şifre sıfırlama** (auth güvenliği/hesap kurtarma; ödeme/gateway değil). Yeni
+`User.EmailVerifiedAt?` + **`AuthToken`** entity (Purpose: EmailVerification|PasswordReset; **TokenHash**
+SHA-256, ham token DB'de YOK; tek kullanımlık `ConsumedAt`; süreli; yeni token eskileri soft-delete ile iptal).
+`OpaqueToken` (CSPRNG raw + SHA-256 hash) + `EmailTokenIssuer` (issue/consume/cooldown). **`IEmailSender`** pluggable
+(IPasswordHasher deseni): **Log** (dev/test — linki loglar, gerçek gönderim yok), **Smtp** (prod), **Disabled** (no-op).
+`EmailSettings` (SenderMode/FromAddress/PublicOrigin/Smtp). **Fail-fast:** SenderMode=Smtp → PublicOrigin/Host/From
+zorunlu; **prod + Disabled (override yoksa) → app açılmaz** (`AllowDisabledInProduction`). Link tabanı = Infrastructure
+(PublicOrigin); Application yalnız ham token verir. Uçlar (auth rate-limit): `POST /api/auth/verify-email` (anon),
+`/resend-verification-email` (Authorize; verified→no-op; **60sn cooldown→sessiz 200, yeni token yok**),
+`/forgot-password` (anon; **her durumda generic 200**, enumeration yok; cooldown), `/reset-password` (anon; token+yeni
+şifre). **Süreler:** verification **48s**, reset **60dk**. **register/register-studio:** owner/user `EmailVerifiedAt=null`
++ doğrulama maili; register-studio akışı **bozulmaz** (Seçenek A — dashboard uyarı banner'ı). **Join-studio gating:**
+unverified kullanıcı login/logout/resend yapar ama **apply → 403** "önce e-posta doğrulayın". **reset-password:** şifre
+güncellenir + **tüm refresh tokenlar revoke** (eski refresh → 401) + **EmailVerifiedAt null ise verified yapılır** (reset
+linkine erişim e-posta sahipliğini kanıtlar). `UserDto`/`MeResult`'a **`emailVerified`** (frontend gating buna bakar).
+Migration `Sprint16_AuthTokens` + **backfill** (mevcut tüm kullanıcılar `EmailVerifiedAt=now` → **939/939 verified, 0
+unverified**; kimse kilitlenmez). Frontend: `/verify-email`, `/forgot-password`, `/reset-password`, `/check-email` (kayıt
+sonrası), login "Şifremi unuttum", join-studio doğrulama banner+form disabled, dashboard `EmailVerificationBanner`.
+smoke `sprint16-smoke.sh` (**27 kontrol**, ham token API logundan çekilir) + **17 smoke + 38 E2E (34+4, 2x deterministic)**
++ same-origin + **SMTP fail-fast ayrıca doğrulandı**. backend 0/0, frontend 38 rota. **Regresyon notu:** apply artık
+verified ister → sprint15-smoke applicant'ları DB'de verified yapıldı; e2e-seed kullanıcıları verified işaretlendi (bilinçli).
+**Bilinçli yapılmadı:** SMS, 2FA, OAuth/Google, public dizin, gateway. Detay: [SPRINT-16-SPEC.md](SPRINT-16-SPEC.md),
+[identity-and-membership.md](identity-and-membership.md).
+
 ## Pilot Handoff (deploy öncesi hazırlık)
 **Yapıldı (yalnız doküman; kod değişmedi):** `FINAL-HANDOFF.md` + `PILOT-DEPLOY-DRY-RUN.md` (kopyala-yapıştır
 komutlar + TLS checklist). **Infra versioning durumu netleştirildi:** kök git repo DEĞİL; `pliaformaApi` +

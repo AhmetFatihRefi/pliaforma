@@ -13,6 +13,7 @@ Pilot yayınını **kesmek (cut)** için sıralı kontrol listesi. Operasyonel k
 - [ ] `deploy/.env` oluşturuldu (`cp deploy/.env.example deploy/.env`), **gerçek secret'lar dolduruldu**.
 - [ ] `JWT_SECRET = openssl rand -base64 48` (≥32 bayt). `POSTGRES_PASSWORD`, `SEED_ADMIN_PASSWORD` güçlü.
 - [ ] `PUBLIC_ORIGIN=https://<domain>`. `NEXT_PUBLIC_API_URL` BOŞ (relative `/api`).
+- [ ] **E-posta (Sprint 16):** `EMAIL_SENDER_MODE=Smtp` + `SMTP_HOST` + `EMAIL_FROM_ADDRESS` dolu (+ `SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_PORT`/`SMTP_USE_TLS`). `Email__PublicOrigin`=`PUBLIC_ORIGIN`. **`SenderMode=Disabled` prod'da KULLANMA** (backend açılmaz). `SenderMode=Log` yalnız dev/test. Smtp iken eksik ayar → backend açılmaz (fail-fast).
 - [ ] `.env` commit edilmedi (kök `.gitignore` korur).
 
 ## 3. Build & config doğrulama

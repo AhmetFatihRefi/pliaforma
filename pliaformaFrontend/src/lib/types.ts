@@ -11,6 +11,8 @@ export interface UserDto {
   fullName: string;
   phone?: string | null;
   globalRole: GlobalRole;
+  /** Sprint 16: e-posta doğrulandı mı (gating bu alana bakar, mesaj string'ine değil). */
+  emailVerified: boolean;
 }
 
 export interface MembershipDto {

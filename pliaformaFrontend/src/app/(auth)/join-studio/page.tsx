@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { membershipService } from "@/lib/studioApi";
+import { authService } from "@/lib/services";
 import type { MyJoinRequestDto } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card, FormField, Input, Select } from "@/components/ui";
 
@@ -61,6 +62,22 @@ export default function JoinStudioPage() {
   const pending = requests.filter((r) => r.status === "Pending");
   const rejected = requests.filter((r) => r.status === "Rejected");
   const roleLabel = (r: string) => (r === "Instructor" ? "Hoca" : "Öğrenci");
+  const verified = user?.emailVerified ?? true;
+
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
+  const resendVerification = async () => {
+    setResending(true);
+    setResendMsg(null);
+    try {
+      await authService.resendVerification();
+      setResendMsg("Doğrulama e-postası gönderildi.");
+    } catch {
+      setResendMsg("Gönderilemedi, lütfen tekrar deneyin.");
+    } finally {
+      setResending(false);
+    }
+  };
 
   return (
     <Card>
@@ -68,6 +85,16 @@ export default function JoinStudioPage() {
       <p className="mb-6 text-sm text-muted">
         {user?.fullName ? `Merhaba ${user.fullName}. ` : ""}Stüdyonuzdan aldığınız katılım kodunu girin.
       </p>
+
+      {!verified && (
+        <div className="mb-4 space-y-2">
+          <Alert kind="warning">Stüdyoya katılmak için önce e-posta adresinizi doğrulayın. Gelen kutunuzdaki doğrulama bağlantısına tıklayın.</Alert>
+          <div className="flex items-center gap-3">
+            <Button variant="secondary" size="sm" loading={resending} onClick={resendVerification}>Doğrulama e-postasını tekrar gönder</Button>
+            {resendMsg && <span className="text-xs text-muted">{resendMsg}</span>}
+          </div>
+        </div>
+      )}
 
       <form onSubmit={submit} className="space-y-4">
         {error && <Alert kind="error">{error}</Alert>}
@@ -80,18 +107,19 @@ export default function JoinStudioPage() {
             onChange={(e) => setJoinCode(e.target.value)}
             placeholder="ABCD-EFGH-JK"
             autoCapitalize="characters"
+            disabled={!verified}
             required
           />
         </FormField>
 
         <FormField label="Hangi rolle katılıyorsunuz?" htmlFor="role">
-          <Select id="role" value={role} onChange={(e) => setRole(e.target.value as "Student" | "Instructor")}>
+          <Select id="role" value={role} onChange={(e) => setRole(e.target.value as "Student" | "Instructor")} disabled={!verified}>
             <option value="Student">Öğrenci olarak katıl</option>
             <option value="Instructor">Hoca olarak katıl</option>
           </Select>
         </FormField>
 
-        <Button type="submit" loading={loading} className="w-full">
+        <Button type="submit" loading={loading} disabled={!verified} className="w-full">
           Başvuru gönder
         </Button>
       </form>

@@ -62,6 +62,10 @@ export default function LoginPage() {
           />
         </FormField>
 
+        <div className="text-right">
+          <Link href="/forgot-password" className="text-sm text-muted hover:text-foreground">Şifremi unuttum</Link>
+        </div>
+
         <Button type="submit" loading={loading} className="w-full">
           Giriş yap
         </Button>

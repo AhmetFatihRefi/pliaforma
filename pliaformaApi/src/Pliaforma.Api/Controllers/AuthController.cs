@@ -89,6 +89,41 @@ public sealed class AuthController : ControllerBase
         return Ok(ApiResponse<MeResult>.Ok(result));
     }
 
+    // ---- Sprint 16: e-posta doğrulama + şifre sıfırlama ----
+
+    [HttpPost("verify-email")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> VerifyEmail(VerifyEmailRequest body, CancellationToken ct)
+    {
+        await _dispatcher.Send(new VerifyEmailCommand(body.Token), ct);
+        return Ok(ApiResponse<object?>.Ok(null, "E-posta adresiniz doğrulandı."));
+    }
+
+    [Authorize]
+    [HttpPost("resend-verification-email")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> ResendVerification(CancellationToken ct)
+    {
+        await _dispatcher.Send(new ResendVerificationEmailCommand(), ct);
+        return Ok(ApiResponse<object?>.Ok(null, "Doğrulama e-postası gönderildi (zaten doğrulanmışsa yeni e-posta gönderilmez)."));
+    }
+
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest body, CancellationToken ct)
+    {
+        await _dispatcher.Send(new ForgotPasswordCommand(body.Email, ClientIp), ct);
+        return Ok(ApiResponse<object?>.Ok(null, "Eğer bu e-posta ile kayıt varsa şifre sıfırlama bağlantısı gönderildi."));
+    }
+
+    [HttpPost("reset-password")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest body, CancellationToken ct)
+    {
+        await _dispatcher.Send(new ResetPasswordCommand(body.Token, body.NewPassword), ct);
+        return Ok(ApiResponse<object?>.Ok(null, "Şifreniz güncellendi. Lütfen yeni şifrenizle giriş yapın."));
+    }
+
     /// <summary>Refresh token'ı cookie'ye yazar (varsa) ve gövdeyi refresh'siz döner.</summary>
     private IActionResult AuthOk(AuthResult result, string message)
     {

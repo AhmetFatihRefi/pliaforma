@@ -15,6 +15,7 @@ public static class DependencyInjection
 
         services.AddScoped<IDispatcher, Dispatcher>();
         services.AddScoped<AuthSessionService>();
+        services.AddScoped<Features.Auth.EmailTokenIssuer>();
         services.AddScoped<Features.Bookings.BookingCreator>();
         services.AddScoped<Features.MakeupCredits.MakeupCreditService>();
         services.AddScoped<Features.Scheduling.SessionCancellationService>();

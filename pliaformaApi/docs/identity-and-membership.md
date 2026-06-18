@@ -71,3 +71,42 @@ eklenip doğrulanmamış e-posta bazı işlemleri kısıtlayabilir.
 Manuel doğrulama: `scripts/sprint15-smoke.sh` (açık register + duplicate, JoinCode geçerlilik + generic 404,
 Student/Instructor başvuru + profil-yok, sınırlı roller, join-requests yetki + cross-tenant, my-join-requests
 yalnız-kendi, kabul→profil (Owner/StudioAdmin), reject→profil-yok + yeniden başvuru, regenerate eski-kod-çalışmaz).
+
+---
+
+## Sprint 16 — E-posta doğrulama & şifre sıfırlama
+
+**Model.** `User.EmailVerifiedAt?` (null → doğrulanmamış). Tek-kullanımlık tokenlar ayrı **`AuthToken`** tablosunda
+(`Purpose: EmailVerification | PasswordReset`, `TokenHash` SHA-256 — **ham token DB'de YOK**, `ExpiresAt`, `ConsumedAt?`).
+Ham token CSPRNG (`OpaqueToken`), yalnız maile/linke gider. Yeni token üretilince aynı purpose'un eski kullanılmamışları
+soft-delete ile iptal. Süreler: **verification 48 saat, reset 60 dakika**. `EmailTokenIssuer` issue/consume/cooldown sağlar.
+
+**E-posta gönderimi (pluggable).** `IEmailSender` (Application soyut) → Infrastructure: **Log** (dev/test, linki loglar,
+gönderim yok), **Smtp** (prod), **Disabled** (no-op). `Email` config: `SenderMode/FromAddress/FromName/PublicOrigin/Smtp`.
+Link tabanı `Email:PublicOrigin` (Infrastructure'da; Application yalnız ham token verir). **Fail-fast:** `SenderMode=Smtp`
+iken `PublicOrigin`/`Smtp:Host`/`FromAddress` zorunlu; **production + `SenderMode=Disabled`** (Email:AllowDisabledInProduction
+yoksa) **uygulama açılmaz**. Dev/test default `Log`.
+
+**Uçlar (auth rate-limit).**
+| Uç | Auth | Davranış |
+|---|---|---|
+| `POST /api/auth/verify-email {token}` | anon | token tüket → `EmailVerifiedAt=now`; expired/used/invalid → generic 409 |
+| `POST /api/auth/resend-verification-email` | Authorize | verified → no-op 200; **60sn cooldown → sessiz 200, yeni token yok** |
+| `POST /api/auth/forgot-password {email}` | anon | **her durumda generic 200** (var/yok sızmaz); cooldown |
+| `POST /api/auth/reset-password {token,newPassword}` | anon | şifre güncelle + **tüm refresh revoke** + null ise **EmailVerifiedAt=now** |
+
+**Kayıt davranışı.** `register` ve `register-studio` → `EmailVerifiedAt=null` + doğrulama maili. register-studio akışı
+**bozulmaz** (Seçenek A: stüdyo oluşur, owner dashboard'da uyarı banner'ı görür; doğrulama bu sürümde ZORUNLU değil).
+
+**Gating.** Doğrulanmamış kullanıcı login/logout/resend yapabilir; **stüdyoya başvuru (`apply`) → 403** "önce e-posta
+doğrulayın". `UserDto`/`MeResult`'a **`emailVerified`** alanı (frontend gating buna bakar, mesaj string'ine değil).
+
+**Güvenlik.** Token hash'li + tek kullanımlık + süreli; forgot generic 200 (enumeration yok); reset sonrası refresh revoke
+(çalınmış oturum kapanır); cooldown + rate-limit; backfill (mevcut kullanıcılar verified) → kimse kilitlenmez.
+
+**Email doğrulamanın geleceği (not).** Bu sürümde register/login doğrulamasız çalışır. İleride register-studio için
+doğrulama zorunlu (Seçenek B) yapılabilir; `EmailVerifiedAt` ileride başka kısıtlamalara temel olabilir.
+
+Manuel doğrulama: `scripts/sprint16-smoke.sh` (yeni register unverified + token hash'li/logda; verify + ikinci kez 409;
+expired 409; resend verified/cooldown no-op; unverified apply 403 / verified 200; forgot generic 200; reset eski/yeni
+şifre + ikinci token 409 + refresh revoke + reset-verifies). LogEmailSender ham token'ı API loguna yazar → smoke logdan çeker.

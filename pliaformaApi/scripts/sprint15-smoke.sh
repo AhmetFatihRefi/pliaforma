@@ -22,7 +22,9 @@ scount(){ sql "SELECT count(*) FROM \"StudentProfiles\" WHERE \"UserId\"='$1' AN
 icount(){ sql "SELECT count(*) FROM \"InstructorProfiles\" WHERE \"UserId\"='$1' AND \"StudioId\"='$2' AND \"IsDeleted\"=false;"; }
 
 regstudio(){ body "$(post /api/auth/register-studio "{\"studioName\":\"$1\",\"ownerFullName\":\"O\",\"email\":\"$2\",\"password\":\"$PW\"}")" | jget accessToken; }
-reg(){ post /api/auth/register "{\"fullName\":\"$1\",\"email\":\"$2\",\"password\":\"$PW\"}"; }   # full response
+# Sprint 16: apply artık e-posta doğrulaması ister → test applicant'ları register sonrası DB'de verified yapılır.
+vrf(){ sql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null; }
+reg(){ local r; r=$(post /api/auth/register "{\"fullName\":\"$1\",\"email\":\"$2\",\"password\":\"$PW\"}"); vrf "$2"; echo "$r"; }   # full response (+verify)
 regtok(){ body "$(reg "$1" "$2")" | jget accessToken; }
 joincode(){ curl -s "$BASE/api/studio/join-code" -H "Authorization: Bearer $1" | jget joinCode; }
 joincodef(){ curl -s "$BASE/api/studio/join-code" -H "Authorization: Bearer $1" | jget formattedJoinCode; }

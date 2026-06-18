@@ -101,6 +101,10 @@ echo "== 9) İkinci stüdyo (askıya alınabilir test stüdyosu) =="
 post /api/auth/register-studio "{\"studioName\":\"E2E Test Studio\",\"ownerFullName\":\"E2E Owner2\",\"email\":\"$OWNER2\",\"password\":\"$PW\"}" >/dev/null
 ok "Test stüdyosu: E2E Test Studio (owner $OWNER2)"
 
+# Sprint 16: seed kullanıcıları "yerleşik/doğrulanmış" sayılır (e-posta doğrulama banner'ı çıkmasın).
+psql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\" LIKE 'e2e-%' AND \"EmailVerifiedAt\" IS NULL;"
+ok "Seed kullanıcıları e-posta doğrulanmış işaretlendi"
+
 echo
 printf "\033[36mE2E SEED TAMAM ✅\033[0m  (tüm parolalar: %s)\n" "$PW"
 echo "PlatformAdmin=$PADMIN  Owner=$OWNER  StudioAdmin=$ADMIN  Instructor=$INSTR  Student=$STUDENT"

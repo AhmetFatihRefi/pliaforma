@@ -15,7 +15,7 @@ namespace Pliaforma.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, bool isProduction = false)
     {
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
         var jwt = configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
@@ -27,6 +27,8 @@ public static class DependencyInjection
                 "Jwt:Secret tanımlı değil veya 32 bayttan kısa. " +
                 "Geliştirme: dotnet user-secrets set \"Jwt:Secret\" \"<en az 32 karakter>\". " +
                 "Üretim: Jwt__Secret ortam değişkeni.");
+
+        ConfigureEmail(services, configuration, isProduction);
 
         services.AddHttpContextAccessor();
 
@@ -69,5 +71,46 @@ public static class DependencyInjection
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// E-posta gönderim altyapısı (Sprint 16): mod'a göre IEmailSender seçer + fail-fast. SenderMode=Smtp ise
+    /// PublicOrigin/Host/FromAddress zorunlu; prod'da Disabled (override yoksa) reddedilir — güvenlik için.
+    /// </summary>
+    private static void ConfigureEmail(IServiceCollection services, IConfiguration configuration, bool isProduction)
+    {
+        var section = configuration.GetSection(EmailSettings.SectionName);
+        services.Configure<EmailSettings>(section);
+        var email = section.Get<EmailSettings>() ?? new EmailSettings();
+
+        if (email.SenderMode == EmailSenderMode.Smtp
+            && (string.IsNullOrWhiteSpace(email.PublicOrigin)
+                || string.IsNullOrWhiteSpace(email.Smtp.Host)
+                || string.IsNullOrWhiteSpace(email.FromAddress)))
+        {
+            throw new InvalidOperationException(
+                "Email:SenderMode=Smtp iken Email:PublicOrigin, Email:Smtp:Host ve Email:FromAddress zorunludur " +
+                "(Email__PublicOrigin / Email__Smtp__Host / Email__FromAddress env).");
+        }
+
+        if (isProduction && email.SenderMode == EmailSenderMode.Disabled && !email.AllowDisabledInProduction)
+        {
+            throw new InvalidOperationException(
+                "Production'da Email:SenderMode=Disabled güvenli değildir (doğrulama/sıfırlama e-postaları gitmez). " +
+                "Bilinçliyse Email:AllowDisabledInProduction=true verin; aksi halde Email:SenderMode=Smtp kullanın.");
+        }
+
+        switch (email.SenderMode)
+        {
+            case EmailSenderMode.Smtp:
+                services.AddScoped<IEmailSender, SmtpEmailSender>();
+                break;
+            case EmailSenderMode.Disabled:
+                services.AddScoped<IEmailSender, NullEmailSender>();
+                break;
+            default:
+                services.AddScoped<IEmailSender, LogEmailSender>();
+                break;
+        }
     }
 }

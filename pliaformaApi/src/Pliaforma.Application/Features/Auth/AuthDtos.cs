@@ -8,7 +8,8 @@ public sealed record UserDto(
     string Email,
     string FullName,
     string? Phone,
-    GlobalRole GlobalRole);
+    GlobalRole GlobalRole,
+    bool EmailVerified);
 
 /// <summary>Kullanıcının bir stüdyodaki üyelik özeti (stüdyo seçimi için).</summary>
 public sealed record MembershipDto(

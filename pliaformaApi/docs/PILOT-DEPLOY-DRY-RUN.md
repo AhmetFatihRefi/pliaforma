@@ -70,6 +70,18 @@ echo "JWT_SECRET=$(openssl rand -base64 48)"   # çıktıyı deploy/.env'e taş�
 #   SEED_ADMIN_EMAIL=admin@<domain>
 #   SEED_ADMIN_PASSWORD=<güçlü-admin-parolası>
 #   PUBLIC_ORIGIN=https://<domain>
+#   --- E-posta (Sprint 16: doğrulama + şifre sıfırlama) ---
+#   EMAIL_SENDER_MODE=Smtp            # PROD: Smtp önerilir. Log = yalnız dev/test. Disabled = prod'da KULLANMA.
+#   EMAIL_FROM_ADDRESS=noreply@<domain>
+#   EMAIL_FROM_NAME=Pliaforma
+#   SMTP_HOST=<smtp-sunucu>           # Smtp iken ZORUNLU (yoksa backend AÇILMAZ — fail-fast)
+#   SMTP_PORT=587
+#   SMTP_USERNAME=<smtp-kullanıcı>
+#   SMTP_PASSWORD=<smtp-parola>
+#   SMTP_USE_TLS=true
+# NOT: SenderMode=Smtp iken PublicOrigin + SMTP_HOST + EMAIL_FROM_ADDRESS eksikse backend açılmaz (fail-fast).
+#      SenderMode=Disabled prod'da backend'i açmaz (doğrulama/sıfırlama e-postaları gitmez); bilinçliyse
+#      Email__AllowDisabledInProduction=true gerekir — pilotta ÖNERİLMEZ.
 ```
 
 ## 6. Compose config doğrula

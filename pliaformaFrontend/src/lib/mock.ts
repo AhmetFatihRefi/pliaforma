@@ -64,6 +64,7 @@ export const mockAuthService: AuthService = {
       fullName: input.ownerFullName,
       phone: input.phone,
       globalRole: "Standard" as const,
+      emailVerified: true,
     };
     const auth = buildAuth(user, input.studioName);
     current = { user, activeStudio: auth.activeStudio, memberships: auth.memberships };
@@ -78,6 +79,7 @@ export const mockAuthService: AuthService = {
       fullName: input.fullName,
       phone: input.phone,
       globalRole: "Standard" as const,
+      emailVerified: true,
     };
     const auth = buildAuth(user, null);
     current = { user, activeStudio: null, memberships: [] };
@@ -92,6 +94,7 @@ export const mockAuthService: AuthService = {
       fullName: "Mock Kullanıcı",
       phone: null,
       globalRole: "Standard" as const,
+      emailVerified: true,
     };
     const auth = buildAuth(user, "Zen Pilates");
     current = { user, activeStudio: auth.activeStudio, memberships: auth.memberships };
@@ -115,5 +118,18 @@ export const mockAuthService: AuthService = {
     await delay(100);
     current = null;
     tokenStore.clear();
+  },
+
+  async verifyEmail() {
+    await delay(100);
+  },
+  async resendVerification() {
+    await delay(100);
+  },
+  async forgotPassword() {
+    await delay(100);
+  },
+  async resetPassword() {
+    await delay(100);
   },
 };

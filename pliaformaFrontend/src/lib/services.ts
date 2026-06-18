@@ -15,6 +15,11 @@ export interface AuthService {
   switchStudio(studioId: string): Promise<AuthResponse>;
   me(): Promise<MeResult>;
   logout(): Promise<void>;
+  // Sprint 16: e-posta doğrulama + şifre sıfırlama
+  verifyEmail(token: string): Promise<void>;
+  resendVerification(): Promise<void>;
+  forgotPassword(email: string): Promise<void>;
+  resetPassword(token: string, newPassword: string): Promise<void>;
 }
 
 const realAuthService: AuthService = {
@@ -28,6 +33,14 @@ const realAuthService: AuthService = {
     api<AuthResponse>("/api/auth/switch-studio", { method: "POST", body: { studioId } }),
   me: () => api<MeResult>("/api/auth/me"),
   logout: () => api<null>("/api/auth/logout", { method: "POST", skipAuthRetry: true }).then(() => undefined),
+  verifyEmail: (token) =>
+    api<null>("/api/auth/verify-email", { method: "POST", body: { token }, skipAuthRetry: true }).then(() => undefined),
+  resendVerification: () =>
+    api<null>("/api/auth/resend-verification-email", { method: "POST", body: {} }).then(() => undefined),
+  forgotPassword: (email) =>
+    api<null>("/api/auth/forgot-password", { method: "POST", body: { email }, skipAuthRetry: true }).then(() => undefined),
+  resetPassword: (token, newPassword) =>
+    api<null>("/api/auth/reset-password", { method: "POST", body: { token, newPassword }, skipAuthRetry: true }).then(() => undefined),
 };
 
 const useMock = process.env.NEXT_PUBLIC_USE_MOCK === "true";

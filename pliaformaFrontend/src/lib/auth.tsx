@@ -26,6 +26,8 @@ interface AuthContextValue extends AuthState {
   register: (input: RegisterInput) => Promise<AuthResponse>;
   switchStudio: (studioId: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
+  /** Sprint 16: /me'yi yeniden çekip durumu (örn. emailVerified) günceller. */
+  reloadMe: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -104,8 +106,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const reloadMe = async () => {
+    try {
+      const me = await authService.me();
+      setState({ user: me.user, activeStudio: me.activeStudio ?? null, memberships: me.memberships, loading: false });
+    } catch {
+      /* oturum yoksa sessiz geç */
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ ...state, login, registerStudio, register, switchStudio, logout }}>
+    <AuthContext.Provider value={{ ...state, login, registerStudio, register, switchStudio, logout, reloadMe }}>
       {children}
     </AuthContext.Provider>
   );

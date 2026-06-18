@@ -14,6 +14,7 @@ public interface IAppDbContext
     DbSet<Studio> Studios { get; }
     DbSet<StudioMembership> StudioMemberships { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
+    DbSet<AuthToken> AuthTokens { get; }
     DbSet<InstructorProfile> InstructorProfiles { get; }
     DbSet<ClassType> ClassTypes { get; }
     DbSet<InstructorClassType> InstructorClassTypes { get; }

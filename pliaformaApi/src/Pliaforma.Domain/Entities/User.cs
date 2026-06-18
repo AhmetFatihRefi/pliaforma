@@ -22,6 +22,12 @@ public class User : BaseEntity
     public bool IsActive { get; set; } = true;
     public DateTime? LastLoginAt { get; set; }
 
+    /// <summary>
+    /// E-posta doğrulandığı an (UTC). null → doğrulanmamış (Sprint 16). Mevcut kullanıcılar migration
+    /// backfill ile doğrulanmış sayılır. Doğrulanmamış kullanıcı login olabilir ama stüdyoya başvuramaz.
+    /// </summary>
+    public DateTime? EmailVerifiedAt { get; set; }
+
     public ICollection<StudioMembership> Memberships { get; set; } = new List<StudioMembership>();
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 }

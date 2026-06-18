@@ -47,6 +47,11 @@ public sealed class ApplyToStudioHandler : ICommandHandler<ApplyToStudioCommand,
         if (request.Role is not (StudioRole.Student or StudioRole.Instructor))
             throw new BusinessRuleException("Yalnızca Öğrenci veya Hoca olarak başvurabilirsiniz.");
 
+        // Sprint 16: e-posta doğrulanmadan stüdyoya katılım isteği gönderilemez (login/logout/resend açık).
+        var verified = await _db.Users.Where(u => u.Id == userId).Select(u => u.EmailVerifiedAt).FirstOrDefaultAsync(cancellationToken);
+        if (verified is null)
+            throw new ForbiddenException("Stüdyoya katılmak için önce e-posta adresinizi doğrulayın.");
+
         var code = JoinCode.Normalize(request.JoinCode);
         // Geçersiz/pasif kod → generic 404 (stüdyo varlığı/ismi sızdırılmaz).
         var studio = await _db.Studios.FirstOrDefaultAsync(
