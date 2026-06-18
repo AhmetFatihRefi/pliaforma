@@ -49,19 +49,22 @@ RI0=$(post /api/auth/register "{\"fullName\":\"Hoca Intent\",\"email\":\"$IE0\",
 expect "register intent=Instructor → 200" 200 "$(code "$RI0")"
 expect "auth yanıtı registrationIntent=Instructor" yes "$(has "$(body "$RI0")" '"registrationIntent":"Instructor"')"
 
-echo "--- 1) Hoca JoinCode self-apply KAPALI, Öğrenci açık ---"
+echo "--- 1) Rev3 invite-only: self-apply KAPALI (Student + Instructor → 410) ---"
 SE="stu17+$TS@pf.local"; regv "Stu" "$SE"; STOK=$(login "$SE")
-expect "Instructor JoinCode apply → 400" 400 "$(code "$(apply "$JCA" "Instructor" "$STOK")")"
-expect "Student JoinCode apply → 200" 200 "$(code "$(apply "$JCA" "Student" "$STOK")")"
+expect "Instructor JoinCode apply → 410 (invite-only)" 410 "$(code "$(apply "$JCA" "Instructor" "$STOK")")"
+expect "Student JoinCode apply → 410 (invite-only)" 410 "$(code "$(apply "$JCA" "Student" "$STOK")")"
 
-echo "--- 1b) Rev2: DOĞRULANMAMIŞ öğrenci apply yapabilir; aktivasyon (accept) gate'i e-posta ister ---"
-USE="ustu17+$TS@pf.local"; reg "UStu" "$USE"; USID=$(uid "$USE"); USTOK=$(login "$USE")   # UNVERIFIED
-RUA=$(apply "$JCA" "Student" "$USTOK"); expect "unverified Student apply → 200 (Pending)" 200 "$(code "$RUA")"
-USMID=$(body "$RUA" | jget membershipId)
-expect "apply sonrası StudentProfile YOK (0)" 0 "$(scount "$USID" "$SID_A")"
-expect "owner unverified öğrenciyi accept → 403 (aktivasyon gate'i)" 403 "$(pcode "/api/members/$USMID/accept" '{}' "$ATOK")"
+echo "--- 1b) Stüdyo ÖĞRENCİ davet eder → Pending; profil kabulde; aktivasyon e-posta ister ---"
+USE="ustu17+$TS@pf.local"; reg "UStu" "$USE"; USID=$(uid "$USE")   # UNVERIFIED
+RUI=$(invite "$USE" "Student" "$ATOK"); expect "Owner öğrenci davet → 200" 200 "$(code "$RUI")"
+USMID=$(body "$RUI" | jget membershipId)
+expect "invite yanıtında profil YOK (null)" "" "$(body "$RUI" | jget instructorProfileId)"
+expect "invite anında StudentProfile YOK (0)" 0 "$(scount "$USID" "$SID_A")"
+USTOK=$(login "$USE")
+expect "öğrenci daveti my-invitations'ında" yes "$(has "$(myinv "$USTOK")" "$USMID")"
+expect "unverified öğrenci accept → 403 (aktivasyon gate'i)" 403 "$(pcode "/api/members/$USMID/accept" '{}' "$USTOK")"
 vrf "$USE"
-expect "doğrulama sonrası owner accept → 200" 200 "$(pcode "/api/members/$USMID/accept" '{}' "$ATOK")"
+expect "doğrulama sonrası accept → 200" 200 "$(pcode "/api/members/$USMID/accept" '{}' "$USTOK")"
 expect "kabul sonrası StudentProfile oluştu (1)" 1 "$(scount "$USID" "$SID_A")"
 
 echo "--- 2) Stüdyo hoca davet eder → Pending + profil YOK + bildirim ---"

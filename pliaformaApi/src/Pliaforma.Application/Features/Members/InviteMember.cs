@@ -30,9 +30,10 @@ public sealed class InviteMemberValidator : AbstractValidator<InviteMemberComman
     public InviteMemberValidator()
     {
         RuleFor(x => x.Email).NotEmpty().EmailAddress();
+        // Rev3: invite-only onboarding → stüdyo Öğrenci, Hoca veya StudioAdmin davet edebilir (Owner yok; o register'la gelir).
         RuleFor(x => x.Role)
-            .Must(r => r is StudioRole.StudioAdmin or StudioRole.Instructor)
-            .WithMessage("Rol yalnızca StudioAdmin veya Instructor olabilir.");
+            .Must(r => r is StudioRole.StudioAdmin or StudioRole.Instructor or StudioRole.Student)
+            .WithMessage("Rol yalnızca StudioAdmin, Instructor veya Student olabilir.");
         RuleFor(x => x.DisplayName).MaximumLength(150);
         RuleFor(x => x.Rate).GreaterThanOrEqualTo(0).When(x => x.Rate.HasValue);
     }
@@ -145,6 +146,7 @@ public sealed class InviteMemberHandler : ICommandHandler<InviteMemberCommand, M
     {
         StudioRole.Instructor => "hoca",
         StudioRole.StudioAdmin => "yönetici",
+        StudioRole.Student => "öğrenci",
         _ => role.ToString(),
     };
 }

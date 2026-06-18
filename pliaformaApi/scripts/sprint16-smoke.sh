@@ -55,21 +55,20 @@ VT1=$(vtoken "$E1")
 expect "ham token log'a yazıldı (LogEmailSender)" yes "$([ -n "$VT1" ] && echo yes || echo no)"
 expect "DB'de ham token TUTULMUYOR (hash != ham)" 0 "$(sql "SELECT count(*) FROM \"AuthTokens\" WHERE \"TokenHash\"='$VT1';")"
 
-echo "--- 2) Unverified apply artık PENDING oluşturur (Rev2: e-posta gate'i apply'da DEĞİL, aktivasyonda) ---"
+echo "--- 2) Rev3: self-apply KAPALI (410); aktivasyon gate'i DAVET üzerinden ---"
 ATOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S16 $TS\",\"ownerFullName\":\"O\",\"email\":\"s16owner+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 JCA=$(curl -s "$BASE/api/studio/join-code" -H "Authorization: Bearer $ATOK" | jget joinCode)
-RAP=$(post /api/members/apply "{\"joinCode\":\"$JCA\",\"role\":\"Student\"}" "$U1TOK")
-expect "unverified kullanıcı apply → 200 (Pending)" 200 "$(code "$RAP")"
-MID=$(body "$RAP" | jget membershipId)
-expect "unverified applicant'ı owner accept → 403 (aktivasyon gate'i)" 403 "$(pcode "/api/members/$MID/accept" '{}' "$ATOK")"
+expect "self-apply → 410 (invite-only)" 410 "$(pcode /api/members/apply "{\"joinCode\":\"$JCA\",\"role\":\"Student\"}" "$U1TOK")"
+MID=$(body "$(post /api/studio/memberships/invite "{\"email\":\"$E1\",\"role\":\"Student\"}" "$ATOK")" | jget membershipId)
+expect "unverified davet kabul → 403 (aktivasyon gate'i)" 403 "$(pcode "/api/members/$MID/accept" '{}' "$U1TOK")"
 
 echo "--- 3) Verify başarılı + ikinci kez geçersiz ---"
 expect "verify token → 200" 200 "$(verifyc "$VT1")"
 expect "verify sonrası login'de emailVerified=true" yes "$(has "$(body "$(post /api/auth/login "{\"email\":\"$E1\",\"password\":\"$PW\"}")")" '"emailVerified":true')"
 expect "aynı token ikinci kez → 409" 409 "$(verifyc "$VT1")"
 
-echo "--- 4) Doğrulama sonrası owner aktive edebilir (aktivasyon gate'i geçer) ---"
-expect "verified applicant'ı owner accept → 200" 200 "$(pcode "/api/members/$MID/accept" '{}' "$ATOK")"
+echo "--- 4) Doğrulama sonrası davet kabulü → 200 (aktivasyon gate'i geçer) ---"
+expect "verified davet kabul → 200" 200 "$(pcode "/api/members/$MID/accept" '{}' "$U1TOK")"
 
 echo "--- 5) Expired token geçersiz ---"
 E2="s16exp+$TS@pf.local"; R2=$(reg "$E2"); U2=$(uid "$E2"); VT2=$(vtoken "$E2")

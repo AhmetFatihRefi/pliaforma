@@ -85,8 +85,8 @@ export default function InstructorsPage() {
     load();
   }, [load]);
 
-  // StudioAdmin yalnızca Instructor davet edebilir (Owner her ikisini).
-  const inviteRoleOptions: StudioRole[] = isOwner ? ["Instructor", "StudioAdmin"] : ["Instructor"];
+  // Rev3 (invite-only): stüdyo Öğrenci + Hoca davet edebilir; StudioAdmin yalnız Owner tarafından.
+  const inviteRoleOptions: StudioRole[] = isOwner ? ["Instructor", "Student", "StudioAdmin"] : ["Instructor", "Student"];
 
   const sendInvite = async (e: React.FormEvent) => {
     e.preventDefault();

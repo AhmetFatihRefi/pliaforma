@@ -38,3 +38,9 @@ public sealed class ConflictException : AppException
 {
     public ConflictException(string message) : base(message) { }
 }
+
+/// <summary>Kullanımdan kaldırılmış/artık desteklenmeyen akış (HTTP 410 Gone). Örn. JoinCode self-apply (Rev3 invite-only).</summary>
+public sealed class GoneException : AppException
+{
+    public GoneException(string message) : base(message) { }
+}

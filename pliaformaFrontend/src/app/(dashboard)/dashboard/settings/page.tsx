@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { studioService, memberService } from "@/lib/studioApi";
+import { useEffect, useState } from "react";
+import { studioService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import { useRole } from "@/lib/useRole";
-import type { StudioDto, JoinCodeDto } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input } from "@/components/ui";
+import type { StudioDto } from "@/lib/domain-types";
+import { Alert, Button, Card, FormField, Input } from "@/components/ui";
 
 type FormState = Omit<StudioDto, "id" | "slug" | "isActive">;
 
@@ -106,74 +106,7 @@ export default function SettingsPage() {
           )}
         </form>
       </Card>
-
-      {canManage && <JoinCodeCard />}
+      {/* Sprint 17 Rev3: JoinCode kartı kaldırıldı — onboarding artık invite-only (kodla katılım yok). */}
     </div>
-  );
-}
-
-/** Sprint 15: stüdyo katılım kodu — öğrenci/hoca bu kodla katılım isteği gönderir. */
-function JoinCodeCard() {
-  const [code, setCode] = useState<JoinCodeDto | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      setCode(await memberService.joinCode());
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Katılım kodu yüklenemedi.");
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const regenerate = async () => {
-    if (!confirm("Yeni kod üretilsin mi? Eski kod artık çalışmayacak.")) return;
-    setBusy(true);
-    setError(null);
-    try {
-      setCode(await memberService.regenerateJoinCode());
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Kod yenilenemedi.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const copy = async () => {
-    if (!code) return;
-    try {
-      await navigator.clipboard.writeText(code.joinCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard yoksa sessiz geç */
-    }
-  };
-
-  return (
-    <Card>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-foreground">Katılım kodu</h2>
-        {code && <Badge tone={code.isActive ? "success" : "neutral"}>{code.isActive ? "Aktif" : "Pasif"}</Badge>}
-      </div>
-      <p className="mb-4 text-sm text-muted">
-        Öğrenciler ve hocalar bu kodu girip stüdyonuza katılım isteği gönderir. İsteği siz onaylarsınız.
-      </p>
-      {error && <Alert kind="error">{error}</Alert>}
-      {code && (
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="rounded-xl border border-border bg-surface-muted px-4 py-2 font-mono text-lg tracking-widest text-foreground">
-            {code.formattedJoinCode || "—"}
-          </span>
-          <Button variant="secondary" size="sm" onClick={copy}>{copied ? "Kopyalandı" : "Kopyala"}</Button>
-          <Button variant="ghost" size="sm" loading={busy} onClick={regenerate}>Kodu yenile</Button>
-        </div>
-      )}
-    </Card>
   );
 }

@@ -7,51 +7,39 @@ import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
 import { membershipService } from "@/lib/studioApi";
 import { authService } from "@/lib/services";
-import type { MyJoinRequestDto, PendingInvitationDto } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input } from "@/components/ui";
+import type { PendingInvitationDto } from "@/lib/domain-types";
+import { Alert, Badge, Button, Card } from "@/components/ui";
 
 /**
- * Stüdyosuz kullanıcı alanı + "Davetlerim ve katılım" ekranı (Sprint 15 → Sprint 17 Rev2).
+ * Stüdyosuz kullanıcı alanı + "Davetlerim" ekranı (Sprint 17 Rev3 — invite-only onboarding).
  *
- * Kayıt niyetine (user.registrationIntent) göre dallanır:
- *  - Instructor → JoinCode formu YOK; "stüdyo sizi davet etmeli" + Davetlerim (hoca davetle katılır).
- *  - Student    → JoinCode formu + Davetlerim.
- *  - Unknown    → nötr seçim ekranı (öğrenci başvurusu / hoca davet bekleme).
+ * JoinCode / self-apply KALDIRILDI: ne öğrenci ne hoca kodla başvurur. Stüdyoya katılım yalnızca stüdyonun
+ * **daveti** ile olur. Bu ekranda yalnız: niyet'e göre bilgilendirme + Davetlerim (kabul/ret) + kendi
+ * stüdyonu oluştur + çıkış. RegistrationIntent yalnız metni belirler (davranışa etki etmez).
  *
- * E-posta doğrulama: görüntülemeyi/başvuruyu ENGELLEMEZ. Yalnız üyelik AKTİFLEŞİRKEN (kabul/onay) gerekir.
+ * E-posta doğrulama: görüntülemeyi/reddetmeyi engellemez; yalnız üyelik AKTİFLEŞİRKEN (kabul) gerekir.
  */
 export default function JoinStudioPage() {
   const { user, memberships, logout, switchStudio, reloadMe } = useAuth();
   const router = useRouter();
 
   const intent = user?.registrationIntent ?? "Unknown";
-  const [choice, setChoice] = useState<"student" | "instructor" | null>(null);
-  const view: "student" | "instructor" | "chooser" =
-    intent === "Student" ? "student" : intent === "Instructor" ? "instructor" : (choice ?? "chooser");
+  const hasMembership = memberships.length > 0;
+  const verified = user?.emailVerified ?? true;
 
-  const [joinCode, setJoinCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [okMsg, setOkMsg] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [requests, setRequests] = useState<MyJoinRequestDto[]>([]);
   const [invitations, setInvitations] = useState<PendingInvitationDto[]>([]);
   const [inviteBusyId, setInviteBusyId] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [okMsg, setOkMsg] = useState<string | null>(null);
   const invitationsRef = useRef<HTMLDivElement>(null);
 
-  const verified = user?.emailVerified ?? true;
-  const hasMembership = memberships.length > 0;
-
-  const loadRequests = useCallback(async () => {
-    try { setRequests(await membershipService.myJoinRequests()); } catch { setRequests([]); }
-  }, []);
   const loadInvitations = useCallback(async () => {
     try { setInvitations(await membershipService.myInvitations()); } catch { setInvitations([]); }
   }, []);
 
-  useEffect(() => { loadRequests(); loadInvitations(); }, [loadRequests, loadInvitations]);
+  useEffect(() => { loadInvitations(); }, [loadInvitations]);
 
-  // Bildirim derin linki: /join-studio?tab=invitations veya #invitations → Davetlerim bölümüne kaydır.
+  // Bildirim derin linki: /join-studio?tab=invitations veya #invitations → Davetlerim'e kaydır.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -59,20 +47,6 @@ export default function JoinStudioPage() {
       invitationsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [invitations.length]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null); setOkMsg(null); setLoading(true);
-    try {
-      // Sprint 17: kodla başvuru yalnız Öğrenci rolüyle. Doğrulama başvuruyu engellemez (aktivasyonda gerekir).
-      await membershipService.apply(joinCode, "Student");
-      setOkMsg("Başvurunuz gönderildi. Stüdyo onayladığında üye olacaksınız.");
-      setJoinCode("");
-      await loadRequests();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Başvuru gönderilemedi.");
-    } finally { setLoading(false); }
-  };
 
   const acceptInvite = async (inv: PendingInvitationDto) => {
     setInviteError(null); setInviteBusyId(inv.membershipId);
@@ -95,16 +69,11 @@ export default function JoinStudioPage() {
 
   const rejectInvite = async (inv: PendingInvitationDto) => {
     setInviteError(null); setInviteBusyId(inv.membershipId);
-    try {
-      await membershipService.reject(inv.membershipId);
-      await loadInvitations();
-    } catch (err) {
-      setInviteError(err instanceof ApiError ? err.message : "Davet reddedilemedi.");
-    } finally { setInviteBusyId(null); }
+    try { await membershipService.reject(inv.membershipId); await loadInvitations(); }
+    catch (err) { setInviteError(err instanceof ApiError ? err.message : "Davet reddedilemedi."); }
+    finally { setInviteBusyId(null); }
   };
 
-  const pending = requests.filter((r) => r.status === "Pending");
-  const rejected = requests.filter((r) => r.status === "Rejected");
   const roleLabel = (r: string) => (r === "Instructor" ? "Hoca" : r === "StudioAdmin" ? "Yönetici" : "Öğrenci");
 
   const [resending, setResending] = useState(false);
@@ -116,29 +85,27 @@ export default function JoinStudioPage() {
     finally { setResending(false); }
   };
 
-  const title =
-    view === "instructor" ? (hasMembership ? "Davetler" : "Davet bekliyorsunuz")
-    : view === "student" ? (hasMembership ? "Davetler ve stüdyoya katılım" : "Bir stüdyoya katılın")
-    : "Henüz bir stüdyoya bağlı değilsiniz";
+  // Niyet'e göre bilgilendirme metni (yalnız UX — kodla başvuru yok).
+  const intentText =
+    intent === "Instructor" ? "Bir stüdyoya hoca olarak katılmak için stüdyonun sizi davet etmesi gerekir."
+    : intent === "Student" ? "Bir stüdyoya öğrenci olarak katılmak için stüdyonun sizi davet etmesi gerekir."
+    : "Bir stüdyoya katılmak için stüdyo tarafından davet edilmeniz gerekir.";
 
   return (
     <Card>
-      <h1 className="mb-1 text-xl font-semibold text-foreground">{title}</h1>
-      <p className="mb-6 text-sm text-muted">
-        {user?.fullName ? `Merhaba ${user.fullName}. ` : ""}
-        {view === "instructor"
-          ? "Bir stüdyoya hoca olarak katılmak için stüdyo sahibinin sizi e-posta adresinizle davet etmesi gerekir. Davet geldiğinde aşağıda görünecek."
-          : view === "student"
-          ? "Stüdyonuzdan aldığınız öğrenci koduyla başvurun ya da size gelen daveti kabul edin."
-          : "Nasıl devam etmek istediğinizi seçin."}
+      <h1 className="mb-1 text-xl font-semibold text-foreground">
+        {hasMembership ? "Davetler" : "Henüz bir stüdyoya bağlı değilsiniz"}
+      </h1>
+      <p className="mb-2 text-sm text-muted">
+        {user?.fullName ? `Merhaba ${user.fullName}. ` : ""}{intentText}
       </p>
+      <p className="mb-6 text-sm text-muted">Bir davet geldiğinde aşağıdaki “Davetlerim” bölümünde görünecek.</p>
 
-      {/* E-posta doğrulama: yumuşak bilgilendirme — görüntüleme/başvuruyu engellemez. */}
       {!verified && (
         <div className="mb-5 space-y-2">
           <Alert kind="info">
-            E-posta adresiniz henüz doğrulanmadı. Davetleri görebilir ve başvuru yapabilirsiniz; ancak
-            <strong> üyeliğin aktifleşmesi (kabul/onay)</strong> için doğrulama gerekir.
+            E-posta adresiniz henüz doğrulanmadı. Davetleri görebilirsiniz; ancak
+            <strong> üyeliğin aktifleşmesi (daveti kabul)</strong> için doğrulama gerekir.
           </Alert>
           <div className="flex items-center gap-3">
             <Button variant="secondary" size="sm" loading={resending} onClick={resendVerification}>
@@ -149,35 +116,15 @@ export default function JoinStudioPage() {
         </div>
       )}
 
-      {/* Nötr seçim ekranı (Unknown intent) */}
-      {view === "chooser" && (
-        <div className="mb-2 grid gap-3">
-          <button
-            onClick={() => setChoice("student")}
-            className="rounded-xl border border-border bg-surface px-4 py-3 text-left hover:border-primary"
-          >
-            <p className="text-sm font-medium text-foreground">Öğrenci olarak stüdyoya başvur</p>
-            <p className="text-xs text-muted">Stüdyonuzun verdiği katılım koduyla başvurun.</p>
-          </button>
-          <button
-            onClick={() => setChoice("instructor")}
-            className="rounded-xl border border-border bg-surface px-4 py-3 text-left hover:border-primary"
-          >
-            <p className="text-sm font-medium text-foreground">Hoca olarak davet bekliyorum</p>
-            <p className="text-xs text-muted">Stüdyo sizi e-posta ile davet eder; davet burada görünür.</p>
-          </button>
-        </div>
-      )}
+      {okMsg && <Alert kind="success">{okMsg}</Alert>}
 
-      {/* Davetlerim — tüm görünümlerde */}
-      <div ref={invitationsRef} id="invitations" className="mt-6 scroll-mt-6">
+      {/* Davetlerim */}
+      <div ref={invitationsRef} id="invitations" className="mt-2 scroll-mt-6">
         <h2 className="mb-2 text-sm font-semibold text-foreground">Davetlerim</h2>
         {inviteError && <Alert kind="error">{inviteError}</Alert>}
         {invitations.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-xs text-muted">
-            {view === "instructor"
-              ? "Henüz bir davetiniz yok. Bir stüdyo sizi davet ettiğinde burada görünecek."
-              : "Bekleyen davetiniz yok. Bir stüdyo sizi davet ettiğinde burada görünür."}
+            Bekleyen davetiniz yok. Bir stüdyo sizi davet ettiğinde burada görünecek.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -191,27 +138,15 @@ export default function JoinStudioPage() {
                   <Badge tone="rose">Davet</Badge>
                 </div>
                 <div className="mt-3 flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    loading={inviteBusyId === inv.membershipId}
-                    disabled={inviteBusyId !== null}
-                    onClick={() => acceptInvite(inv)}
-                  >
+                  <Button size="sm" loading={inviteBusyId === inv.membershipId} disabled={inviteBusyId !== null} onClick={() => acceptInvite(inv)}>
                     Kabul et
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={inviteBusyId !== null}
-                    onClick={() => rejectInvite(inv)}
-                  >
+                  <Button size="sm" variant="secondary" disabled={inviteBusyId !== null} onClick={() => rejectInvite(inv)}>
                     Reddet
                   </Button>
                 </div>
                 {!verified && (
-                  <p className="mt-2 text-[11px] text-muted">
-                    Kabul için önce e-posta adresinizi doğrulamanız gerekir.
-                  </p>
+                  <p className="mt-2 text-[11px] text-muted">Kabul için önce e-posta adresinizi doğrulamanız gerekir.</p>
                 )}
               </li>
             ))}
@@ -219,73 +154,7 @@ export default function JoinStudioPage() {
         )}
       </div>
 
-      {/* Öğrenci kodu ile başvuru — yalnız student görünümünde */}
-      {view === "student" && (
-        <form onSubmit={submit} className="mt-6 space-y-4">
-          <h2 className="text-sm font-semibold text-foreground">Öğrenci olarak katıl</h2>
-          {error && <Alert kind="error">{error}</Alert>}
-          {okMsg && <Alert kind="success">{okMsg}</Alert>}
-
-          <FormField label="Katılım kodu" htmlFor="joinCode" hint="Stüdyonuzdan aldığınız öğrenci kodu. Örn. ABCD-EFGH-JK">
-            <Input
-              id="joinCode"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              placeholder="ABCD-EFGH-JK"
-              autoCapitalize="characters"
-              required
-            />
-          </FormField>
-
-          <p className="text-xs text-muted">Hocalar kodla başvuramaz; bir stüdyonun sizi davet etmesi gerekir.</p>
-
-          <Button type="submit" loading={loading} className="w-full">Öğrenci başvurusu gönder</Button>
-        </form>
-      )}
-
-      {okMsg && view !== "student" && <Alert kind="success">{okMsg}</Alert>}
-
-      {pending.length > 0 && (
-        <div className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Bekleyen başvurularım</h2>
-          <ul className="space-y-2">
-            {pending.map((r) => (
-              <li key={r.membershipId} className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{r.studioName}</p>
-                  <p className="text-xs text-muted">{roleLabel(r.requestedRole)} · {r.requestedAt.slice(0, 10)}</p>
-                </div>
-                <Badge tone="warning">Onay bekliyor</Badge>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {rejected.length > 0 && (
-        <div className="mt-6">
-          <h2 className="mb-2 text-sm font-semibold text-foreground">Reddedilen başvurularım</h2>
-          <ul className="space-y-2">
-            {rejected.map((r) => (
-              <li key={r.membershipId} className="flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{r.studioName}</p>
-                  <p className="text-xs text-muted">{roleLabel(r.requestedRole)} · {(r.rejectedAt ?? r.requestedAt).slice(0, 10)}</p>
-                </div>
-                <Badge tone="neutral">Reddedildi</Badge>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-muted">Reddedilen bir stüdyoya yeniden başvurabilirsiniz.</p>
-        </div>
-      )}
-
-      {/* İleride: stüdyo keşfi / yakındaki stüdyolar / öne çıkan stüdyolar (discovery) buraya gelecek. */}
-      <p className="mt-6 rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-[11px] text-muted">
-        Yakında: yakınınızdaki ve öne çıkan stüdyoları buradan keşfedip katılabileceksiniz.
-      </p>
-
-      <div className="mt-6 flex items-center justify-between text-sm">
+      <div className="mt-8 flex items-center justify-between text-sm">
         <Link href="/register-studio" className="font-medium text-primary hover:text-primary-hover">
           Kendi stüdyonuzu açın
         </Link>

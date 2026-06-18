@@ -22,10 +22,12 @@ test.describe("Self-service kayıt & katılım (Sprint 15)", () => {
     await expect(page.getByRole("heading", { name: "E-posta adresinizi doğrulayın" })).toBeVisible();
   });
 
-  test("Owner ayarlarda katılım kodunu görür + yenileyebilir", async ({ page }) => {
+  // Sprint 17 Rev3 (invite-only): JoinCode kartı ayarlardan kaldırıldı → artık görünmemeli.
+  test("Owner ayarlarında 'Katılım kodu' kartı YOK (invite-only)", async ({ page }) => {
     await login(page, users.owner);
     await page.goto("/dashboard/settings");
-    await expect(page.getByRole("heading", { name: "Katılım kodu" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Kodu yenile" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Stüdyo Ayarları" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Katılım kodu" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Kodu yenile" })).toHaveCount(0);
   });
 });

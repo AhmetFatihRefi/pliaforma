@@ -41,6 +41,7 @@ public sealed class ExceptionHandlingMiddleware
             NotFoundException => (HttpStatusCode.NotFound, ex.Message, null),
             ConflictException => (HttpStatusCode.Conflict, ex.Message, null),
             BusinessRuleException => (HttpStatusCode.Conflict, ex.Message, null),
+            GoneException => (HttpStatusCode.Gone, ex.Message, null),
             _ => (HttpStatusCode.InternalServerError, "Beklenmeyen bir hata oluştu.", (IReadOnlyDictionary<string, string[]>?)null),
         };
 

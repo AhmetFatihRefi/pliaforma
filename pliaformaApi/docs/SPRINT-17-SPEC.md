@@ -4,6 +4,26 @@
 > sprint (büyük feature değil — mevcut davet akışının UI + bildirim tamamlanması).
 > Bu turda yalnızca bu dosya yazılır; kod/migration **yazılmaz**.
 
+---
+
+## ⚠️ Rev3 (invite-only onboarding) — JoinCode self-apply DEPRECATED
+
+> **Güncel ürün kararı (Sprint 17 Rev3):** Stüdyoya katılım **yalnızca davet ile** yapılır. **JoinCode ile
+> self-service başvuru tamamen kaldırıldı** — ne öğrenci ne hoca kodla başvurur.
+>
+> - `POST /api/members/apply` (`ApplyToStudioCommand`) artık **her zaman `410 Gone`** döner
+>   ("Stüdyoya katılım yalnız davet ile yapılır."). Komut/endpoint geriye-uyum için durur ama kayıt oluşturmaz.
+> - `/join-studio` ekranında **kod inputu / başvuru formu / rol seçici YOK** — yalnız bilgilendirme + Davetlerim.
+> - Stüdyo ayarlarındaki **"Katılım kodu" kartı (yenile/kopyala) kaldırıldı**.
+> - Stüdyo davet ederken rol **Öğrenci veya Hoca** (ve Owner ise StudioAdmin) seçebilir → `InviteMember` artık
+>   `Student` rolünü de kabul eder. Profil **kabulde** oluşur (Student→StudentProfile, Instructor→InstructorProfile).
+> - `EmailVerifiedAt` gate'i yalnız **üyelik aktifleşirken** (AcceptMembership, her iki yön) uygulanır.
+> - `RegistrationIntent` **yalnız UX metni** için korunur (hiçbir intent kodla başvuru açmaz).
+> - **DB borcu:** `Studios.JoinCode*` kolonları ve join-code üretim endpoint'leri **DB'de bırakıldı**
+>   (drop/migration yapılmadı — riskli); yalnız ürün UI/akışından kaldırıldı. İleride temizlenebilir.
+>
+> Aşağıdaki orijinal Sprint 17 / Rev1 / Rev2 metni tarihsel bağlam içindir; çelişen yerlerde **Rev3 geçerlidir**.
+
 ## Amaç
 
 İki onboarding modelini netleştirmek ve mevcut davet akışının eksik UI/bildirim parçalarını tamamlamak:
