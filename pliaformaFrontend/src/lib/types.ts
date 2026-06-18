@@ -4,6 +4,8 @@
 export type GlobalRole = "Standard" | "PlatformAdmin";
 export type StudioRole = "Owner" | "StudioAdmin" | "Instructor" | "Student";
 export type MembershipStatus = "Pending" | "Active" | "Rejected" | "Removed";
+/** Sprint 17 Rev2: kayıt niyeti (UX). Stüdyosuz kullanıcının /join-studio ekranını belirler; yetki kaynağı değil. */
+export type RegistrationIntent = "Unknown" | "Student" | "Instructor";
 
 export interface UserDto {
   id: string;
@@ -13,6 +15,8 @@ export interface UserDto {
   globalRole: GlobalRole;
   /** Sprint 16: e-posta doğrulandı mı (gating bu alana bakar, mesaj string'ine değil). */
   emailVerified: boolean;
+  /** Sprint 17 Rev2: kayıt niyeti (öğrenci/hoca) — yalnız /join-studio UX'i için. */
+  registrationIntent: RegistrationIntent;
 }
 
 export interface MembershipDto {
@@ -69,6 +73,8 @@ export interface RegisterInput {
   email: string;
   password: string;
   phone?: string;
+  /** Sprint 17 Rev2: kayıt niyeti (öğrenci/hoca). */
+  intent?: RegistrationIntent;
 }
 export interface LoginInput {
   email: string;

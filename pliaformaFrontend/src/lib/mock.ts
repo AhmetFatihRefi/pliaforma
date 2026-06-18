@@ -65,6 +65,7 @@ export const mockAuthService: AuthService = {
       phone: input.phone,
       globalRole: "Standard" as const,
       emailVerified: true,
+      registrationIntent: "Unknown" as const,
     };
     const auth = buildAuth(user, input.studioName);
     current = { user, activeStudio: auth.activeStudio, memberships: auth.memberships };
@@ -80,6 +81,7 @@ export const mockAuthService: AuthService = {
       phone: input.phone,
       globalRole: "Standard" as const,
       emailVerified: true,
+      registrationIntent: "Unknown" as const,
     };
     const auth = buildAuth(user, null);
     current = { user, activeStudio: null, memberships: [] };
@@ -95,6 +97,7 @@ export const mockAuthService: AuthService = {
       phone: null,
       globalRole: "Standard" as const,
       emailVerified: true,
+      registrationIntent: "Unknown" as const,
     };
     const auth = buildAuth(user, "Zen Pilates");
     current = { user, activeStudio: auth.activeStudio, memberships: auth.memberships };

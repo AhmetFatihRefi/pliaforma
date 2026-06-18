@@ -15,6 +15,8 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({ fullName: "", email: "", password: "", phone: "" });
+  // Sprint 17 Rev2: kayıt niyeti — /join-studio ekranını belirler (öğrenci JoinCode formu vs. hoca davet bekleme).
+  const [intent, setIntent] = useState<"Student" | "Instructor">("Student");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(false);
@@ -28,7 +30,7 @@ export default function RegisterPage() {
     setFieldErrors({});
     setLoading(true);
     try {
-      await register({ ...form, phone: form.phone || undefined });
+      await register({ ...form, phone: form.phone || undefined, intent });
       router.replace("/check-email"); // Sprint 16: önce e-posta doğrulama ekranı
     } catch (err) {
       if (err instanceof ApiError) {
@@ -49,6 +51,27 @@ export default function RegisterPage() {
 
       <form onSubmit={onSubmit} className="space-y-4">
         {error && <Alert kind="error">{error}</Alert>}
+
+        <FormField label="Nasıl katılacaksınız?" htmlFor="intent" hint="Hocalar stüdyo davetiyle, öğrenciler katılım koduyla katılır. Sonradan değişebilir.">
+          <div className="grid grid-cols-2 gap-2" id="intent" role="radiogroup">
+            {([["Student", "Öğrenci"], ["Instructor", "Hoca"]] as const).map(([val, label]) => (
+              <button
+                key={val}
+                type="button"
+                role="radio"
+                aria-checked={intent === val}
+                onClick={() => setIntent(val)}
+                className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                  intent === val
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-border bg-surface text-muted hover:text-foreground"
+                }`}
+              >
+                {label} olarak
+              </button>
+            ))}
+          </div>
+        </FormField>
 
         <FormField label="Ad soyad" htmlFor="fullName" error={fe("FullName")}>
           <Input id="fullName" value={form.fullName} onChange={set("fullName")} required />

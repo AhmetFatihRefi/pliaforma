@@ -60,12 +60,18 @@ I1P=$(acceptMember "$INSTR" Instructor 200); ok "Instructor: $INSTR (profil $I1P
 # (zamanı sabit olmayan demo seansları bunun üzerinden oluşturulur; deterministic).
 I2P=$(acceptMember "$INSTR2" Instructor 180); ok "Instructor 2: $INSTR2 (profil $I2P)"
 
-# Sprint 17: stüdyosuz davetli — bekleyen hoca daveti olan ama KABUL ETMEMİŞ kullanıcı (Davetlerim E2E).
+# Sprint 17 Rev2: stüdyosuz davetli — INSTRUCTOR intent + bekleyen hoca daveti (Davetlerim/hoca empty-state E2E).
 INVITEE=e2e-invitee@pliaforma.local
-post /api/auth/register "{\"fullName\":\"E2E Invitee\",\"email\":\"$INVITEE\",\"password\":\"$PW\"}" >/dev/null
+post /api/auth/register "{\"fullName\":\"E2E Invitee\",\"email\":\"$INVITEE\",\"password\":\"$PW\",\"intent\":\"Instructor\"}" >/dev/null
 psql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$INVITEE';"
 post /api/studio/memberships/invite "{\"email\":\"$INVITEE\",\"role\":\"Instructor\"}" "$OTOK" >/dev/null
-ok "Stüdyosuz davetli (bekleyen hoca daveti): $INVITEE"
+ok "Stüdyosuz davetli (Instructor intent + bekleyen davet): $INVITEE"
+
+# Sprint 17 Rev2: STUDENT intent stüdyosuz kullanıcı (JoinCode formu görünmeli — daveti/üyeliği yok).
+NOJOIN=e2e-nojoin-student@pliaforma.local
+post /api/auth/register "{\"fullName\":\"E2E NoJoin Student\",\"email\":\"$NOJOIN\",\"password\":\"$PW\",\"intent\":\"Student\"}" >/dev/null
+psql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$NOJOIN';"
+ok "Stüdyosuz öğrenci (Student intent): $NOJOIN"
 
 echo "== 4) ClassType + Availability =="
 CT=$(body "$(post /api/class-types '{"name":"E2E Reformer","equipment":"Reformer","capacityType":"Group","maxCapacity":6,"level":"AllLevels","purpose":"General","defaultDurationMinutes":60}' "$OTOK")" | jget id)

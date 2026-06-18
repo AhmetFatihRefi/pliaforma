@@ -17,6 +17,9 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         b.Property(x => x.FullName).IsRequired().HasMaxLength(150);
         b.Property(x => x.Phone).HasMaxLength(32);
         b.Property(x => x.GlobalRole).HasConversion<string>().HasMaxLength(32);
+        // Sprint 17 Rev2: kayıt niyeti (UX). String saklanır; mevcut satırlar default 'Unknown'.
+        b.Property(x => x.RegistrationIntent).HasConversion<string>().HasMaxLength(16)
+            .HasDefaultValue(Pliaforma.Domain.Enums.RegistrationIntent.Unknown);
 
         // E-posta global benzersiz (normalize edilmiş).
         b.HasIndex(x => x.NormalizedEmail).IsUnique();

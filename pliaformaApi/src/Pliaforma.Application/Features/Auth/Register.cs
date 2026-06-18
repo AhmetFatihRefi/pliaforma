@@ -19,6 +19,7 @@ public sealed record RegisterCommand(
     string Email,
     string Password,
     string? Phone,
+    RegistrationIntent Intent = RegistrationIntent.Unknown,
     string? Ip = null) : ICommand<AuthResult>;
 
 public sealed class RegisterValidator : AbstractValidator<RegisterCommand>
@@ -65,6 +66,7 @@ public sealed class RegisterHandler : ICommandHandler<RegisterCommand, AuthResul
             FullName = request.FullName.Trim(),
             Phone = request.Phone?.Trim(),
             GlobalRole = GlobalRole.Standard,
+            RegistrationIntent = request.Intent,   // Sprint 17 Rev2: UX niyeti (öğrenci/hoca)
             // Sprint 16: yeni kayıt doğrulanmamış (EmailVerifiedAt=null).
         };
         _db.Users.Add(user);

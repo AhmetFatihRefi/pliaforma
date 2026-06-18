@@ -54,11 +54,8 @@ public sealed class ApplyToStudioHandler : ICommandHandler<ApplyToStudioCommand,
                     ["Role"] = new[] { "Hocalar bir stüdyoya kodla başvuramaz; stüdyonun davet etmesi gerekir." },
                 });
 
-        // Sprint 16: e-posta doğrulanmadan stüdyoya katılım isteği gönderilemez (login/logout/resend açık).
-        var verified = await _db.Users.Where(u => u.Id == userId).Select(u => u.EmailVerifiedAt).FirstOrDefaultAsync(cancellationToken);
-        if (verified is null)
-            throw new ForbiddenException("Stüdyoya katılmak için önce e-posta adresinizi doğrulayın.");
-
+        // Sprint 17 Rev2: e-posta doğrulaması artık BAŞVURU aşamasında ZORUNLU DEĞİL. Öğrenci doğrulanmadan da
+        // Pending başvuru oluşturabilir. Asıl gate ÜYELİK AKTİFLEŞİRKEN (AcceptMembership) uygulanır.
         var code = JoinCode.Normalize(request.JoinCode);
         // Geçersiz/pasif kod → generic 404 (stüdyo varlığı/ismi sızdırılmaz).
         var studio = await _db.Studios.FirstOrDefaultAsync(

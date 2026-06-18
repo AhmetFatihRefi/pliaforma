@@ -8,7 +8,8 @@ export const users = {
   admin: "e2e-admin@pliaforma.local",
   instructor: "e2e-instructor@pliaforma.local",
   student: "e2e-student@pliaforma.local",
-  invitee: "e2e-invitee@pliaforma.local", // Sprint 17: stüdyosuz, bekleyen hoca daveti olan kullanıcı
+  invitee: "e2e-invitee@pliaforma.local", // Sprint 17 Rev2: Instructor intent + bekleyen hoca daveti
+  nojoinStudent: "e2e-nojoin-student@pliaforma.local", // Sprint 17 Rev2: Student intent, stüdyosuz
 };
 
 /** /login üzerinden giriş yapar ve /login dışına yönlenmeyi bekler. */

@@ -85,7 +85,8 @@ public sealed class AuthSessionService
     }
 
     public static UserDto ToUserDto(User user) =>
-        new(user.Id, user.Email, user.FullName, user.Phone, user.GlobalRole, user.EmailVerifiedAt is not null);
+        new(user.Id, user.Email, user.FullName, user.Phone, user.GlobalRole, user.EmailVerifiedAt is not null,
+            user.RegistrationIntent);
 
     /// <summary>Kullanıcının tüm aktif refresh tokenlarını iptal eder (şifre sıfırlama sonrası — Sprint 16).</summary>
     public async Task RevokeAllRefreshTokensAsync(Guid userId, DateTime nowUtc, CancellationToken ct)

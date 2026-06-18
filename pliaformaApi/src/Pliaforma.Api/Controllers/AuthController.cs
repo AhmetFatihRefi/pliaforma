@@ -40,7 +40,8 @@ public sealed class AuthController : ControllerBase
     public async Task<IActionResult> Register(RegisterRequest body, CancellationToken ct)
     {
         var result = await _dispatcher.Send(
-            new RegisterCommand(body.FullName, body.Email, body.Password, body.Phone, ClientIp), ct);
+            new RegisterCommand(body.FullName, body.Email, body.Password, body.Phone,
+                body.Intent ?? Domain.Enums.RegistrationIntent.Unknown, ClientIp), ct);
         return AuthOk(result, "Hesap oluşturuldu.");
     }
 

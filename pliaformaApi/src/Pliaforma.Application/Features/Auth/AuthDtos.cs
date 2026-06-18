@@ -9,7 +9,8 @@ public sealed record UserDto(
     string FullName,
     string? Phone,
     GlobalRole GlobalRole,
-    bool EmailVerified);
+    bool EmailVerified,
+    RegistrationIntent RegistrationIntent);
 
 /// <summary>Kullanıcının bir stüdyodaki üyelik özeti (stüdyo seçimi için).</summary>
 public sealed record MembershipDto(

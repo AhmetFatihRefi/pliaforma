@@ -19,6 +19,12 @@ public class User : BaseEntity
     /// <summary>Platform seviyesindeki rol (stüdyo rolü ayrı: StudioMembership.Role).</summary>
     public GlobalRole GlobalRole { get; set; } = GlobalRole.Standard;
 
+    /// <summary>
+    /// Kayıt niyeti (öğrenci/hoca). **Yalnızca UX** — stüdyosuz kullanıcının /join-studio ekranını belirler
+    /// (Sprint 17 Rev2). Yetki kaynağı DEĞİL. Eski kullanıcılarda Unknown.
+    /// </summary>
+    public RegistrationIntent RegistrationIntent { get; set; } = RegistrationIntent.Unknown;
+
     public bool IsActive { get; set; } = true;
     public DateTime? LastLoginAt { get; set; }
 

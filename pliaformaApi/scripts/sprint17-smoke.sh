@@ -25,6 +25,7 @@ PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|
 sql(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "$1" 2>/dev/null; }
 uid(){ sql "SELECT \"Id\" FROM \"Users\" WHERE \"Email\"='$1';"; }
 icount(){ sql "SELECT count(*) FROM \"InstructorProfiles\" WHERE \"UserId\"='$1' AND \"StudioId\"='$2' AND \"IsDeleted\"=false;"; }
+scount(){ sql "SELECT count(*) FROM \"StudentProfiles\" WHERE \"UserId\"='$1' AND \"StudioId\"='$2' AND \"IsDeleted\"=false;"; }
 nicount(){ sql "SELECT count(*) FROM \"Notifications\" WHERE \"RecipientUserId\"='$1' AND \"Type\"='MembershipInvite' AND \"IsDeleted\"=false;"; }
 vrf(){ sql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null; }
 
@@ -42,10 +43,26 @@ AEMAIL="s17a+$TS@pf.local"; ATOK=$(regstudio "S17A $TS" "$AEMAIL"); SID_A=$(sql 
 BEMAIL="s17b+$TS@pf.local"; BTOK=$(regstudio "S17B $TS" "$BEMAIL"); SID_B=$(sql "SELECT \"Id\" FROM \"Studios\" WHERE \"OwnerUserId\"='$(uid "$BEMAIL")';")
 JCA=$(joincode "$ATOK")
 
+echo "--- 0) Kayıt niyeti (RegistrationIntent) round-trip ---"
+IE0="intent17+$TS@pf.local"
+RI0=$(post /api/auth/register "{\"fullName\":\"Hoca Intent\",\"email\":\"$IE0\",\"password\":\"$PW\",\"intent\":\"Instructor\"}")
+expect "register intent=Instructor → 200" 200 "$(code "$RI0")"
+expect "auth yanıtı registrationIntent=Instructor" yes "$(has "$(body "$RI0")" '"registrationIntent":"Instructor"')"
+
 echo "--- 1) Hoca JoinCode self-apply KAPALI, Öğrenci açık ---"
 SE="stu17+$TS@pf.local"; regv "Stu" "$SE"; STOK=$(login "$SE")
 expect "Instructor JoinCode apply → 400" 400 "$(code "$(apply "$JCA" "Instructor" "$STOK")")"
 expect "Student JoinCode apply → 200" 200 "$(code "$(apply "$JCA" "Student" "$STOK")")"
+
+echo "--- 1b) Rev2: DOĞRULANMAMIŞ öğrenci apply yapabilir; aktivasyon (accept) gate'i e-posta ister ---"
+USE="ustu17+$TS@pf.local"; reg "UStu" "$USE"; USID=$(uid "$USE"); USTOK=$(login "$USE")   # UNVERIFIED
+RUA=$(apply "$JCA" "Student" "$USTOK"); expect "unverified Student apply → 200 (Pending)" 200 "$(code "$RUA")"
+USMID=$(body "$RUA" | jget membershipId)
+expect "apply sonrası StudentProfile YOK (0)" 0 "$(scount "$USID" "$SID_A")"
+expect "owner unverified öğrenciyi accept → 403 (aktivasyon gate'i)" 403 "$(pcode "/api/members/$USMID/accept" '{}' "$ATOK")"
+vrf "$USE"
+expect "doğrulama sonrası owner accept → 200" 200 "$(pcode "/api/members/$USMID/accept" '{}' "$ATOK")"
+expect "kabul sonrası StudentProfile oluştu (1)" 1 "$(scount "$USID" "$SID_A")"
 
 echo "--- 2) Stüdyo hoca davet eder → Pending + profil YOK + bildirim ---"
 IE="hoca17+$TS@pf.local"; reg "Hoca" "$IE"; IID=$(uid "$IE")   # UNVERIFIED (403 testi için)
