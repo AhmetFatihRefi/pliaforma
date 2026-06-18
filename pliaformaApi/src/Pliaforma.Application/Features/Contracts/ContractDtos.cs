@@ -1,0 +1,48 @@
+using Pliaforma.Domain.Enums;
+
+namespace Pliaforma.Application.Features.Contracts;
+
+/// <summary>Öğrenci sözleşmesi özeti (+ türetilen ders sayıları).</summary>
+public sealed record StudentContractDto(
+    Guid Id,
+    Guid StudentProfileId,
+    string StudentName,
+    Guid ClassTypeId,
+    string ClassTypeName,
+    Guid InstructorProfileId,
+    string InstructorName,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    int TotalLessonCount,
+    int MakeupAllowance,
+    decimal Price,
+    string Currency,
+    bool IsIndividualDefault,
+    StudentContractStatus Status,
+    string? Notes,
+    int ScheduledLessonCount,
+    int AvailableLessonCount);
+
+/// <summary>Program üretimi için bir gün/saat slotu (haftanın günü + başlangıç saati).</summary>
+public sealed record ContractScheduleSlotInput(DayOfWeek DayOfWeek, TimeOnly StartTime);
+
+/// <summary>Program önizlemesinde tek bir ders adayı.</summary>
+public sealed record ContractScheduleSlotPreviewDto(
+    DateTime StartAt,
+    DateTime EndAt,
+    bool Plannable,
+    string? SkipReason);
+
+/// <summary>Program önizleme sonucu (oluşturma YAPILMAZ).</summary>
+public sealed record ContractSchedulePreviewDto(
+    int AvailableLessonCount,
+    int PlannableCount,
+    IReadOnlyList<ContractScheduleSlotPreviewDto> Slots);
+
+/// <summary>Program üretim sonucu.</summary>
+public sealed record GenerateContractScheduleResultDto(
+    int CreatedCount,
+    int NewSessionCount,
+    int ReusedSessionCount,
+    int SkippedCount,
+    IReadOnlyList<DateTime> CreatedStartAts);

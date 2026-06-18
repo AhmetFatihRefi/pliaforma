@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<Features.Scheduling.SessionCancellationService>();
         services.AddScoped<Features.Packages.StudentPackageConsumer>();
         services.AddScoped<Features.Packages.PackageEligibilityChecker>();
+        services.AddScoped<Features.Contracts.ContractEligibilityChecker>();
         services.AddScoped<Features.Attendance.AttendanceMarker>();
         services.AddScoped<Features.Notifications.ReminderScanner>();
 

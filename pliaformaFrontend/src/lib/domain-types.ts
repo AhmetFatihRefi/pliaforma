@@ -183,6 +183,12 @@ export interface ClassSessionDto {
   notes?: string | null;
   createdByUserId: string;
   rescheduledAt?: string | null;
+  /** Sprint 18a: bireysel ders mi (grup değil). */
+  isIndividual?: boolean;
+  /** Sprint 18a: fiilî hoca (substitution; mantık Faz 2). */
+  actualInstructorProfileId?: string | null;
+  /** Sprint 18a: planlanan ≠ fiilî hoca. */
+  instructorChanged?: boolean;
 }
 
 export interface BulkGenerateResult {
@@ -206,6 +212,43 @@ export const dayLabels: Record<DayOfWeek, string> = {
 export const sessionStatusLabels: Record<ClassSessionStatus, string> = {
   Scheduled: "Planlı", Cancelled: "İptal", Completed: "Tamamlandı",
 };
+
+/**
+ * Sprint 18a: grup seansları backend'de "sınırsız kapasite" için yüksek bir sentinel (9999) ile temsil edilir.
+ * Bu teknik değer kullanıcıya GÖSTERİLMEZ — UI bu eşik ve üzerini "limitsiz" sayar.
+ */
+export const UNLIMITED_SESSION_CAPACITY = 9999;
+export const isUnlimitedCapacity = (capacity: number) => capacity >= UNLIMITED_SESSION_CAPACITY;
+
+// ===== Sprint 18a: Öğrenci sözleşmesi (sözleşme-tabanlı program) =====
+export type StudentContractStatus = "Active" | "Completed" | "Cancelled" | "Expired";
+export const studentContractStatusLabels: Record<StudentContractStatus, string> = {
+  Active: "Aktif", Completed: "Tamamlandı", Cancelled: "İptal", Expired: "Süresi doldu",
+};
+export interface StudentContractDto {
+  id: string;
+  studentProfileId: string;
+  studentName: string;
+  classTypeId: string;
+  classTypeName: string;
+  instructorProfileId: string;
+  instructorName: string;
+  startDate: string;
+  endDate: string;
+  totalLessonCount: number;
+  makeupAllowance: number;
+  price: number;
+  currency: string;
+  isIndividualDefault: boolean;
+  status: StudentContractStatus;
+  notes?: string | null;
+  scheduledLessonCount: number;
+  availableLessonCount: number;
+}
+export interface ContractScheduleSlotInput { dayOfWeek: DayOfWeek; startTime: string }
+export interface ContractScheduleSlotPreviewDto { startAt: string; endAt: string; plannable: boolean; skipReason?: string | null }
+export interface ContractSchedulePreviewDto { availableLessonCount: number; plannableCount: number; slots: ContractScheduleSlotPreviewDto[] }
+export interface GenerateContractScheduleResultDto { createdCount: number; newSessionCount: number; reusedSessionCount: number; skippedCount: number; createdStartAts: string[] }
 
 // ===== Sprint 4: Rezervasyon =====
 export type ClassBookingStatus = "Booked" | "CancelledByStudent" | "CancelledByStudio";

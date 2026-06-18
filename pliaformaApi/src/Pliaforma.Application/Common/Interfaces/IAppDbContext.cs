@@ -22,6 +22,7 @@ public interface IAppDbContext
     DbSet<InstructorAvailability> InstructorAvailabilities { get; }
     DbSet<ClassSession> ClassSessions { get; }
     DbSet<ClassBooking> ClassBookings { get; }
+    DbSet<StudentContract> StudentContracts { get; }
     DbSet<MakeupCreditTransaction> MakeupCreditTransactions { get; }
     DbSet<StudioClosure> StudioClosures { get; }
     DbSet<StudioMakeupPolicy> StudioMakeupPolicies { get; }

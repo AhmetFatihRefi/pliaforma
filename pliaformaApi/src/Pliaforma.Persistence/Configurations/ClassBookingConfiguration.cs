@@ -34,8 +34,15 @@ public sealed class ClassBookingConfiguration : IEntityTypeConfiguration<ClassBo
             .HasForeignKey(x => x.StudentProfileId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Sprint 18a: sözleşme-bağlı booking. Sözleşme silinse de booking izi kalır (SetNull).
+        b.HasOne(x => x.StudentContract)
+            .WithMany()
+            .HasForeignKey(x => x.StudentContractId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         b.HasIndex(x => new { x.StudioId, x.ClassSessionId });
         b.HasIndex(x => new { x.StudioId, x.StudentProfileId });
+        b.HasIndex(x => new { x.StudioId, x.StudentContractId });
 
         // Çift-rezervasyon koruması (race-safe): aynı seans+öğrenci için yalnızca bir AKTİF (Booked,
         // silinmemiş) kayıt. PostgreSQL filtered (partial) unique index.

@@ -19,6 +19,14 @@ public class ClassBooking : BaseEntity, ITenantScoped
     public Guid StudentProfileId { get; set; }
     public StudentProfile? StudentProfile { get; set; }
 
+    /// <summary>
+    /// Bu rezervasyonun çekildiği öğrenci sözleşmesi (Sprint 18a — sözleşme-tabanlı program). Dolu →
+    /// sözleşme yolu (paket uygunluğu yerine sözleşme available-lesson kontrolü). null → eski paket/booking
+    /// yolu (geri uyum; 18b cutover'a kadar korunur). FK SetNull (sözleşme silinse de booking izi kalır).
+    /// </summary>
+    public Guid? StudentContractId { get; set; }
+    public StudentContract? StudentContract { get; set; }
+
     public ClassBookingStatus Status { get; set; } = ClassBookingStatus.Booked;
 
     /// <summary>Rezervasyonu yapan kullanıcı (öğrencinin kendisi veya vekaleten personel).</summary>

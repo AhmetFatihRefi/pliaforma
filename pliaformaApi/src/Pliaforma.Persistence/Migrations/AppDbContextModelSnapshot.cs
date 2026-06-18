@@ -173,6 +173,9 @@ namespace Pliaforma.Persistence.Migrations
                         .HasMaxLength(24)
                         .HasColumnType("character varying(24)");
 
+                    b.Property<Guid?>("StudentContractId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("StudentProfileId")
                         .HasColumnType("uuid");
 
@@ -184,6 +187,8 @@ namespace Pliaforma.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StudentContractId");
+
                     b.HasIndex("StudentProfileId");
 
                     b.HasIndex("ClassSessionId", "StudentProfileId")
@@ -194,6 +199,8 @@ namespace Pliaforma.Persistence.Migrations
 
                     b.HasIndex("StudioId", "ExpectedStudentPackageId");
 
+                    b.HasIndex("StudioId", "StudentContractId");
+
                     b.HasIndex("StudioId", "StudentProfileId");
 
                     b.ToTable("ClassBookings", (string)null);
@@ -202,6 +209,9 @@ namespace Pliaforma.Persistence.Migrations
             modelBuilder.Entity("Pliaforma.Domain.Entities.ClassSession", b =>
                 {
                     b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActualInstructorProfileId")
                         .HasColumnType("uuid");
 
                     b.Property<int>("BookedCount")
@@ -226,6 +236,9 @@ namespace Pliaforma.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsIndividual")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Notes")
@@ -1021,6 +1034,83 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("RefreshTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudentContract", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClassTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("InstructorProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsIndividualDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("MakeupAllowance")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("StudentProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TotalLessonCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClassTypeId");
+
+                    b.HasIndex("InstructorProfileId");
+
+                    b.HasIndex("StudentProfileId");
+
+                    b.HasIndex("StudioId", "Status");
+
+                    b.HasIndex("StudioId", "StudentProfileId");
+
+                    b.ToTable("StudentContracts", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.StudentPackage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1705,6 +1795,11 @@ namespace Pliaforma.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Pliaforma.Domain.Entities.StudentContract", "StudentContract")
+                        .WithMany()
+                        .HasForeignKey("StudentContractId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Pliaforma.Domain.Entities.StudentProfile", "StudentProfile")
                         .WithMany()
                         .HasForeignKey("StudentProfileId")
@@ -1718,6 +1813,8 @@ namespace Pliaforma.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("ClassSession");
+
+                    b.Navigation("StudentContract");
 
                     b.Navigation("StudentProfile");
 
@@ -1986,6 +2083,41 @@ namespace Pliaforma.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudentContract", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.ClassType", "ClassType")
+                        .WithMany()
+                        .HasForeignKey("ClassTypeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.InstructorProfile", "InstructorProfile")
+                        .WithMany()
+                        .HasForeignKey("InstructorProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.StudentProfile", "StudentProfile")
+                        .WithMany()
+                        .HasForeignKey("StudentProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClassType");
+
+                    b.Navigation("InstructorProfile");
+
+                    b.Navigation("StudentProfile");
+
+                    b.Navigation("Studio");
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.StudentPackage", b =>

@@ -42,6 +42,10 @@ import type {
   MyBookingDto,
   MyMakeupCreditsDto,
   PendingInvitationDto,
+  StudentContractDto,
+  ContractScheduleSlotInput,
+  ContractSchedulePreviewDto,
+  GenerateContractScheduleResultDto,
   SessionAttendanceDto,
   RateType,
   StudentDto,
@@ -82,6 +86,22 @@ export const memberService = {
   joinRequests: () => api<JoinRequestDto[]>("/api/studio/join-requests"),
   joinCode: () => api<JoinCodeDto>("/api/studio/join-code"),
   regenerateJoinCode: () => api<JoinCodeDto>("/api/studio/join-code/regenerate", { method: "POST", body: {} }),
+};
+
+// Sprint 18a: öğrenci sözleşmeleri + sözleşmeden program (/api/studio) — Owner/StudioAdmin
+export const contractService = {
+  forStudent: (studentId: string) => api<StudentContractDto[]>(`/api/studio/students/${studentId}/contracts`),
+  create: (studentId: string, input: {
+    classTypeId: string; instructorProfileId: string; startDate: string; endDate: string;
+    totalLessonCount: number; makeupAllowance: number; price: number; currency?: string;
+    isIndividualDefault: boolean; notes?: string | null;
+  }) => api<StudentContractDto>(`/api/studio/students/${studentId}/contracts`, { method: "POST", body: input }),
+  get: (id: string) => api<StudentContractDto>(`/api/studio/contracts/${id}`),
+  cancel: (id: string) => api<null>(`/api/studio/contracts/${id}/cancel`, { method: "POST", body: {} }),
+  previewSchedule: (id: string, slots: ContractScheduleSlotInput[]) =>
+    api<ContractSchedulePreviewDto>(`/api/studio/contracts/${id}/schedule/preview`, { method: "POST", body: { slots } }),
+  generateSchedule: (id: string, input: { slots: ContractScheduleSlotInput[]; reuseExistingGroup: boolean; individual: boolean | null }) =>
+    api<GenerateContractScheduleResultDto>(`/api/studio/contracts/${id}/schedule/generate`, { method: "POST", body: input }),
 };
 
 // Kullanıcı tarafı üyelik aksiyonları (/api/members)

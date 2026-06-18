@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { classTypeService, studentBookingService, studentMakeupCreditService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
-import { type ClassTypeDto, type StudentSessionDto, sessionKindLabels } from "@/lib/domain-types";
+import { type ClassTypeDto, type StudentSessionDto, isUnlimitedCapacity, sessionKindLabels } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card, FormField, Input, Select } from "@/components/ui";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -117,7 +117,7 @@ export default function BookClassesPage() {
                       </p>
                       <p className="text-sm text-muted">{s.instructorName} · {fmtTime(s.startAt)}–{fmtTime(s.endAt)}</p>
                       <p className="mt-1 text-xs text-muted">
-                        Kalan {s.remainingCapacity}/{s.capacity}
+                        {isUnlimitedCapacity(s.capacity) ? "Kontenjan: limitsiz" : `Kalan ${s.remainingCapacity}/${s.capacity}`}
                         {s.requiresMakeupCredit && <span className="ml-2">· 1 telafi kredisi</span>}
                         {!s.requiresMakeupCredit && s.packageEligible && s.expectedPackageName && (
                           <span className="ml-2">· Paket: {s.expectedPackageName} ({s.availableCredit} hak)</span>

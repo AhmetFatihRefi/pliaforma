@@ -61,7 +61,7 @@ public sealed class GetClassSessionsHandler : IQueryHandler<GetClassSessionsQuer
             .Select(s => new ClassSessionDto(
                 s.Id, s.InstructorProfileId, s.InstructorProfile!.DisplayName,
                 s.ClassTypeId, s.ClassType!.Name, s.StartAt, s.EndAt, s.Capacity, s.BookedCount, s.Status,
-                s.SessionKind, s.Notes, s.CreatedByUserId, s.RescheduledAt))
+                s.SessionKind, s.Notes, s.CreatedByUserId, s.RescheduledAt, s.IsIndividual, s.ActualInstructorProfileId))
             .ToListAsync(cancellationToken);
     }
 }
@@ -89,7 +89,7 @@ public sealed class GetClassSessionHandler : IQueryHandler<GetClassSessionQuery,
             .Select(s => new ClassSessionDto(
                 s.Id, s.InstructorProfileId, s.InstructorProfile!.DisplayName,
                 s.ClassTypeId, s.ClassType!.Name, s.StartAt, s.EndAt, s.Capacity, s.BookedCount, s.Status,
-                s.SessionKind, s.Notes, s.CreatedByUserId, s.RescheduledAt))
+                s.SessionKind, s.Notes, s.CreatedByUserId, s.RescheduledAt, s.IsIndividual, s.ActualInstructorProfileId))
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException("Ders seansı", request.Id);
 

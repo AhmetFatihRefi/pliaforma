@@ -14,11 +14,26 @@ public class ClassSession : BaseEntity, ITenantScoped
     public Guid StudioId { get; set; }
     public Studio? Studio { get; set; }
 
+    /// <summary>Planlanan hoca. Fiilen dersi veren farklı olabilir → <see cref="ActualInstructorProfileId"/>.</summary>
     public Guid InstructorProfileId { get; set; }
     public InstructorProfile? InstructorProfile { get; set; }
 
+    /// <summary>
+    /// Fiilen dersi veren hoca (Sprint 18a alanı; mantık Faz 2). null → planlanan hoca verdi. Dolu ve
+    /// planlanandan farklıysa "hoca değişikliği" demektir; ay-sonu rapor bu hocaya atfeder. Ders iptal
+    /// olmaz, telafi doğmaz. Plain referans (FK yok — InstructorProfile'a ikinci cascade yolundan kaçınmak için).
+    /// </summary>
+    public Guid? ActualInstructorProfileId { get; set; }
+
     public Guid ClassTypeId { get; set; }
     public ClassType? ClassType { get; set; }
+
+    /// <summary>
+    /// Bireysel ders mi (Sprint 18a). true → seansa yalnızca 1 öğrenci eklenebilir (Capacity=1 ile
+    /// uygulanır). false → grup (kapasite sınırı yok; pratikte yüksek Capacity ile temsil edilir).
+    /// Bireyselliği kaldırmak için ayrı işlem gerekir (başka öğrenci eklemeden önce).
+    /// </summary>
+    public bool IsIndividual { get; set; }
 
     public DateTime StartAt { get; set; }
 

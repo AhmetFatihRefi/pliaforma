@@ -86,6 +86,17 @@ ok "Student: $STUDENT (profil $GS)"
 GG=$(body "$(post /api/studio/students/guest '{"fullName":"E2E Guest Misafir","source":"Phone"}' "$OTOK")" | jget id)
 ok "Guest student (profil $GG)"
 
+# Sprint 18a: sözleşme + program (grup 9999 sentinel + bireysel) — schedule kapasite gösterimi E2E için.
+# I2P müsaitliksiz → owner her saatte üretebilir. Tüm haftaya yay → today..+7 penceresinde görünür.
+C18SD=$(date +%F); C18ED=$(date -d "+14 days" +%F)
+ALLDAYS10='[{"dayOfWeek":"Monday","startTime":"10:00:00"},{"dayOfWeek":"Tuesday","startTime":"10:00:00"},{"dayOfWeek":"Wednesday","startTime":"10:00:00"},{"dayOfWeek":"Thursday","startTime":"10:00:00"},{"dayOfWeek":"Friday","startTime":"10:00:00"},{"dayOfWeek":"Saturday","startTime":"10:00:00"},{"dayOfWeek":"Sunday","startTime":"10:00:00"}]'
+ALLDAYS14='[{"dayOfWeek":"Monday","startTime":"14:00:00"},{"dayOfWeek":"Tuesday","startTime":"14:00:00"},{"dayOfWeek":"Wednesday","startTime":"14:00:00"},{"dayOfWeek":"Thursday","startTime":"14:00:00"},{"dayOfWeek":"Friday","startTime":"14:00:00"},{"dayOfWeek":"Saturday","startTime":"14:00:00"},{"dayOfWeek":"Sunday","startTime":"14:00:00"}]'
+GC=$(body "$(post "/api/studio/students/$GS/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I2P\",\"startDate\":\"$C18SD\",\"endDate\":\"$C18ED\",\"totalLessonCount\":5,\"makeupAllowance\":1,\"price\":2000,\"isIndividualDefault\":false}" "$OTOK")" | jget id)
+post "/api/studio/contracts/$GC/schedule/generate" "{\"slots\":$ALLDAYS10,\"reuseExistingGroup\":false,\"individual\":null}" "$OTOK" >/dev/null
+IC=$(body "$(post "/api/studio/students/$GG/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I2P\",\"startDate\":\"$C18SD\",\"endDate\":\"$C18ED\",\"totalLessonCount\":3,\"makeupAllowance\":0,\"price\":3000,\"isIndividualDefault\":true}" "$OTOK")" | jget id)
+post "/api/studio/contracts/$IC/schedule/generate" "{\"slots\":$ALLDAYS14,\"reuseExistingGroup\":false,\"individual\":null}" "$OTOK" >/dev/null
+ok "Sözleşme + program: grup (limitsiz) + bireysel dersler"
+
 echo "== 6) Seanslar + rezervasyon + yoklama =="
 IST(){ TZ='Europe/Istanbul' date "$@" 2>/dev/null || date "$@"; }
 # Yaklaşan ders (~20h sonra → ClassReminder penceresi içinde) + öğrenci rezervasyonu

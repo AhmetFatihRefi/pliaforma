@@ -12,7 +12,7 @@ namespace Pliaforma.Application.Features.Bookings;
 /// öğrenci için yapılamaz; Guest için yapılabilir. Instructor yalnızca KENDİ seansına ve KENDİ
 /// oluşturduğu öğrenci için.
 /// </summary>
-public sealed record StaffCreateBookingCommand(Guid ClassSessionId, Guid StudentProfileId)
+public sealed record StaffCreateBookingCommand(Guid ClassSessionId, Guid StudentProfileId, Guid? StudentContractId = null)
     : ICommand<ClassBookingDto>, IStudioWriteRequest;
 
 public sealed class StaffCreateBookingValidator : AbstractValidator<StaffCreateBookingCommand>
@@ -64,8 +64,16 @@ public sealed class StaffCreateBookingHandler : ICommandHandler<StaffCreateBooki
                 throw new ForbiddenException("Yalnızca kendi oluşturduğunuz öğrenciler için rezervasyon yapabilirsiniz.");
         }
 
+        // Sprint 18a: verilen sözleşme bu öğrenciye + bu stüdyoya ait olmalı (uygunluk BookingCreator'da).
+        if (request.StudentContractId is { } cid)
+        {
+            var owns = await _db.StudentContracts.AnyAsync(c => c.Id == cid && c.StudioId == studioId && c.StudentProfileId == student.Id, cancellationToken);
+            if (!owns)
+                throw new NotFoundException("Sözleşme", cid);
+        }
+
         var bookerRole = _currentUser.StudioRole ?? StudioRole.Instructor;
-        var booking = await _creator.CreateAsync(studioId, session, student, userId, bookerRole, cancellationToken);
+        var booking = await _creator.CreateAsync(studioId, session, student, userId, bookerRole, cancellationToken, request.StudentContractId);
 
         var classTypeName = await _db.ClassTypes.Where(c => c.Id == session.ClassTypeId).Select(c => c.Name).FirstAsync(cancellationToken);
         var instructorName = await _db.InstructorProfiles.Where(p => p.Id == session.InstructorProfileId).Select(p => p.DisplayName).FirstAsync(cancellationToken);

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Contracts;
 using Pliaforma.Application.Features.MakeupCredits;
 using Pliaforma.Application.Features.Packages;
 using Pliaforma.Application.Features.Scheduling;
@@ -25,10 +26,12 @@ public sealed class BookingCreator
     private readonly MakeupCreditService _credits;
     private readonly IMakeupCreditLock _creditLock;
     private readonly PackageEligibilityChecker _eligibility;
+    private readonly ContractEligibilityChecker _contracts;
 
     public BookingCreator(
         IAppDbContext db, IClassSessionCapacityService capacity, IDateTime clock,
-        MakeupCreditService credits, IMakeupCreditLock creditLock, PackageEligibilityChecker eligibility)
+        MakeupCreditService credits, IMakeupCreditLock creditLock, PackageEligibilityChecker eligibility,
+        ContractEligibilityChecker contracts)
     {
         _db = db;
         _capacity = capacity;
@@ -36,10 +39,14 @@ public sealed class BookingCreator
         _credits = credits;
         _creditLock = creditLock;
         _eligibility = eligibility;
+        _contracts = contracts;
     }
 
+    /// <param name="studentContractId">Sprint 18a: dolu → sözleşme yolu (paket yerine sözleşme uygunluğu).
+    /// null → mevcut paket/booking yolu (geri uyum, bozulmaz).</param>
     public async Task<ClassBooking> CreateAsync(
-        Guid studioId, ClassSession session, StudentProfile student, Guid bookedByUserId, StudioRole bookerRole, CancellationToken ct)
+        Guid studioId, ClassSession session, StudentProfile student, Guid bookedByUserId, StudioRole bookerRole,
+        CancellationToken ct, Guid? studentContractId = null)
     {
         if (session.Status != ClassSessionStatus.Scheduled)
             throw new BusinessRuleException("Yalnızca planlı (Scheduled) seanslara rezervasyon yapılabilir.");
@@ -54,31 +61,59 @@ public sealed class BookingCreator
         if (dup)
             throw new ConflictException("Bu öğrencinin bu seansta zaten aktif bir rezervasyonu var.");
 
+        // Sprint 18a: bireysel ders enforcement — bireysel seansa 2. öğrenci eklenemez.
+        if (session.IsIndividual)
+        {
+            var alreadyHas = await _db.ClassBookings.AnyAsync(
+                b => b.ClassSessionId == session.Id && b.Status == ClassBookingStatus.Booked, ct);
+            if (alreadyHas)
+                throw new ConflictException("Bu ders bireysel; başka öğrenci eklenemez (önce bireyselliği kaldırın).");
+        }
+
+        // Sprint 18a: öğrenci çakışması — aynı öğrenci örtüşen iki Booked derse giremez.
+        var studentBusy = await _db.ClassBookings.AnyAsync(
+            b => b.StudioId == studioId && b.StudentProfileId == student.Id && b.Status == ClassBookingStatus.Booked
+                 && b.ClassSession!.Status == ClassSessionStatus.Scheduled
+                 && b.ClassSession.StartAt < session.EndAt && session.StartAt < b.ClassSession.EndAt, ct);
+        if (studentBusy)
+            throw new ConflictException("Öğrencinin bu zaman aralığında başka bir dersi var.");
+
         // Kullanılabilir-hak hesabı + makeup kredisi tüketimi için öğrenci satırını kilitle (serileştirme).
         await _creditLock.LockStudentAsync(studioId, student.Id, ct);
 
-        // Paket uygunluğu yalnızca Regular seanslarda (Makeup telafi kredisi kullanır; Trial/Special muaf).
         Guid? expectedPackageId = null;
         bool requiresPayment = false;
         PackageEligibilityStatus? eligStatus = null;
+        Guid? contractId = studentContractId;
+
         if (session.SessionKind == ClassSessionKind.Regular)
         {
-            var today = DateOnly.FromDateTime(nowLocal);
-            var elig = await _eligibility.EvaluateAsync(studioId, student.Id, session.ClassTypeId, today, ct);
-            if (elig.IsEligible)
+            if (studentContractId is { } cid)
             {
-                expectedPackageId = elig.ExpectedStudentPackageId;
-                eligStatus = PackageEligibilityStatus.Eligible;
-            }
-            else if (bookerRole is StudioRole.Owner or StudioRole.StudioAdmin)
-            {
-                // Staff yetersiz/paketsiz hakla yazabilir → ödeme gerekli işaretle (Instructor/Student yapamaz).
-                requiresPayment = true;
-                eligStatus = PackageEligibilityStatus.RequiresPayment;
+                // SÖZLEŞME YOLU (Sprint 18a): paket yerine sözleşme uygunluğu.
+                var ce = await _contracts.EvaluateAsync(studioId, cid, student.Id, session.ClassTypeId, DateOnly.FromDateTime(session.StartAt), ct);
+                if (!ce.IsEligible)
+                    throw new ConflictException(ce.Message ?? "Sözleşme bu rezervasyon için uygun değil.");
             }
             else
             {
-                throw new ConflictException(elig.Message);
+                // ESKİ PAKET YOLU (değişmedi).
+                var today = DateOnly.FromDateTime(nowLocal);
+                var elig = await _eligibility.EvaluateAsync(studioId, student.Id, session.ClassTypeId, today, ct);
+                if (elig.IsEligible)
+                {
+                    expectedPackageId = elig.ExpectedStudentPackageId;
+                    eligStatus = PackageEligibilityStatus.Eligible;
+                }
+                else if (bookerRole is StudioRole.Owner or StudioRole.StudioAdmin)
+                {
+                    requiresPayment = true;
+                    eligStatus = PackageEligibilityStatus.RequiresPayment;
+                }
+                else
+                {
+                    throw new ConflictException(elig.Message);
+                }
             }
         }
 
@@ -92,6 +127,7 @@ public sealed class BookingCreator
             StudioId = studioId,
             ClassSessionId = session.Id,
             StudentProfileId = student.Id,
+            StudentContractId = contractId,
             Status = ClassBookingStatus.Booked,
             BookedByUserId = bookedByUserId,
             ExpectedStudentPackageId = expectedPackageId,

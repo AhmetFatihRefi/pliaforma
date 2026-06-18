@@ -16,6 +16,7 @@ import {
   type StudentDto,
   attendanceStatusLabels,
   bookingStatusLabels,
+  isUnlimitedCapacity,
   sessionKindLabels,
   sessionStatusLabels,
 } from "@/lib/domain-types";
@@ -134,11 +135,17 @@ export default function SchedulePage() {
                           {(s.sessionKind === "Trial" || s.sessionKind === "Special") && (
                             <Badge tone="neutral">{sessionKindLabels[s.sessionKind]}</Badge>
                           )}
+                          <Badge tone={s.isIndividual ? "warning" : "neutral"}>{s.isIndividual ? "Bireysel" : "Grup"}</Badge>
+                          {s.instructorChanged && <Badge tone="rose">Hoca değişti</Badge>}
                         </p>
                         <p className="text-sm text-muted">{s.instructorName} · {fmtTime(s.startAt)}–{fmtTime(s.endAt)}</p>
                         <p className="mt-1 text-xs text-muted">
-                          Doluluk {s.bookedCount}/{s.capacity}
-                          {s.isFull && <span className="ml-2 text-danger">· DOLU</span>}
+                          {s.isIndividual
+                            ? `Bireysel · Doluluk ${s.bookedCount}/1`
+                            : isUnlimitedCapacity(s.capacity)
+                              ? `Grup · ${s.bookedCount} öğrenci · limitsiz`
+                              : `Grup · Doluluk ${s.bookedCount}/${s.capacity}`}
+                          {s.isFull && !isUnlimitedCapacity(s.capacity) && <span className="ml-2 text-danger">· DOLU</span>}
                           {s.rescheduledAt && <span className="ml-2">· ertelendi</span>}
                         </p>
                       </div>

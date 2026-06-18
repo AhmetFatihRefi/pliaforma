@@ -22,6 +22,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<InstructorAvailability> InstructorAvailabilities => Set<InstructorAvailability>();
     public DbSet<ClassSession> ClassSessions => Set<ClassSession>();
     public DbSet<ClassBooking> ClassBookings => Set<ClassBooking>();
+    public DbSet<StudentContract> StudentContracts => Set<StudentContract>();
     public DbSet<MakeupCreditTransaction> MakeupCreditTransactions => Set<MakeupCreditTransaction>();
     public DbSet<StudioClosure> StudioClosures => Set<StudioClosure>();
     public DbSet<StudioMakeupPolicy> StudioMakeupPolicies => Set<StudioMakeupPolicy>();

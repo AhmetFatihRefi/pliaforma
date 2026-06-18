@@ -17,14 +17,19 @@ public sealed record ClassSessionDto(
     ClassSessionKind SessionKind,
     string? Notes,
     Guid CreatedByUserId,
-    DateTime? RescheduledAt)
+    DateTime? RescheduledAt,
+    bool IsIndividual = false,
+    Guid? ActualInstructorProfileId = null)
 {
     public int RemainingCapacity => Math.Max(Capacity - BookedCount, 0);
     public bool IsFull => BookedCount >= Capacity;
+    /// <summary>Sprint 18a: planlanan ≠ fiilî hoca (hoca değişikliği). Mantık Faz 2.</summary>
+    public bool InstructorChanged => ActualInstructorProfileId is not null && ActualInstructorProfileId != InstructorProfileId;
 
     public static ClassSessionDto From(ClassSession s, string instructorName, string classTypeName) =>
         new(s.Id, s.InstructorProfileId, instructorName, s.ClassTypeId, classTypeName, s.StartAt, s.EndAt,
-            s.Capacity, s.BookedCount, s.Status, s.SessionKind, s.Notes, s.CreatedByUserId, s.RescheduledAt);
+            s.Capacity, s.BookedCount, s.Status, s.SessionKind, s.Notes, s.CreatedByUserId, s.RescheduledAt,
+            s.IsIndividual, s.ActualInstructorProfileId);
 }
 
 /// <summary>Aralık içi slot üretiminin sonucu: oluşturulanlar + atlananlar (neden ile).</summary>
