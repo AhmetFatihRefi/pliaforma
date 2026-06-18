@@ -31,8 +31,8 @@ public sealed class GetMyPendingInvitationsHandler
             .Where(m => m.UserId == userId
                         && m.Status == MembershipStatus.Pending
                         && m.Direction == MembershipDirection.InvitedByStudio)
-            .OrderBy(m => m.Studio!.Name)
-            .Select(m => new PendingInvitationDto(m.Id, m.StudioId, m.Studio!.Name, m.Studio.Slug, m.Role))
+            .OrderByDescending(m => m.CreatedAt)
+            .Select(m => new PendingInvitationDto(m.Id, m.StudioId, m.Studio!.Name, m.Studio.Slug, m.Role, m.CreatedAt))
             .ToListAsync(cancellationToken);
     }
 }

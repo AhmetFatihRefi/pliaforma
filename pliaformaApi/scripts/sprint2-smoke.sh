@@ -24,8 +24,10 @@ CTOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S2C $TS\",\"own
 post /api/auth/register "{\"fullName\":\"Ins1\",\"email\":\"$I1\",\"password\":\"$PW\"}" >/dev/null
 post /api/auth/register "{\"fullName\":\"Ins2\",\"email\":\"$I2\",\"password\":\"$PW\"}" >/dev/null
 post /api/auth/register "{\"fullName\":\"Existing U\",\"email\":\"$EXIST\",\"password\":\"$PW\"}" >/dev/null
-# İki hocayı davet + kabul
+# İki hocayı davet + kabul. Sprint 17: davet kabulü doğrulanmış e-posta ister → kabulden önce verify.
+PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|pliaforma-dev-postgres' | head -1)
 for E in "$I1" "$I2"; do
+  docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$E' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1
   M=$(body "$(post /api/studio/memberships/invite "{\"email\":\"$E\",\"role\":\"Instructor\",\"rate\":100}" "$ATOK")" | jget membershipId)
   T=$(login "$E"); post "/api/members/$M/accept" '{}' "$T" >/dev/null
 done

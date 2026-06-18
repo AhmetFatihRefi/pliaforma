@@ -31,10 +31,14 @@ STU_ID=$(body "$(post /api/auth/login "{\"email\":\"$STU\",\"password\":\"$PW\"}
 STU_ID=$(docker exec "$PGC" psql -U postgres -d pliaforma -t -A -c "select \"Id\" from \"Users\" where \"Email\"='$STU';" 2>/dev/null | tr -d '[:space:]')
 # Hocaları davet + kabul + profilleri
 declare -A PROF
+# Sprint 17: davet kabulü doğrulanmış e-posta ister + profil KABULDE oluşur (invite yanıtında değil).
+ipid(){ curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" | tr '{' '\n' | grep "\"email\":\"$1\"" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'; }
 for E in "$I1" "$I2"; do
+  docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$E' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1
   RR=$(post /api/studio/memberships/invite "{\"email\":\"$E\",\"role\":\"Instructor\",\"rate\":100}" "$ATOK")
-  M=$(body "$RR" | jget membershipId); PROF[$E]=$(body "$RR" | jget instructorProfileId)
+  M=$(body "$RR" | jget membershipId)
   T=$(login "$E"); post "/api/members/$M/accept" '{}' "$T" >/dev/null
+  PROF[$E]=$(ipid "$E")
 done
 I1TOK=$(login "$I1"); I2TOK=$(login "$I2"); I1P=${PROF[$I1]}; I2P=${PROF[$I2]}
 # ClassType (süre 60, kapasite 6)

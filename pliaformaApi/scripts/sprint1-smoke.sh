@@ -37,13 +37,22 @@ LC=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/class-types" -H "Authoriz
 expect "list class-types" 200 "$LC"
 
 echo "--- Hoca daveti / kabul ---"
+# Sprint 17: davet kabulü doğrulanmış e-posta ister + profil KABULDE oluşur (invite yanıtında değil).
+PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|pliaforma-dev-postgres' | head -1)
+vrf(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1; }
+ipid(){ curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" | tr '{' '\n' | grep "\"email\":\"$1\"" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'; }
 R=$(post /api/studio/memberships/invite "{\"email\":\"$B\",\"role\":\"Instructor\",\"displayName\":\"Hoca B\",\"rate\":500,\"rateType\":\"PerSession\"}" "$ATOK")
-expect "invite instructor" 200 "$(code "$R")"; MEMID=$(body "$R" | jget membershipId); PROF=$(body "$R" | jget instructorProfileId)
-# B giriş + davetleri + kabul
+expect "invite instructor" 200 "$(code "$R")"; MEMID=$(body "$R" | jget membershipId)
+expect "invite anında InstructorProfile YOK (Sprint 17)" "" "$(body "$R" | jget instructorProfileId)"
+# B giriş + davetleri + (doğrulanmamış accept 403) + doğrula + kabul → profil kabulde oluşur
 R=$(post /api/auth/login "{\"email\":\"$B\",\"password\":\"$PW\"}"); BTOK=$(body "$R" | jget accessToken)
 INVC=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/members/my-invitations" -H "Authorization: Bearer $BTOK")
 expect "B my-invitations" 200 "$INVC"
+expect "doğrulanmamış B accept → 403 (Sprint 17)" 403 "$(code "$(post "/api/members/$MEMID/accept" "{}" "$BTOK")")"
+vrf "$B"
 R=$(post "/api/members/$MEMID/accept" "{}" "$BTOK"); expect "B accept invitation" 200 "$(code "$R")"
+PROF=$(ipid "$B")
+expect "kabul sonrası InstructorProfile oluştu (Sprint 17)" yes "$([ -n "$PROF" ] && echo yes || echo no)"
 # B yeniden giriş → A bağlamı otomatik
 R=$(post /api/auth/login "{\"email\":\"$B\",\"password\":\"$PW\"}"); BTOK=$(body "$R" | jget accessToken)
 

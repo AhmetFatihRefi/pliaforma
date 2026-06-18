@@ -27,10 +27,13 @@ ATOK=$(body "$AR" | jget accessToken); AID=$(body "$AR" | jget studioId)
 BR=$(post /api/auth/register-studio "{\"studioName\":\"SecB $TS\",\"ownerFullName\":\"OB\",\"email\":\"secb+$TS@pf.local\",\"password\":\"$PW\"}")
 BTOK=$(body "$BR" | jget accessToken)
 
-inv(){ post /api/auth/register "{\"fullName\":\"$1\",\"email\":\"$1+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null
-       local r; r=$(post /api/studio/memberships/invite "{\"email\":\"$1+$TS@pf.local\",\"role\":\"$2\"${3:+,\"rate\":$3}}" "$ATOK")
-       local m; m=$(body "$r" | jget membershipId); local t; t=$(login "$1+$TS@pf.local")
-       post "/api/members/$m/accept" '{}' "$t" >/dev/null; body "$r" | jget instructorProfileId; }
+# Sprint 17: davet kabulü doğrulanmış e-posta ister + profil KABULDE oluşur (invite yanıtında değil).
+inv(){ local e="$1+$TS@pf.local"; post /api/auth/register "{\"fullName\":\"$1\",\"email\":\"$e\",\"password\":\"$PW\"}" >/dev/null
+       docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$e' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1
+       local r; r=$(post /api/studio/memberships/invite "{\"email\":\"$e\",\"role\":\"$2\"${3:+,\"rate\":$3}}" "$ATOK")
+       local m; m=$(body "$r" | jget membershipId); local t; t=$(login "$e")
+       post "/api/members/$m/accept" '{}' "$t" >/dev/null
+       curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" | tr '{' '\n' | grep "\"email\":\"$e\"" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'; }
 I1P=$(inv i1 Instructor 100); I1TOK=$(login "i1+$TS@pf.local")
 I2P=$(inv i2 Instructor 100)
 CTA=$(body "$(post /api/class-types "$CT_BODY" "$ATOK")" | jget id)

@@ -45,16 +45,27 @@ echo "== 3) StudioAdmin + 2 Instructor (davet+kabul) =="
 acceptMember(){ # email role [rate] -> profileId
   local email="$1" role="$2" rate="${3:-}" body resp m tok
   post /api/auth/register "{\"fullName\":\"$email\",\"email\":\"$email\",\"password\":\"$PW\"}" >/dev/null
+  # Sprint 17: davet kabulü (InvitedByStudio) doğrulanmış e-posta ister → kabulden önce verify.
+  psql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$email' AND \"EmailVerifiedAt\" IS NULL;"
   resp=$(post /api/studio/memberships/invite "{\"email\":\"$email\",\"role\":\"$role\"${rate:+,\"rate\":$rate}}" "$OTOK")
   m=$(body "$resp" | jget membershipId); tok=$(login "$email")
   post "/api/members/$m/accept" '{}' "$tok" >/dev/null
-  body "$resp" | jget instructorProfileId
+  # Sprint 17: profil invite anında DEĞİL, kabulde oluşur → profileId üye listesinden (accept sonrası) alınır.
+  get /api/studio/memberships "$OTOK" | tr '{' '\n' | grep "\"email\":\"$email\"" \
+    | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'
 }
 acceptMember "$ADMIN" StudioAdmin >/dev/null; ok "StudioAdmin: $ADMIN"
 I1P=$(acceptMember "$INSTR" Instructor 200); ok "Instructor: $INSTR (profil $I1P)"
 # 2. hoca: müsaitlik penceresi YOK → Owner bu hoca için herhangi bir saatte seans açabilir
 # (zamanı sabit olmayan demo seansları bunun üzerinden oluşturulur; deterministic).
 I2P=$(acceptMember "$INSTR2" Instructor 180); ok "Instructor 2: $INSTR2 (profil $I2P)"
+
+# Sprint 17: stüdyosuz davetli — bekleyen hoca daveti olan ama KABUL ETMEMİŞ kullanıcı (Davetlerim E2E).
+INVITEE=e2e-invitee@pliaforma.local
+post /api/auth/register "{\"fullName\":\"E2E Invitee\",\"email\":\"$INVITEE\",\"password\":\"$PW\"}" >/dev/null
+psql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$INVITEE';"
+post /api/studio/memberships/invite "{\"email\":\"$INVITEE\",\"role\":\"Instructor\"}" "$OTOK" >/dev/null
+ok "Stüdyosuz davetli (bekleyen hoca daveti): $INVITEE"
 
 echo "== 4) ClassType + Availability =="
 CT=$(body "$(post /api/class-types '{"name":"E2E Reformer","equipment":"Reformer","capacityType":"Group","maxCapacity":6,"level":"AllLevels","purpose":"General","defaultDurationMinutes":60}' "$OTOK")" | jget id)

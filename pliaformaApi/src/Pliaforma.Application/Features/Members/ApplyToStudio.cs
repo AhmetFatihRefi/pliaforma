@@ -10,10 +10,11 @@ using Pliaforma.Domain.Exceptions;
 namespace Pliaforma.Application.Features.Members;
 
 /// <summary>
-/// Self-service stüdyoya katılım isteği (Sprint 15). Kullanıcı **JoinCode** + **rol** (yalnız Student/
-/// Instructor) ile başvurur → Pending üyelik (RequestedByUser) oluşur. **Profil oluşturulmaz** — Student/
-/// InstructorProfile yalnızca stüdyo onayında (AcceptMembership) yaratılır. Tenant-öncesidir (kullanıcının o
-/// stüdyoda üyeliği yoktur) → IStudioWriteRequest DEĞİL. Geçersiz/pasif kod generic 404 (stüdyo sızdırmaz).
+/// Self-service stüdyoya katılım isteği (Sprint 15; Sprint 17'de yalnız Student'a daraltıldı). Kullanıcı
+/// **JoinCode** + **rol = Student** ile başvurur → Pending üyelik (RequestedByUser) oluşur. **Profil
+/// oluşturulmaz** — StudentProfile yalnızca stüdyo onayında (AcceptMembership) yaratılır. **Hoca JoinCode ile
+/// başvuramaz** (Sprint 17): hocalar yalnız stüdyo davetiyle katılır → Role=Instructor 400/422. Tenant-
+/// öncesidir → IStudioWriteRequest DEĞİL. Geçersiz/pasif kod generic 404 (stüdyo sızdırmaz).
 /// </summary>
 public sealed record ApplyToStudioCommand(string JoinCode, StudioRole Role) : ICommand<PendingInvitationDto>;
 
@@ -22,9 +23,10 @@ public sealed class ApplyToStudioValidator : AbstractValidator<ApplyToStudioComm
     public ApplyToStudioValidator()
     {
         RuleFor(x => x.JoinCode).NotEmpty().MaximumLength(40);
+        // Sprint 17: yalnız Öğrenci kodla başvurabilir. Hoca → stüdyo daveti zorunlu.
         RuleFor(x => x.Role)
-            .Must(r => r is StudioRole.Student or StudioRole.Instructor)
-            .WithMessage("Yalnızca Öğrenci veya Hoca olarak başvurabilirsiniz.");
+            .Must(r => r == StudioRole.Student)
+            .WithMessage("Hocalar bir stüdyoya kodla başvuramaz; stüdyonun davet etmesi gerekir.");
     }
 }
 
@@ -43,9 +45,14 @@ public sealed class ApplyToStudioHandler : ICommandHandler<ApplyToStudioCommand,
     {
         var userId = _currentUser.RequireUserId();
 
-        // Güvenlik: yalnız Student/Instructor (validator de engeller; handler ikinci kapı).
-        if (request.Role is not (StudioRole.Student or StudioRole.Instructor))
-            throw new BusinessRuleException("Yalnızca Öğrenci veya Hoca olarak başvurabilirsiniz.");
+        // Sprint 17 güvenliği: yalnız Öğrenci kodla başvurabilir (validator de engeller; handler ikinci kapı).
+        // Hoca → stüdyo daveti zorunlu (doğrudan komut çağrısına karşı 400).
+        if (request.Role != StudioRole.Student)
+            throw new Pliaforma.Application.Common.Exceptions.ValidationException(
+                new Dictionary<string, string[]>
+                {
+                    ["Role"] = new[] { "Hocalar bir stüdyoya kodla başvuramaz; stüdyonun davet etmesi gerekir." },
+                });
 
         // Sprint 16: e-posta doğrulanmadan stüdyoya katılım isteği gönderilemez (login/logout/resend açık).
         var verified = await _db.Users.Where(u => u.Id == userId).Select(u => u.EmailVerifiedAt).FirstOrDefaultAsync(cancellationToken);
@@ -73,7 +80,7 @@ public sealed class ApplyToStudioHandler : ICommandHandler<ApplyToStudioCommand,
             existing.Direction = MembershipDirection.RequestedByUser;
             existing.AcceptedAt = null;
             await _db.SaveChangesAsync(cancellationToken);
-            return new PendingInvitationDto(existing.Id, studio.Id, studio.Name, studio.Slug, existing.Role);
+            return new PendingInvitationDto(existing.Id, studio.Id, studio.Name, studio.Slug, existing.Role, existing.CreatedAt);
         }
 
         var membership = new StudioMembership
@@ -87,6 +94,6 @@ public sealed class ApplyToStudioHandler : ICommandHandler<ApplyToStudioCommand,
         _db.StudioMemberships.Add(membership);
         await _db.SaveChangesAsync(cancellationToken);
 
-        return new PendingInvitationDto(membership.Id, studio.Id, studio.Name, studio.Slug, membership.Role);
+        return new PendingInvitationDto(membership.Id, studio.Id, studio.Name, studio.Slug, membership.Role, membership.CreatedAt);
     }
 }

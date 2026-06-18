@@ -31,7 +31,10 @@ backdate(){ sql "UPDATE \"ClassSessions\" SET \"StartAt\"='2020-01-01 10:00:00',
 ATOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S14A $TS\",\"ownerFullName\":\"OA\",\"email\":\"s14a+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 CTOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S14C $TS\",\"ownerFullName\":\"OC\",\"email\":\"s14c+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 post /api/auth/register "{\"fullName\":\"i1\",\"email\":\"i1+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null
-RR=$(post /api/studio/memberships/invite "{\"email\":\"i1+$TS@pf.local\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); MI=$(body "$RR" | jget membershipId); TMPI=$(login "i1+$TS@pf.local"); post "/api/members/$MI/accept" '{}' "$TMPI" >/dev/null; I1TOK=$(login "i1+$TS@pf.local"); I1P=$(body "$RR" | jget instructorProfileId)
+# Sprint 17: davet kabulü doğrulanmış e-posta ister + profil KABULDE oluşur (invite yanıtında değil).
+vrf(){ sql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null; }
+ipid(){ curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" | tr '{' '\n' | grep "\"email\":\"$1\"" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'; }
+vrf "i1+$TS@pf.local"; RR=$(post /api/studio/memberships/invite "{\"email\":\"i1+$TS@pf.local\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); MI=$(body "$RR" | jget membershipId); TMPI=$(login "i1+$TS@pf.local"); post "/api/members/$MI/accept" '{}' "$TMPI" >/dev/null; I1TOK=$(login "i1+$TS@pf.local"); I1P=$(ipid "i1+$TS@pf.local")
 CT1=$(body "$(post /api/class-types "{\"name\":\"Mat\",\"equipment\":\"Mat\",\"capacityType\":\"Group\",\"maxCapacity\":5,\"level\":\"AllLevels\",\"purpose\":\"General\",\"defaultDurationMinutes\":60}" "$ATOK")" | jget id)
 CT2=$(body "$(post /api/class-types "{\"name\":\"Reformer\",\"equipment\":\"Reformer\",\"capacityType\":\"Group\",\"maxCapacity\":5,\"level\":\"AllLevels\",\"purpose\":\"General\",\"defaultDurationMinutes\":60}" "$ATOK")" | jget id)
 mksess(){ body "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$1\",\"startAt\":\"${D}T$2:00\",\"capacity\":5}" "$ATOK")" | jget id; }

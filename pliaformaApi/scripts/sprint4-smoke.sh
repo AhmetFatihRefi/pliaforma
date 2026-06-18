@@ -21,7 +21,11 @@ FUT=$(date -d "+2 days" +%Y-%m-%d)
 ATOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S4A $TS\",\"ownerFullName\":\"OA\",\"email\":\"s4a+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 RC=$(post /api/auth/register-studio "{\"studioName\":\"S4C $TS\",\"ownerFullName\":\"OC\",\"email\":\"s4c+$TS@pf.local\",\"password\":\"$PW\"}"); CTOK=$(body "$RC" | jget accessToken)
 for n in i1 i2; do post /api/auth/register "{\"fullName\":\"$n\",\"email\":\"$n+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null; done
-inv(){ RR=$(post /api/studio/memberships/invite "{\"email\":\"$1+$TS@pf.local\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); M=$(body "$RR" | jget membershipId); T=$(login "$1+$TS@pf.local"); post "/api/members/$M/accept" '{}' "$T" >/dev/null; body "$RR" | jget instructorProfileId; }
+# Sprint 17: davet kabulü doğrulanmış e-posta ister + profil KABULDE oluşur (invite yanıtında değil).
+PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|pliaforma-dev-postgres' | head -1)
+vrf(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1; }
+ipid(){ curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" | tr '{' '\n' | grep "\"email\":\"$1\"" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'; }
+inv(){ local e="$1+$TS@pf.local"; vrf "$e"; RR=$(post /api/studio/memberships/invite "{\"email\":\"$e\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); M=$(body "$RR" | jget membershipId); T=$(login "$e"); post "/api/members/$M/accept" '{}' "$T" >/dev/null; ipid "$e"; }
 I1P=$(inv i1); I2P=$(inv i2); I2TOK=$(login "i2+$TS@pf.local")
 CT=$(body "$(post /api/class-types "{\"name\":\"Mat\",\"equipment\":\"Mat\",\"capacityType\":\"Group\",\"maxCapacity\":2,\"level\":\"AllLevels\",\"purpose\":\"General\",\"defaultDurationMinutes\":60}" "$ATOK")" | jget id)
 # Seanslar (Owner availability'siz açabilir)

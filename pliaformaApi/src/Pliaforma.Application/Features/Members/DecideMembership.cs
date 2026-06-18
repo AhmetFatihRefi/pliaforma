@@ -37,6 +37,19 @@ public sealed class AcceptMembershipHandler : ICommandHandler<AcceptMembershipCo
 
         await MembershipAccess.EnsureCanDecideAsync(_db, _currentUser, membership, cancellationToken);
 
+        // Sprint 17: davet kabulünde (InvitedByStudio) davet edilen kullanıcının e-postası doğrulanmış olmalı.
+        // (RequestedByUser başvurusu zaten apply sırasında e-posta doğrulaması gerektirir — Sprint 16.)
+        // Reddetmede bu şart yoktur. 403 → kullanıcı önce doğrulasın, sonra kabul etsin.
+        if (membership.Direction == MembershipDirection.InvitedByStudio)
+        {
+            var verified = await _db.Users
+                .Where(u => u.Id == membership.UserId)
+                .Select(u => u.EmailVerifiedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (verified is null)
+                throw new ForbiddenException("Daveti kabul etmek için önce e-posta adresinizi doğrulayın.");
+        }
+
         membership.Status = MembershipStatus.Active;
         membership.AcceptedAt = _clock.UtcNow;
 

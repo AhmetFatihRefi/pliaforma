@@ -32,10 +32,14 @@ BR=$(post /api/auth/register-studio "{\"studioName\":\"S10B $TS\",\"ownerFullNam
 BTOK=$(body "$BR" | jget accessToken); BID=$(body "$BR" | jget studioId)
 
 # Instructor + StudioAdmin + Student in A (403 kontrolleri için)
+# Sprint 17: davet kabulü doğrulanmış e-posta ister → kabulden önce verify.
+vrf(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1; }
 post /api/auth/register "{\"fullName\":\"i1\",\"email\":\"i1+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null
+vrf "i1+$TS@pf.local"
 MI=$(body "$(post /api/studio/memberships/invite "{\"email\":\"i1+$TS@pf.local\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK")" | jget membershipId)
 I1TOK=$(login "i1+$TS@pf.local"); post "/api/members/$MI/accept" '{}' "$I1TOK" >/dev/null
 post /api/auth/register "{\"fullName\":\"adm\",\"email\":\"adm+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null
+vrf "adm+$TS@pf.local"
 MA=$(body "$(post /api/studio/memberships/invite "{\"email\":\"adm+$TS@pf.local\",\"role\":\"StudioAdmin\"}" "$ATOK")" | jget membershipId)
 ADMTOK=$(login "adm+$TS@pf.local"); post "/api/members/$MA/accept" '{}' "$ADMTOK" >/dev/null
 GS=$(body "$(post /api/studio/students/guest "{\"fullName\":\"sa\",\"source\":\"Phone\"}" "$ATOK")" | jget id)

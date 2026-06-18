@@ -58,10 +58,12 @@ MIS=$(body "$RS" | jget membershipId)
 expect "başvuru sonrası StudentProfile YOK (0)" 0 "$(scount "$STU1ID" "$SID_A")"
 expect "aynı stüdyoya 2. Pending başvuru → 409" 409 "$(code "$(apply "$JCA" "Student" "$STU1TOK")")"
 
-echo "--- 4) Instructor başvurusu (tireli kod normalize) ---"
-RI=$(apply "$JCA_F" "Instructor" "$INS1TOK"); expect "tireli kod (normalize) ile Instructor başvuru → 200" 200 "$(code "$RI")"
+echo "--- 4) Sprint 17: Instructor JoinCode KAPALI + ikinci kullanıcı Student (tireli kod normalize) ---"
+expect "Instructor JoinCode apply → 400 (hoca davetle katılır)" 400 "$(code "$(apply "$JCA" "Instructor" "$INS1TOK")")"
+# INS1 kullanıcısı izolasyon/normalize testi için A'ya ÖĞRENCİ başvurusu yapar (tireli kod normalize).
+RI=$(apply "$JCA_F" "Student" "$INS1TOK"); expect "tireli kod (normalize) ile Student başvuru → 200" 200 "$(code "$RI")"
 MII=$(body "$RI" | jget membershipId)
-expect "başvuru sonrası InstructorProfile YOK (0)" 0 "$(icount "$INS1ID" "$SID_A")"
+expect "başvuru sonrası StudentProfile YOK (0)" 0 "$(scount "$INS1ID" "$SID_A")"
 
 echo "--- 5) Sınırlı roller ---"
 expect "Owner rolüne başvuru → 400" 400 "$(code "$(apply "$JCA" "Owner" "$INS1TOK")")"
@@ -86,9 +88,9 @@ expect "Owner Student başvurusunu kabul → 200" 200 "$(pcode "/api/members/$MI
 expect "kabul sonrası StudentProfile oluştu (1)" 1 "$(scount "$STU1ID" "$SID_A")"
 expect "Active üyeyken tekrar başvuru → 409" 409 "$(code "$(apply "$JCA" "Student" "$STU1TOK")")"
 
-echo "--- 9) Kabul → profil oluşur (StudioAdmin: Instructor) ---"
-expect "StudioAdmin Instructor başvurusunu kabul → 200" 200 "$(pcode "/api/members/$MII/accept" '{}' "$ADMTOK")"
-expect "kabul sonrası InstructorProfile oluştu (1)" 1 "$(icount "$INS1ID" "$SID_A")"
+echo "--- 9) Kabul → profil oluşur (StudioAdmin: ikinci Student) ---"
+expect "StudioAdmin Student başvurusunu kabul → 200" 200 "$(pcode "/api/members/$MII/accept" '{}' "$ADMTOK")"
+expect "kabul sonrası StudentProfile oluştu (1)" 1 "$(scount "$INS1ID" "$SID_A")"
 
 echo "--- 10) Reject → profil oluşmaz + Rejected sonrası yeniden başvuru ---"
 RJTOK=$(regtok "Rej" "rej+$TS@pf.local"); RJID=$(uid "rej+$TS@pf.local")

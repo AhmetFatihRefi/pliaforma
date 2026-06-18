@@ -28,7 +28,10 @@ backdate(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Cl
 ATOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S8A $TS\",\"ownerFullName\":\"OA\",\"email\":\"s8a+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 CTOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S8C $TS\",\"ownerFullName\":\"OC\",\"email\":\"s8c+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 for n in i1 i2; do post /api/auth/register "{\"fullName\":\"$n\",\"email\":\"$n+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null; done
-inv(){ RR=$(post /api/studio/memberships/invite "{\"email\":\"$1+$TS@pf.local\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); M=$(body "$RR" | jget membershipId); T=$(login "$1+$TS@pf.local"); post "/api/members/$M/accept" '{}' "$T" >/dev/null; body "$RR" | jget instructorProfileId; }
+# Sprint 17: davet kabulü doğrulanmış e-posta ister + profil KABULDE oluşur (invite yanıtında değil).
+vrf(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1; }
+ipid(){ curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" | tr '{' '\n' | grep "\"email\":\"$1\"" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'; }
+inv(){ local e="$1+$TS@pf.local"; vrf "$e"; RR=$(post /api/studio/memberships/invite "{\"email\":\"$e\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); M=$(body "$RR" | jget membershipId); T=$(login "$e"); post "/api/members/$M/accept" '{}' "$T" >/dev/null; ipid "$e"; }
 I1P=$(inv i1); I2P=$(inv i2); I1TOK=$(login "i1+$TS@pf.local"); I2TOK=$(login "i2+$TS@pf.local")
 # Ücret tipleri: i1 PerSession 100, i2 PerStudentPerSession 50
 pucode "/api/instructors/$I1P/rate" "{\"rate\":100,\"rateType\":\"PerSession\"}" "$ATOK" >/dev/null

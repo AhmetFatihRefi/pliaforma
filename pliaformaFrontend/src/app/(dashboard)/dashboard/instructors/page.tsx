@@ -247,7 +247,7 @@ export default function InstructorsPage() {
       <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Üye davet et">
         <form onSubmit={sendInvite} className="space-y-4">
           {inviteErr && <Alert kind="error">{inviteErr}</Alert>}
-          <FormField label="E-posta" hint="Kayıtlı bir kullanıcı olmalı">
+          <FormField label="E-posta" hint="Davet edilecek kişinin önce bir hesabı olmalı. Davet, kullanıcının Davetlerim ekranına düşer.">
             <Input type="email" value={invite.email} onChange={(e) => setInvite((v) => ({ ...v, email: e.target.value }))} required />
           </FormField>
           <FormField label="Rol" hint={isOwner ? undefined : "StudioAdmin yalnızca stüdyo sahibi tarafından atanır"}>

@@ -62,6 +62,7 @@ export interface PendingInvitationDto {
   studioName: string;
   studioSlug: string;
   role: StudioRole;
+  invitedAt: string;
 }
 
 // Sprint 15: self-service kayıt & katılım isteği
@@ -657,7 +658,8 @@ export interface InstructorsReportDto { month: string; instructors: InstructorRe
 // ===== Sprint 9: Bildirimler =====
 export type NotificationType =
   | "ClassReminder" | "PaymentDueSoon" | "PaymentOverdue"
-  | "MakeupCreditGranted" | "BookingCancelled" | "SessionRescheduled" | "System";
+  | "MakeupCreditGranted" | "BookingCancelled" | "SessionRescheduled" | "System"
+  | "MembershipInvite";
 export type NotificationChannel = "InApp" | "Log" | "Email" | "Sms" | "WhatsApp";
 export type NotificationStatus = "Pending" | "Sent" | "Failed" | "Read";
 
@@ -669,6 +671,7 @@ export const notificationTypeLabels: Record<NotificationType, string> = {
   BookingCancelled: "Rezervasyon iptali",
   SessionRescheduled: "Ders ertelendi",
   System: "Sistem",
+  MembershipInvite: "Stüdyo daveti",
 };
 
 export interface NotificationDto {

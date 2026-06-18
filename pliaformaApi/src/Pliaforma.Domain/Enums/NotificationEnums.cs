@@ -10,6 +10,10 @@ public enum NotificationType
     BookingCancelled = 4,
     SessionRescheduled = 5,
     System = 6,
+
+    /// <summary>Stüdyo bir kullanıcıyı üye (hoca/admin) olarak davet etti (Sprint 17). DB string saklandığı için
+    /// enum sonuna eklemek migration gerektirmez.</summary>
+    MembershipInvite = 7,
 }
 
 /// <summary>

@@ -26,6 +26,8 @@ ATOK=$(body "$R" | jget accessToken); OWNER_MEM=$(body "$R" | jget membershipId)
 post /api/auth/register "{\"fullName\":\"Admin U\",\"email\":\"$ADM\",\"password\":\"$PW\"}" >/dev/null
 post /api/auth/register "{\"fullName\":\"Instr U\",\"email\":\"$INS\",\"password\":\"$PW\"}" >/dev/null
 R=$(post /api/auth/register "{\"fullName\":\"Stud U\",\"email\":\"$STU\",\"password\":\"$PW\"}"); STU_ID=$(body "$R" | jget id)
+# Sprint 17: davet kabulü (InvitedByStudio) doğrulanmış e-posta ister → davet edilecekleri doğrula.
+for E in "$ADM" "$INS"; do docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$E' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1; done
 
 echo "--- StudioAdmin akışı ---"
 R=$(post /api/studio/memberships/invite "{\"email\":\"$ADM\",\"role\":\"StudioAdmin\"}" "$ATOK")

@@ -21,4 +21,5 @@ public sealed record PendingInvitationDto(
     Guid StudioId,
     string StudioName,
     string StudioSlug,
-    StudioRole Role);
+    StudioRole Role,
+    DateTime InvitedAt);

@@ -25,7 +25,11 @@ TOMOR=$(IST -d '+1 day' +%Y-%m-%d)
 ATOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S9A $TS\",\"ownerFullName\":\"OA\",\"email\":\"s9a+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 CTOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S9C $TS\",\"ownerFullName\":\"OC\",\"email\":\"s9c+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 post /api/auth/register "{\"fullName\":\"i1\",\"email\":\"i1+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null
-RR=$(post /api/studio/memberships/invite "{\"email\":\"i1+$TS@pf.local\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); M=$(body "$RR" | jget membershipId); I1TOK=$(login "i1+$TS@pf.local"); post "/api/members/$M/accept" '{}' "$I1TOK" >/dev/null; I1P=$(body "$RR" | jget instructorProfileId)
+# Sprint 17: davet kabulü doğrulanmış e-posta ister + profil KABULDE oluşur (invite yanıtında değil).
+PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|pliaforma-dev-postgres' | head -1)
+vrf(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1; }
+ipid(){ curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" | tr '{' '\n' | grep "\"email\":\"$1\"" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'; }
+vrf "i1+$TS@pf.local"; RR=$(post /api/studio/memberships/invite "{\"email\":\"i1+$TS@pf.local\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); M=$(body "$RR" | jget membershipId); I1TOK=$(login "i1+$TS@pf.local"); post "/api/members/$M/accept" '{}' "$I1TOK" >/dev/null; I1P=$(ipid "i1+$TS@pf.local")
 CT=$(body "$(post /api/class-types "{\"name\":\"Mat\",\"equipment\":\"Mat\",\"capacityType\":\"Group\",\"maxCapacity\":5,\"level\":\"AllLevels\",\"purpose\":\"General\",\"defaultDurationMinutes\":60}" "$ATOK")" | jget id)
 mksess(){ body "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"$1\",\"capacity\":5}" "$ATOK")" | jget id; }
 guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\":\"Phone\"}" "$ATOK")" | jget id; }

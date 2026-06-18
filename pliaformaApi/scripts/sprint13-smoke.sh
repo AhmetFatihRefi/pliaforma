@@ -28,9 +28,11 @@ CT_BODY='{"name":"Mat","equipment":"Mat","capacityType":"Group","maxCapacity":5,
 # --- Fixtures: stüdyo A (Owner + StudioAdmin + Instructor + Student) + PlatformAdmin ---
 AR=$(post /api/auth/register-studio "{\"studioName\":\"S13A $TS\",\"ownerFullName\":\"OA\",\"email\":\"s13a+$TS@pf.local\",\"password\":\"$PW\"}")
 ATOK=$(body "$AR" | jget accessToken); AID=$(body "$AR" | jget studioId)
-inv(){ post /api/auth/register "{\"fullName\":\"$1\",\"email\":\"$1+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null
-       local r m t; r=$(post /api/studio/memberships/invite "{\"email\":\"$1+$TS@pf.local\",\"role\":\"$2\"${3:+,\"rate\":$3}}" "$ATOK")
-       m=$(body "$r" | jget membershipId); t=$(login "$1+$TS@pf.local"); post "/api/members/$m/accept" '{}' "$t" >/dev/null; }
+# Sprint 17: davet kabulü doğrulanmış e-posta ister → kabulden önce verify.
+inv(){ local e="$1+$TS@pf.local"; post /api/auth/register "{\"fullName\":\"$1\",\"email\":\"$e\",\"password\":\"$PW\"}" >/dev/null
+       psql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$e' AND \"EmailVerifiedAt\" IS NULL;"
+       local r m t; r=$(post /api/studio/memberships/invite "{\"email\":\"$e\",\"role\":\"$2\"${3:+,\"rate\":$3}}" "$ATOK")
+       m=$(body "$r" | jget membershipId); t=$(login "$e"); post "/api/members/$m/accept" '{}' "$t" >/dev/null; }
 inv adm StudioAdmin; ADMTOK=$(login "adm+$TS@pf.local")
 inv i1 Instructor 100; I1TOK=$(login "i1+$TS@pf.local")
 GS=$(body "$(post /api/studio/students/guest '{"fullName":"sa","source":"Phone"}' "$ATOK")" | jget id)

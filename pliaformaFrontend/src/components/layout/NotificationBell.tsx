@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { notificationService } from "@/lib/studioApi";
 import { type NotificationDto, notificationTypeLabels } from "@/lib/domain-types";
 
@@ -12,6 +13,7 @@ export function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState<NotificationDto[]>([]);
   const ref = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   const loadCount = useCallback(() => {
     notificationService.unreadCount().then(setUnread).catch(() => {});
@@ -40,12 +42,18 @@ export function NotificationBell() {
   };
 
   const markRead = async (n: NotificationDto) => {
-    if (n.isRead) return;
-    try {
-      await notificationService.markRead(n.id);
-      setItems((xs) => xs.map((x) => (x.id === n.id ? { ...x, isRead: true } : x)));
-      loadCount();
-    } catch { /* yut */ }
+    if (!n.isRead) {
+      try {
+        await notificationService.markRead(n.id);
+        setItems((xs) => xs.map((x) => (x.id === n.id ? { ...x, isRead: true } : x)));
+        loadCount();
+      } catch { /* yut */ }
+    }
+    // Davet bildirimi → Davetlerim bölümüne götür (Sprint 17 derin linki).
+    if (n.type === "MembershipInvite") {
+      setOpen(false);
+      router.push("/join-studio?tab=invitations");
+    }
   };
 
   const markAll = async () => {
