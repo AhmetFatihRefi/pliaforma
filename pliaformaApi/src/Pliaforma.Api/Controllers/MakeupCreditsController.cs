@@ -19,6 +19,12 @@ public sealed class MakeupCreditsController : ApiControllerBase
     public Task<IActionResult> GetForStudent(Guid studentId, CancellationToken ct) =>
         Send(new GetStudentMakeupCreditsQuery(studentId), ct: ct);
 
+    // Sprint 20: telafi dersine eklenebilir (kullanılabilir hak > 0) öğrenciler.
+    [Authorize(Roles = "Owner,StudioAdmin")]
+    [HttpGet("makeup-eligible-students")]
+    public Task<IActionResult> EligibleStudents(CancellationToken ct) =>
+        Send(new GetMakeupEligibleStudentsQuery(), ct: ct);
+
     [HttpPost("students/{studentId:guid}/makeup-credits/grant")]
     public Task<IActionResult> Grant(Guid studentId, GrantMakeupCreditCommand command, CancellationToken ct) =>
         Send(command with { StudentProfileId = studentId }, "Telafi kredisi verildi.", ct);

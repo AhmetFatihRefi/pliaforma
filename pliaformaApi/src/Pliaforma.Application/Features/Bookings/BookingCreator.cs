@@ -122,9 +122,14 @@ public sealed class BookingCreator
             PackageEligibilityStatus = null,
         };
 
-        // MAKEUP seansı: 1 telafi kredisi tüket. Booking ile aynı transaction'da (rollback ikisini de geri alır).
+        // MAKEUP seansı (Sprint 20): yalnız Owner/StudioAdmin telafi dersine öğrenci ekleyebilir; STRICT
+        // eligibility — telafi hakkı yoksa 409 (override YOK). Booking ile aynı transaction'da.
         if (session.SessionKind == ClassSessionKind.Makeup)
-            await ConsumeMakeupCreditAsync(studioId, student.Id, booking.Id, bookedByUserId, bookerRole, ct);
+        {
+            if (bookerRole is not (StudioRole.Owner or StudioRole.StudioAdmin))
+                throw new ForbiddenException("Telafi dersine öğrenci ekleme yetkisi yalnızca Owner/StudioAdmin'dedir.");
+            await ConsumeMakeupCreditAsync(studioId, student.Id, booking.Id, bookedByUserId, ct);
+        }
 
         _db.ClassBookings.Add(booking);
 
@@ -143,22 +148,14 @@ public sealed class BookingCreator
     }
 
     private async Task ConsumeMakeupCreditAsync(
-        Guid studioId, Guid studentProfileId, Guid bookingId, Guid bookedByUserId, StudioRole bookerRole, CancellationToken ct)
+        Guid studioId, Guid studentProfileId, Guid bookingId, Guid bookedByUserId, CancellationToken ct)
     {
-        // Son krediyi iki eşzamanlı rezervasyonun birden harcamasını engelle: öğrenci satırı zaten kilitli.
+        // Sprint 20: STRICT — telafi hakkı yoksa kimse (Owner/Admin dâhil) telafi dersine ekleyemez.
+        // `AllowMakeupBookingWithoutCreditByAdmin` politikası DORMANT (yeni akışta kullanılmaz). Öğrenci satırı
+        // kilitli olduğundan (row-lock) son kredi iki eşzamanlı rezervasyonda iki kez harcanamaz.
         var balance = await _credits.GetBalanceAsync(studioId, studentProfileId, ct);
-
-        if (balance > 0)
-        {
-            _credits.Use(studioId, studentProfileId, 1, bookingId, bookedByUserId);
-            return;
-        }
-
-        // Kredi yok. Politika izin veriyorsa ve booker Owner/StudioAdmin ise kredisiz override (tüketim yok).
-        var policy = await _credits.GetPolicyAsync(studioId, ct);
-        var staffOverride = policy.AllowMakeupBookingWithoutCreditByAdmin
-                            && bookerRole is StudioRole.Owner or StudioRole.StudioAdmin;
-        if (!staffOverride)
-            throw new ConflictException("Telafi krediniz olmadığı için telafi (makeup) dersine rezervasyon yapılamaz.");
+        if (balance <= 0)
+            throw new ConflictException("Telafi hakkı olmayan öğrenci telafi (makeup) dersine eklenemez.");
+        _credits.Use(studioId, studentProfileId, 1, bookingId, bookedByUserId);
     }
 }

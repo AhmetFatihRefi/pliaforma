@@ -75,6 +75,9 @@ public enum MakeupCreditReason
 
     /// <summary>Devamsızlık (Absent) yoklamasından otomatik kazanılan telafi (Sprint 19 — sözleşme MakeupAllowance limitli).</summary>
     AbsentEarned = 10,
+
+    /// <summary>Ders hoca nedeniyle işlenemedi (Sprint 20) → öğrencilere ekstra telafi (MakeupAllowance'tan bağımsız).</summary>
+    InstructorNotDelivered = 11,
 }
 
 /// <summary>Toplu kapanış (StudioClosure) işleminin etkilenen seanslara uygulayacağı aksiyon.</summary>

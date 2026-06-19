@@ -95,24 +95,31 @@ export default function MakeupCreditsPage() {
                   <p className="text-sm text-muted">Telafi kredisi bakiyesi</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge tone={credits.balance > 0 ? "rose" : "neutral"}>Bakiye: {credits.balance}</Badge>
                   <Button size="sm" onClick={() => setGrantOpen(true)}>Kredi ver</Button>
                   <Button size="sm" variant="secondary" disabled={credits.balance <= 0} onClick={() => setRevokeOpen(true)}>Geri al</Button>
                 </div>
               </div>
 
+              {/* Sprint 20: kazanılan / kullanılan / kullanılabilir özeti */}
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Kazanılan</p><p className="text-lg font-semibold text-success">{credits.summary.earned}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Kullanılan</p><p className="text-lg font-semibold text-danger">{credits.summary.used}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Kullanılabilir</p><p className="text-lg font-semibold text-foreground">{credits.summary.available}</p></div>
+              </div>
+
               <div className="mt-4">
                 <Table>
-                  <THead><TR><TH>Tarih</TH><TH>İşlem</TH><TH>Gerekçe</TH><TH>Not</TH><TH className="text-right">Miktar</TH></TR></THead>
+                  <THead><TR><TH>Tarih</TH><TH>İşlem</TH><TH>Gerekçe</TH><TH>Kaynak / Kullanım</TH><TH>Not</TH><TH className="text-right">Miktar</TH></TR></THead>
                   <tbody>
                     {credits.transactions.length === 0 ? (
-                      <TableEmpty colSpan={5}>Henüz kredi hareketi yok.</TableEmpty>
+                      <TableEmpty colSpan={6}>Henüz kredi hareketi yok.</TableEmpty>
                     ) : (
                       credits.transactions.map((t) => (
                         <TR key={t.id}>
                           <TD className="text-muted">{fmt(t.createdAt)}</TD>
                           <TD><Badge tone={t.amount > 0 ? "success" : "neutral"}>{creditTypeLabels[t.type]}</Badge></TD>
                           <TD className="text-muted">{creditReasonLabels[t.reason]}</TD>
+                          <TD className="text-xs text-muted">{t.usedForLabel ? `→ ${t.usedForLabel}` : t.sourceLabel ?? "—"}</TD>
                           <TD className="text-muted">{t.notes ?? "—"}</TD>
                           <TD className={`text-right font-medium ${t.amount > 0 ? "text-success" : "text-danger"}`}>
                             {t.amount > 0 ? `+${t.amount}` : t.amount}
@@ -239,7 +246,7 @@ function PolicyCard() {
           <p>Aylık manuel kredi limiti: <span className="text-foreground">{policy.monthlyManualCreditLimit}</span></p>
           <p>Varsayılan geçerlilik (gün): <span className="text-foreground">{policy.defaultCreditValidityDays}</span> <span className="text-xs">(şu an uygulanmıyor)</span></p>
           <p>Hoca manuel kredi verebilir: <span className="text-foreground">{policy.allowInstructorManualGrant ? "Evet" : "Hayır"}</span></p>
-          <p>Kredisiz makeup (yönetici): <span className="text-foreground">{policy.allowMakeupBookingWithoutCreditByAdmin ? "Evet" : "Hayır"}</span></p>
+          <p>Kredisiz makeup (yönetici): <span className="text-foreground">{policy.allowMakeupBookingWithoutCreditByAdmin ? "Evet" : "Hayır"}</span> <span className="text-xs">(Sprint 20: artık kullanılmıyor — telafi hakkı zorunlu)</span></p>
         </div>
       ) : (
         <form onSubmit={save} className="mt-3 space-y-3">

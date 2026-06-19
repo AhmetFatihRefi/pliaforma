@@ -51,6 +51,7 @@ import type {
   RateType,
   StudentDto,
   StudentMakeupCreditsDto,
+  MakeupEligibleStudentDto,
   StudentSessionDto,
   StudioClosureActionType,
   StudioClosureDto,
@@ -171,6 +172,9 @@ export const classSessionService = {
     api<ConfirmTodayResultDto>("/api/studio/class-sessions/confirm-today", { method: "POST", body: {} }),
   setActualInstructor: (id: string, actualInstructorProfileId: string | null) =>
     api<null>(`/api/studio/class-sessions/${id}/actual-instructor`, { method: "POST", body: { actualInstructorProfileId } }),
+  // Sprint 20: ders hoca nedeniyle işlenemedi → Cancelled + öğrencilere telafi.
+  notDelivered: (id: string, reason?: string) =>
+    api<null>(`/api/studio/class-sessions/${id}/not-delivered`, { method: "POST", body: { reason } }),
 };
 
 // Kapalı günler / toplu işlemler (/api/studio/closures) — Owner/StudioAdmin
@@ -192,6 +196,8 @@ export const closureService = {
 // Telafi kredileri — personel tarafı (/api/studio)
 export const makeupCreditService = {
   forStudent: (studentId: string) => api<StudentMakeupCreditsDto>(`/api/studio/students/${studentId}/makeup-credits`),
+  // Sprint 20: telafi dersine eklenebilir (kullanılabilir hak > 0) öğrenciler.
+  eligibleStudents: () => api<MakeupEligibleStudentDto[]>("/api/studio/makeup-eligible-students"),
   grant: (studentId: string, input: { amount: number; notes?: string }) =>
     api<StudentMakeupCreditsDto>(`/api/studio/students/${studentId}/makeup-credits/grant`, { method: "POST", body: input }),
   revoke: (studentId: string, input: { amount: number; notes?: string }) =>

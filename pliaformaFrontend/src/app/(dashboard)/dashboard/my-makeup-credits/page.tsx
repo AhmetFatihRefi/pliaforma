@@ -41,21 +41,30 @@ export default function MyMakeupCreditsPage() {
 
       {error && <Alert kind="error">{error}</Alert>}
 
+      {data && (
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <Card><p className="text-xs text-muted">Kazanılan</p><p className="text-lg font-semibold text-success">{data.summary.earned}</p></Card>
+          <Card><p className="text-xs text-muted">Kullanılan</p><p className="text-lg font-semibold text-danger">{data.summary.used}</p></Card>
+          <Card><p className="text-xs text-muted">Kullanılabilir</p><p className="text-lg font-semibold text-foreground">{data.summary.available}</p></Card>
+        </div>
+      )}
+
       <Card>
-        <h3 className="mb-3 text-sm font-semibold text-muted">Hareket geçmişi</h3>
+        <h3 className="mb-3 text-sm font-semibold text-muted">Hareket geçmişi (salt-okunur — telafi dersini stüdyo planlar)</h3>
         <Table>
-          <THead><TR><TH>Tarih</TH><TH>İşlem</TH><TH>Gerekçe</TH><TH className="text-right">Miktar</TH></TR></THead>
+          <THead><TR><TH>Tarih</TH><TH>İşlem</TH><TH>Gerekçe</TH><TH>Kaynak / Kullanım</TH><TH className="text-right">Miktar</TH></TR></THead>
           <tbody>
             {loading ? (
-              <TableEmpty colSpan={4}>Yükleniyor…</TableEmpty>
+              <TableEmpty colSpan={5}>Yükleniyor…</TableEmpty>
             ) : !data || data.transactions.length === 0 ? (
-              <TableEmpty colSpan={4}>Henüz kredi hareketi yok.</TableEmpty>
+              <TableEmpty colSpan={5}>Henüz kredi hareketi yok.</TableEmpty>
             ) : (
               data.transactions.map((t) => (
                 <TR key={t.id}>
                   <TD className="text-muted">{fmt(t.createdAt)}</TD>
                   <TD><Badge tone={t.amount > 0 ? "success" : "neutral"}>{creditTypeLabels[t.type]}</Badge></TD>
                   <TD className="text-muted">{creditReasonLabels[t.reason]}</TD>
+                  <TD className="text-xs text-muted">{t.usedForLabel ? `→ ${t.usedForLabel}` : t.sourceLabel ?? "—"}</TD>
                   <TD className={`text-right font-medium ${t.amount > 0 ? "text-success" : "text-danger"}`}>
                     {t.amount > 0 ? `+${t.amount}` : t.amount}
                   </TD>

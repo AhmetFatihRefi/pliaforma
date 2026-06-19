@@ -360,18 +360,37 @@ export interface MakeupCreditTransactionDto {
   expiresAt?: string | null;
   notes?: string | null;
   createdAt: string;
+  // Sprint 20: kaynak ders + kullanıldığı telafi dersi etiketleri.
+  sourceLabel?: string | null;
+  usedForLabel?: string | null;
+}
+
+// Sprint 20: kazanılan / kullanılan / kullanılabilir özeti.
+export interface MakeupCreditSummaryDto {
+  earned: number;
+  used: number;
+  available: number;
 }
 
 export interface StudentMakeupCreditsDto {
   studentProfileId: string;
   studentName: string;
   balance: number;
+  summary: MakeupCreditSummaryDto;
   transactions: MakeupCreditTransactionDto[];
 }
 
 export interface MyMakeupCreditsDto {
   balance: number;
+  summary: MakeupCreditSummaryDto;
   transactions: MakeupCreditTransactionDto[];
+}
+
+// Sprint 20: telafi dersine eklenebilir öğrenci (kullanılabilir hak > 0).
+export interface MakeupEligibleStudentDto {
+  studentProfileId: string;
+  studentName: string;
+  availableCredits: number;
 }
 
 export interface MakeupPolicyDto {

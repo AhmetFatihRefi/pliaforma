@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, bookingService, classSessionService, classTypeService, studentService } from "@/lib/studioApi";
+import { attendanceService, bookingService, classSessionService, classTypeService, makeupCreditService, studentService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceItemDto,
@@ -12,6 +12,7 @@ import {
   type ClassSessionDto,
   type ClassSessionKind,
   type ClassTypeDto,
+  type MakeupEligibleStudentDto,
   type SessionAttendanceDto,
   type StudentDto,
   attendanceStatusLabels,
@@ -103,6 +104,15 @@ export default function SchedulePage() {
     finally { setBusyId(null); }
   };
 
+  const markNotDelivered = async (s: ClassSessionDto) => {
+    if (!window.confirm("Bu ders 'işlenmedi' olarak işaretlenecek: ders İPTAL edilecek ve öğrencilere telafi hakkı verilecek.\n(Ertelenecekse 'Ertele', başka hoca verdiyse 'Fiilî hoca' kullanın — onlar telafi üretmez.)")) return;
+    setBusyId(s.id);
+    setError(null);
+    try { await classSessionService.notDelivered(s.id); await load(); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "İşlem yapılamadı."); }
+    finally { setBusyId(null); }
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex items-center justify-between gap-4">
@@ -188,6 +198,7 @@ export default function SchedulePage() {
                             </Button>
                             <Button variant="ghost" size="sm" onClick={() => setRescheduleFor(s)}>Ertele</Button>
                             <Button variant="ghost" size="sm" onClick={() => setCancelFor(s)}>İptal et</Button>
+                            {isManager && <Button variant="ghost" size="sm" onClick={() => markNotDelivered(s)}>İşlenmedi</Button>}
                             <Button size="sm" loading={busyId === s.id} onClick={() => confirmSession(s)}>Onayla</Button>
                           </>
                         )}
@@ -508,12 +519,19 @@ function RescheduleModal({ session, onClose, onDone }: { session: ClassSessionDt
 }
 
 function StaffBookingModal({ session, onClose, onDone }: { session: ClassSessionDto; onClose: () => void; onDone: () => void }) {
+  // Sprint 20: Telafi (Makeup) seansına YALNIZCA kullanılabilir telafi hakkı olan öğrenciler eklenebilir.
+  const isMakeup = session.sessionKind === "Makeup";
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<StudentDto[]>([]);
+  const [eligible, setEligible] = useState<MakeupEligibleStudentDto[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isMakeup) {
+      makeupCreditService.eligibleStudents().then(setEligible).catch(() => setEligible([]));
+      return;
+    }
     const t = setTimeout(async () => {
       try {
         setResults(search.trim() ? await studentService.search(search.trim()) : await studentService.list());
@@ -522,13 +540,13 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, isMakeup]);
 
-  const book = async (s: StudentDto) => {
-    setBusyId(s.id);
+  const book = async (studentProfileId: string) => {
+    setBusyId(studentProfileId);
     setErr(null);
     try {
-      await bookingService.create(session.id, s.id);
+      await bookingService.create(session.id, studentProfileId);
       onDone();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Rezervasyon yapılamadı.");
@@ -537,13 +555,31 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
     }
   };
 
+  const q = search.trim().toLowerCase();
+  const filteredEligible = eligible.filter((e) => e.studentName.toLowerCase().includes(q));
+
   return (
-    <Modal open onClose={onClose} title={`${session.classTypeName} — Öğrenci ekle`}>
+    <Modal open onClose={onClose} title={`${session.classTypeName} — ${isMakeup ? "Telafi dersine öğrenci ekle" : "Öğrenci ekle"}`}>
       <div className="space-y-3">
         {err && <Alert kind="error">{err}</Alert>}
-        <Input placeholder="Öğrenci ara: ad, telefon, e-posta…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        {isMakeup && <Alert kind="info">Telafi dersine yalnızca kullanılabilir telafi hakkı olan öğrenciler eklenebilir.</Alert>}
+        <Input placeholder="Öğrenci ara…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="max-h-72 space-y-2 overflow-y-auto">
-          {results.length === 0 ? (
+          {isMakeup ? (
+            filteredEligible.length === 0 ? (
+              <p className="text-sm text-muted">Telafi hakkı olan uygun öğrenci yok.</p>
+            ) : (
+              filteredEligible.map((e) => (
+                <div key={e.studentProfileId} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">{e.studentName}</span>
+                    <Badge tone="rose">{e.availableCredits} telafi</Badge>
+                  </div>
+                  <Button size="sm" disabled={busyId !== null} onClick={() => book(e.studentProfileId)}>Ekle</Button>
+                </div>
+              ))
+            )
+          ) : results.length === 0 ? (
             <p className="text-sm text-muted">Öğrenci bulunamadı.</p>
           ) : (
             results.map((s) => (
@@ -553,7 +589,7 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
                   {s.status === "Guest" && <Badge tone="warning">Misafir</Badge>}
                   {s.status === "Inactive" && <Badge tone="neutral">Pasif</Badge>}
                 </div>
-                <Button size="sm" disabled={busyId !== null || s.status === "Inactive"} onClick={() => book(s)}>Ekle</Button>
+                <Button size="sm" disabled={busyId !== null || s.status === "Inactive"} onClick={() => book(s.id)}>Ekle</Button>
               </div>
             ))
           )}

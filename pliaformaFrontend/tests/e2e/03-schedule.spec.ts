@@ -22,6 +22,10 @@ test.describe("Schedule / booking / attendance (Owner)", () => {
     await expect(page.getByRole("button", { name: "Fiilî hoca" }).first()).toBeVisible();
   });
 
+  test("Sprint 20: 'İşlenmedi' aksiyonu Scheduled kartlarda var", async ({ page }) => {
+    await expect(page.getByRole("button", { name: "İşlenmedi" }).first()).toBeVisible();
+  });
+
   test("rezervasyonlar modalı açılır", async ({ page }) => {
     await page.getByRole("button", { name: "Rezervasyonlar" }).first().click();
     // Modal başlığı: "<grup> — Rezervasyonlar"

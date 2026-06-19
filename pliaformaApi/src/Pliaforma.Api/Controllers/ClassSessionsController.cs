@@ -56,6 +56,12 @@ public sealed class ClassSessionsController : ApiControllerBase
     public Task<IActionResult> SetActualInstructor(Guid id, SetActualInstructorCommand command, CancellationToken ct) =>
         Send(command with { SessionId = id }, "Fiilî hoca güncellendi.", ct);
 
+    // Sprint 20: ders hoca nedeniyle işlenemedi → Cancelled + öğrencilere telafi.
+    [Authorize(Roles = "Owner,StudioAdmin")]
+    [HttpPost("{id:guid}/not-delivered")]
+    public Task<IActionResult> NotDelivered(Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] MarkSessionNotDeliveredCommand? command, CancellationToken ct) =>
+        Send((command ?? new MarkSessionNotDeliveredCommand(id)) with { SessionId = id }, "Ders 'işlenmedi' işaretlendi; öğrencilere telafi verildi.", ct);
+
     [HttpDelete("{id:guid}")]
     public Task<IActionResult> Delete(Guid id, CancellationToken ct) =>
         Send(new DeleteClassSessionCommand(id), "Ders seansı silindi.", ct);

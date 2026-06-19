@@ -68,7 +68,7 @@ public sealed class GrantMakeupCreditHandler : ICommandHandler<GrantMakeupCredit
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        return await SummaryBuilder.BuildAsync(_db, _credits, studioId, student, cancellationToken);
+        return await SummaryBuilder.BuildAsync(_db, studioId, student, cancellationToken);
     }
 }
 
@@ -121,21 +121,16 @@ public sealed class RevokeMakeupCreditHandler : ICommandHandler<RevokeMakeupCred
         _credits.Revoke(studioId, student.Id, request.Amount, userId, MakeupCreditReason.Other, request.Notes);
         await _db.SaveChangesAsync(cancellationToken);
 
-        return await SummaryBuilder.BuildAsync(_db, _credits, studioId, student, cancellationToken);
+        return await SummaryBuilder.BuildAsync(_db, studioId, student, cancellationToken);
     }
 }
 
 internal static class SummaryBuilder
 {
     public static async Task<StudentMakeupCreditsDto> BuildAsync(
-        IAppDbContext db, MakeupCreditService credits, Guid studioId, StudentProfile student, CancellationToken ct)
+        IAppDbContext db, Guid studioId, StudentProfile student, CancellationToken ct)
     {
-        var balance = await credits.GetBalanceAsync(studioId, student.Id, ct);
-        var txs = await MakeupCreditProjection
-            .Project(db.MakeupCreditTransactions
-                .Where(t => t.StudioId == studioId && t.StudentProfileId == student.Id)
-                .OrderByDescending(t => t.CreatedAt))
-            .ToListAsync(ct);
-        return new StudentMakeupCreditsDto(student.Id, student.FullName, balance, txs);
+        var (balance, summary, txs) = await MakeupCreditView.BuildLedgerAsync(db, studioId, student.Id, ct);
+        return new StudentMakeupCreditsDto(student.Id, student.FullName, balance, summary, txs);
     }
 }
