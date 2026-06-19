@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/api";
 import type { PlatformHealthSummaryDto } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card } from "@/components/ui";
 
-const fmt = (iso?: string | null) => (iso ? `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC` : "—");
+const fmt = (iso?: string | null) => (iso ? `${iso.slice(0, 10)} ${iso.slice(11, 19)} (TR)` : "—");
 
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (

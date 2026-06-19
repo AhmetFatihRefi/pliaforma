@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.OpenApi.Models;
+using Pliaforma.Api.Json;
 using Pliaforma.Api.Middleware;
 using Pliaforma.Api.RateLimiting;
 using Pliaforma.Api.Setup;
@@ -43,6 +44,8 @@ builder.Services.AddControllers()
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        // Giden tüm DateTime'lar Türkiye saatine normalize edilir (UTC→İstanbul; duvar saati olduğu gibi).
+        o.JsonSerializerOptions.Converters.Add(new TurkeyDateTimeJsonConverter());
         o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 

@@ -9,14 +9,15 @@ namespace Pliaforma.Application.Features.Scheduling;
 internal static class SessionRules
 {
     /// <summary>
-    /// Stüdyo zaman dilimine göre şimdiki yerel saat (duvar saati, Unspecified). Geçersiz TZ → UTC.
+    /// Stüdyo zaman dilimine göre şimdiki yerel saat (duvar saati, Unspecified). Geçersiz/çözülemeyen TZ →
+    /// Türkiye saatine düşer (UTC'ye ASLA düşmez; aksi halde program mantığı 3 saat kayardı).
     /// </summary>
     public static async Task<DateTime> StudioNowAsync(IAppDbContext db, IDateTime clock, Guid studioId, CancellationToken ct)
     {
         var tzId = await db.Studios.Where(s => s.Id == studioId).Select(s => s.TimeZoneId).FirstAsync(ct);
         TimeZoneInfo tz;
         try { tz = TimeZoneInfo.FindSystemTimeZoneById(tzId); }
-        catch { tz = TimeZoneInfo.Utc; }
+        catch { tz = Common.Time.TurkeyTime.Zone; }
         return DateTime.SpecifyKind(TimeZoneInfo.ConvertTimeFromUtc(clock.UtcNow, tz), DateTimeKind.Unspecified);
     }
 
