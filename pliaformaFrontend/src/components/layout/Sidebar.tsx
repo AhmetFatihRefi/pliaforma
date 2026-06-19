@@ -26,18 +26,17 @@ const nav: NavItem[] = [
   { href: "/dashboard/students", label: "Öğrenciler", icon: "☺", roles: STAFF },
   { href: "/dashboard/makeup-credits", label: "Telafi Kredileri", icon: "♺", roles: STAFF },
   { href: "/dashboard/reports", label: "Raporlar", icon: "▣", roles: MANAGER },
-  { href: "/dashboard/package-plans", label: "Paket Planları", icon: "▤", roles: MANAGER },
+  // Sprint 18b: Paket Planları ana akıştan kaldırıldı (paket modeli dormant; onboarding sözleşme tabanlı).
   { href: "/dashboard/payments", label: "Ödemeler", icon: "₺", roles: MANAGER },
   { href: "/dashboard/closures", label: "Kapalı Günler", icon: "⊘", roles: MANAGER },
   { href: "/dashboard/instructors", label: "Hocalar", icon: "✦", roles: MANAGER },
   { href: "/dashboard/class-types", label: "Gruplar", icon: "❀", roles: STAFF },
   { href: "/dashboard/subscription", label: "Abonelik", icon: "◈", roles: ["Owner"] },
   { href: "/dashboard/settings", label: "Ayarlar", icon: "⚙", roles: MANAGER },
-  { href: "/dashboard/book-classes", label: "Ders Bul", icon: "✛", roles: ["Student"] },
-  { href: "/dashboard/my-bookings", label: "Rezervasyonlarım", icon: "✓", roles: ["Student"] },
+  // Sprint 18b: öğrenci self-booking kaldırıldı ("Ders Bul" yok); öğrenci yalnız programını görür.
+  { href: "/dashboard/my-bookings", label: "Programım", icon: "✓", roles: ["Student"] },
   { href: "/dashboard/my-makeup-credits", label: "Telafi Kredilerim", icon: "♺", roles: ["Student"] },
   { href: "/dashboard/my-attendance", label: "Katılım Geçmişim", icon: "✔", roles: ["Student"] },
-  { href: "/dashboard/my-packages", label: "Paketlerim", icon: "▤", roles: ["Student"] },
   { href: "/dashboard/my-payments", label: "Ödemelerim", icon: "₺", roles: ["Student"] },
   { href: "/dashboard/my-profile", label: "Profilim", icon: "♡", roles: ["Student"] },
 ];

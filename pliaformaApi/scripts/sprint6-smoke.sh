@@ -40,7 +40,9 @@ CT=$(body "$(post /api/class-types "{\"name\":\"Mat\",\"equipment\":\"Mat\",\"ca
 mksess(){ body "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"${1:-$I1P}\",\"classTypeId\":\"$CT\",\"startAt\":\"${D}T$2:00\",\"capacity\":5}" "$ATOK")" | jget id; }
 guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\":\"Phone\"}" "$ATOK")" | jget id; }
 mkactive(){ local g; g=$(guest "$1"); post "/api/studio/students/$g/convert-to-user" "{\"email\":\"$1+$TS@pf.local\",\"initialPassword\":\"$PW\"}" "$ATOK" >/dev/null; echo "$g"; }
-sbook(){ body "$(post "/api/studio/class-sessions/$1/bookings" "{\"studentProfileId\":\"$2\"}" "$ATOK")" | jget id; }
+# Sprint 18b: Regular booking sözleşme ister → sbook her öğrenciye geniş sözleşme açar (auto-resolve).
+mkc(){ curl -s -o /dev/null -X POST "$BASE/api/studio/students/$1/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"; }
+sbook(){ mkc "$2"; body "$(post "/api/studio/class-sessions/$1/bookings" "{\"studentProfileId\":\"$2\"}" "$ATOK")" | jget id; }
 
 echo "--- Gelecek seans → 409 ---"
 FS=$(mksess "$I1P" "09:00"); GF=$(guest "GF"); BF=$(sbook "$FS" "$GF")
@@ -92,9 +94,8 @@ expect "GA özet excusedCount=1" 1 "$(echo "$SUM" | jnum excusedCount)"
 expect "GA özet totalMarked=1" 1 "$(echo "$SUM" | jnum totalMarked)"
 # Student self: aktif öğrenci self-book → backdate → staff Present → kendi özeti
 SE=$(mkactive "se"); SETOK=$(login "se+$TS@pf.local")
-# Sprint 14: Regular self-booking artık geçerli paket ister. SE'ye paket sat.
-post "/api/studio/students/$SE/packages" '{"name":"S14 selfbook","creditCount":5}' "$ATOK" >/dev/null
-PSE=$(mksess "$I1P" "13:00"); BE=$(body "$(post "/api/student/class-sessions/$PSE/book" '{}' "$SETOK")" | jget id)
+# Sprint 18b: self-booking kapalı → SE staff tarafından (sözleşmeyle) book edilir; öğrenci yalnız kendi özetini görür.
+PSE=$(mksess "$I1P" "13:00"); BE=$(sbook "$PSE" "$SE")
 backdate "$PSE"
 putj "/api/studio/class-sessions/$PSE/attendance" "{\"items\":[{\"bookingId\":\"$BE\",\"status\":\"Present\"}]}" "$ATOK" >/dev/null
 expect "student kendi attendance → 200" 200 "$(gcode /api/student/attendance "$SETOK")"

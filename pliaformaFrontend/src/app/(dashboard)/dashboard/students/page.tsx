@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { attendanceService, classTypeService, contractService, memberService, packagePlanService, paymentService, studentPackageService, studentService } from "@/lib/studioApi";
+import { attendanceService, classTypeService, contractService, memberService, paymentService, studentService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import {
   type AttendanceSummaryDto,
@@ -10,15 +10,12 @@ import {
   type DayOfWeek,
   type GuestInput,
   type MemberDto,
-  type PackagePlanDto,
   type PaymentDto,
   type StudentContractDto,
   type StudentDto,
-  type StudentPackageDto,
   type StudentSource,
   daysOfWeek,
   dayLabels,
-  packageStatusLabels,
   paymentStatusLabels,
   studentContractStatusLabels,
   studentSourceLabels,
@@ -140,7 +137,7 @@ export default function StudentsPage() {
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" size="sm" onClick={() => setSummaryFor(s)}>Katılım</Button>
                     <Button variant="ghost" size="sm" onClick={() => setContractsForStudent(s)}>Sözleşmeler</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setFinanceFor(s)}>Paket/Ödeme</Button>
+                    <Button variant="ghost" size="sm" onClick={() => setFinanceFor(s)}>Ödemeler</Button>
                     <Button variant="ghost" size="sm" onClick={() => openEdit(s)}>Düzenle</Button>
                     {s.status === "Guest" && (
                       <Button variant="ghost" size="sm" onClick={() => setConvertFor(s)}>Dönüştür</Button>
@@ -355,33 +352,23 @@ function ContractRow({ contract, onChanged, onCancel }: { contract: StudentContr
 }
 
 function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClose: () => void }) {
-  const [packages, setPackages] = useState<StudentPackageDto[]>([]);
+  // Sprint 18b: paket bölümü kaldırıldı (paket modeli dormant). Yalnız ödeme/borç yönetimi.
   const [payments, setPayments] = useState<PaymentDto[]>([]);
-  const [plans, setPlans] = useState<PackagePlanDto[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [sellPlan, setSellPlan] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [payDue, setPayDue] = useState(new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [pk, pm] = await Promise.all([
-        studentPackageService.forStudent(student.id),
-        paymentService.forStudent(student.id),
-      ]);
-      setPackages(pk);
-      setPayments(pm);
+      setPayments(await paymentService.forStudent(student.id));
       setErr(null);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Yüklenemedi.");
     }
   }, [student.id]);
 
-  useEffect(() => {
-    load();
-    packagePlanService.list(true).then(setPlans).catch(() => setPlans([]));
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   const wrap = async (fn: () => Promise<unknown>) => {
     setBusy(true); setErr(null);
@@ -390,51 +377,17 @@ function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClos
     finally { setBusy(false); }
   };
 
-  const sell = () => {
-    if (!sellPlan) { setErr("Paket planı seçin."); return; }
-    wrap(() => studentPackageService.sell(student.id, { packagePlanId: sellPlan })).then(() => setSellPlan(""));
-  };
-  const adjust = (p: StudentPackageDto) => {
-    const v = prompt(`"${p.name}" için düzeltme (+/-):`, "1");
-    if (!v) return;
-    const n = Number(v);
-    if (!n) return;
-    wrap(() => studentPackageService.adjust(p.id, { amount: n, notes: "manuel" }));
-  };
   const createPayment = () => {
     if (!payAmount) { setErr("Tutar girin."); return; }
     wrap(() => paymentService.create(student.id, { amount: Number(payAmount), dueDate: payDue })).then(() => setPayAmount(""));
   };
 
   return (
-    <Modal open onClose={onClose} title={`${student.fullName} — Paket / Ödeme`}>
+    <Modal open onClose={onClose} title={`${student.fullName} — Ödemeler`}>
       <div className="space-y-4">
         {err && <Alert kind="error">{err}</Alert>}
 
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-foreground">Paketler</h3>
-          <div className="space-y-2">
-            {packages.length === 0 ? <p className="text-sm text-muted">Paket yok.</p> : packages.map((p) => (
-              <div key={p.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm">
-                <span>{p.name} · <span className="text-muted">{p.currentCreditBalance}/{p.initialCreditCount}</span></span>
-                <div className="flex items-center gap-2">
-                  <Badge tone={p.effectiveStatus === "Active" ? "success" : p.effectiveStatus === "Expired" || p.effectiveStatus === "Cancelled" ? "danger" : "neutral"}>{packageStatusLabels[p.effectiveStatus]}</Badge>
-                  <Button variant="ghost" size="sm" disabled={busy} onClick={() => adjust(p)}>Düzelt</Button>
-                  {p.status === "Active" && <Button variant="ghost" size="sm" disabled={busy} onClick={() => wrap(() => studentPackageService.cancel(p.id))}>İptal</Button>}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 flex gap-2">
-            <Select value={sellPlan} onChange={(e) => setSellPlan(e.target.value)}>
-              <option value="">Paket planı seç…</option>
-              {plans.map((pl) => <option key={pl.id} value={pl.id}>{pl.name} · {pl.creditCount} ders · {pl.price}₺</option>)}
-            </Select>
-            <Button size="sm" disabled={busy} onClick={sell}>Paket tanımla</Button>
-          </div>
-        </div>
-
-        <div className="border-t border-border pt-3">
           <h3 className="mb-2 text-sm font-semibold text-foreground">Ödemeler</h3>
           <div className="space-y-2">
             {payments.length === 0 ? <p className="text-sm text-muted">Ödeme yok.</p> : payments.map((p) => (

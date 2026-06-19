@@ -73,6 +73,7 @@ R_I2=$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I2P\",\"clas
 expect "FARKLI hoca aynı saat → 200 (stüdyo-geneli engel yok)" 200 "$(code "$R_I2")"
 SES_I2=$(body "$R_I2" | jget id)
 expect "aynı öğrenci (S1) çakışan saatte 2. ders → 409" 409 "$(pcode /api/studio/class-sessions/$SES_I2/bookings "{\"studentProfileId\":\"$S1\"}" "$ATOK")"
+mkcontract "$S3" "$I2P" false >/dev/null   # Sprint 18b: Regular booking sözleşme ister → S3'e sözleşme
 expect "farklı öğrenci (S3) aynı saatte → 200" 200 "$(pcode /api/studio/class-sessions/$SES_I2/bookings "{\"studentProfileId\":\"$S3\"}" "$ATOK")"
 
 echo "--- 6) Bireysel ders: 2. öğrenci engeli; grup: çok öğrenci ---"

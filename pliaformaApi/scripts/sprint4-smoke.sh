@@ -38,8 +38,9 @@ SG=$(guest "GuestS"); SI=$(guest "InactiveS"); pcode "/api/studio/students/$SI/d
 mkactive(){ local g; g=$(guest "$1"); post "/api/studio/students/$g/convert-to-user" "{\"email\":\"$1+$TS@pf.local\",\"initialPassword\":\"$PW\"}" "$ATOK" >/dev/null; echo "$g"; }
 SA=$(mkactive "sa"); SATOK=$(login "sa+$TS@pf.local")
 SOTH=$(mkactive "sb"); SOTOK=$(login "sb+$TS@pf.local")
-# Sprint 14: Regular self-booking artık geçerli paket ister (paketsiz self-booking 409). SA'ya paket sat.
-post "/api/studio/students/$SA/packages" '{"name":"S14 selfbook","creditCount":5}' "$ATOK" >/dev/null
+# Sprint 18b: Regular booking SÖZLEŞME ister (paket değil). Booked öğrencilere geniş sözleşme (auto-resolve).
+mkc(){ curl -s -o /dev/null -X POST "$BASE/api/studio/students/$1/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"; }
+mkc "$SA"; mkc "$SG"
 
 echo "--- Kapasite & çift booking ---"
 R=$(post "/api/studio/class-sessions/$SESS1/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")
@@ -59,17 +60,15 @@ expect "session listesinde isFull/bookedCount" yes "$(has "$LIST" '"bookedCount"
 
 echo "--- Guest / Inactive / Self kuralları ---"
 expect "Inactive öğrenci için staff booking → 409" 409 "$(pcode "/api/studio/class-sessions/$SESS2/bookings" "{\"studentProfileId\":\"$SI\"}" "$ATOK")"
-expect "Guest için staff booking → 200" 200 "$(pcode "/api/studio/class-sessions/$SESS2/bookings" "{\"studentProfileId\":\"$(guest GS2)\"}" "$ATOK")"
-R=$(post "/api/student/class-sessions/$SESS2/book" '{}' "$SATOK")
-expect "Student self booking → 200" 200 "$(code "$R")"; BKSELF=$(body "$R" | jget id)
-expect "Student self booking tekrar → 409" 409 "$(pcode "/api/student/class-sessions/$SESS2/book" '{}' "$SATOK")"
-expect "Student /api/studio/bookings → 403" 403 "$(gcode /api/studio/bookings "$SATOK")"
-expect "Student my-bookings → 200" 200 "$(gcode /api/student/bookings "$SATOK")"
-expect "Student bookable sessions → 200" 200 "$(gcode /api/student/class-sessions "$SATOK")"
+G2=$(guest GS2); mkc "$G2"
+expect "Guest için staff booking → 200" 200 "$(pcode "/api/studio/class-sessions/$SESS2/bookings" "{\"studentProfileId\":\"$G2\"}" "$ATOK")"
+BKSELF=$(curl -s "$BASE/api/studio/class-sessions/$SESS2/bookings" -H "Authorization: Bearer $ATOK" | jget id)
 
-echo "--- Cancel yetkileri ---"
-expect "başka öğrenci self booking'i iptal edemez → 403" 403 "$(pcode "/api/student/bookings/$BKSELF/cancel" '{}' "$SOTOK")"
-expect "öğrenci kendi booking'ini iptal → 200" 200 "$(pcode "/api/student/bookings/$BKSELF/cancel" '{}' "$SATOK")"
+echo "--- Öğrenci self-service KAPALI (Sprint 18b: admin-güdümlü) ---"
+expect "Student self-booking → 410" 410 "$(pcode "/api/student/class-sessions/$SESS2/book" '{}' "$SATOK")"
+expect "Student self-cancel → 410" 410 "$(pcode "/api/student/bookings/$BKSELF/cancel" '{}' "$SATOK")"
+expect "Student /api/studio/bookings → 403" 403 "$(gcode /api/studio/bookings "$SATOK")"
+expect "Student my-bookings (kendi programı) → 200" 200 "$(gcode /api/student/bookings "$SATOK")"
 
 echo "--- Instructor scope ---"
 expect "Instructor başka hocanın seansına booking → 403" 403 "$(pcode "/api/studio/class-sessions/$SESS1/bookings" "{\"studentProfileId\":\"$SG\"}" "$I2TOK")"
@@ -81,7 +80,7 @@ expect "C, A'nın booking'ini get → 404" 404 "$(gcode "/api/studio/bookings/$B
 expect "C, A'nın booking'ini iptal → 404" 404 "$(pcode "/api/studio/bookings/$BKSELF/cancel" '{}' "$CTOK")"
 
 echo "--- Paralel yarış (cap=1 seansa 5 eşzamanlı booking → tam 1 başarılı) ---"
-RG=(); for i in 1 2 3 4 5; do RG[$i]=$(guest "RG$i"); done
+RG=(); for i in 1 2 3 4 5; do RG[$i]=$(guest "RG$i"); mkc "${RG[$i]}"; done
 for i in 1 2 3 4 5; do
   curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE/api/studio/class-sessions/$RACE/bookings" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"studentProfileId\":\"${RG[$i]}\"}" > /tmp/race_$i &
 done

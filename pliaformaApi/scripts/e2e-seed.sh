@@ -86,40 +86,39 @@ ok "Student: $STUDENT (profil $GS)"
 GG=$(body "$(post /api/studio/students/guest '{"fullName":"E2E Guest Misafir","source":"Phone"}' "$OTOK")" | jget id)
 ok "Guest student (profil $GG)"
 
-# Sprint 18a: sözleşme + program (grup 9999 sentinel + bireysel) — schedule kapasite gösterimi E2E için.
-# I2P müsaitliksiz → owner her saatte üretebilir. Tüm haftaya yay → today..+7 penceresinde görünür.
+# Sprint 18a/18b: sözleşme-tabanlı program.
+#  - Limitsiz grup: GS (E2E Student) + I1P, 10:00 tüm hafta → öğrenci programı + ClassReminder (günlük ders → her
+#    zaman <25h içinde biri) + schedule/sözleşme E2E. total (30) > üretilen ders sayısı (today..+14 ≈ 15) →
+#    HEADROOM kalır; section 6 geçmiş-ders demo booking'i bu sözleşmeden auto-resolve eder.
+#  - Bireysel: GG (guest) + I1P, 14:00 tüm hafta → bireysel rozeti (15-contracts).  I1P 10:00≠14:00 → çakışma yok.
 C18SD=$(date +%F); C18ED=$(date -d "+14 days" +%F)
 ALLDAYS10='[{"dayOfWeek":"Monday","startTime":"10:00:00"},{"dayOfWeek":"Tuesday","startTime":"10:00:00"},{"dayOfWeek":"Wednesday","startTime":"10:00:00"},{"dayOfWeek":"Thursday","startTime":"10:00:00"},{"dayOfWeek":"Friday","startTime":"10:00:00"},{"dayOfWeek":"Saturday","startTime":"10:00:00"},{"dayOfWeek":"Sunday","startTime":"10:00:00"}]'
 ALLDAYS14='[{"dayOfWeek":"Monday","startTime":"14:00:00"},{"dayOfWeek":"Tuesday","startTime":"14:00:00"},{"dayOfWeek":"Wednesday","startTime":"14:00:00"},{"dayOfWeek":"Thursday","startTime":"14:00:00"},{"dayOfWeek":"Friday","startTime":"14:00:00"},{"dayOfWeek":"Saturday","startTime":"14:00:00"},{"dayOfWeek":"Sunday","startTime":"14:00:00"}]'
-GC=$(body "$(post "/api/studio/students/$GS/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I2P\",\"startDate\":\"$C18SD\",\"endDate\":\"$C18ED\",\"totalLessonCount\":5,\"makeupAllowance\":1,\"price\":2000,\"isIndividualDefault\":false}" "$OTOK")" | jget id)
+GC=$(body "$(post "/api/studio/students/$GS/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$C18SD\",\"endDate\":\"$C18ED\",\"totalLessonCount\":30,\"makeupAllowance\":2,\"price\":4000,\"isIndividualDefault\":false}" "$OTOK")" | jget id)
 post "/api/studio/contracts/$GC/schedule/generate" "{\"slots\":$ALLDAYS10,\"reuseExistingGroup\":false,\"individual\":null}" "$OTOK" >/dev/null
-IC=$(body "$(post "/api/studio/students/$GG/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I2P\",\"startDate\":\"$C18SD\",\"endDate\":\"$C18ED\",\"totalLessonCount\":3,\"makeupAllowance\":0,\"price\":3000,\"isIndividualDefault\":true}" "$OTOK")" | jget id)
+IC=$(body "$(post "/api/studio/students/$GG/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$C18SD\",\"endDate\":\"$C18ED\",\"totalLessonCount\":3,\"makeupAllowance\":0,\"price\":3000,\"isIndividualDefault\":true}" "$OTOK")" | jget id)
 post "/api/studio/contracts/$IC/schedule/generate" "{\"slots\":$ALLDAYS14,\"reuseExistingGroup\":false,\"individual\":null}" "$OTOK" >/dev/null
-ok "Sözleşme + program: grup (limitsiz) + bireysel dersler"
+ok "Sözleşme + program: GS limitsiz grup (10:00, headroom'lu) + GG bireysel (14:00)"
 
-echo "== 6) Seanslar + rezervasyon + yoklama =="
+echo "== 6) Geçmiş ders + yoklama (yaklaşan dersler program üretiminden gelir) =="
 IST(){ TZ='Europe/Istanbul' date "$@" 2>/dev/null || date "$@"; }
-# Yaklaşan ders (~20h sonra → ClassReminder penceresi içinde) + öğrenci rezervasyonu
-SOON=$(mksess "$(IST -d '+20 hours' +%Y-%m-%dT%H:%M:00)")
-body "$(post "/api/studio/class-sessions/$SOON/bookings" "{\"studentProfileId\":\"$GS\"}" "$OTOK")" >/dev/null
-ok "Yaklaşan seans + öğrenci rezervasyonu"
-# Geçmiş ders (backdate) + yoklama (Present)
-PASTS=$(mksess "$(IST -d '+2 days' +%Y-%m-%dT10:00:00)")
+# Yaklaşan rezervasyon + ClassReminder: GS'in üretilen günlük 10:00 dersleri (sonraki ders her zaman <25h içinde) sağlar.
+# Geçmiş ders (backdate) + yoklama (Present): GS'i I2P 16:00 seansına book (auto-resolve → GS grup sözleşmesi,
+# headroom var); 16:00 ≠ GS'in 10:00 dersi + I2P boş → çakışma yok. Sonra geçmişe çek + Present.
+PASTS=$(mksess "$(IST -d '+2 days' +%Y-%m-%dT16:00:00)")
 PBOOK=$(body "$(post "/api/studio/class-sessions/$PASTS/bookings" "{\"studentProfileId\":\"$GS\"}" "$OTOK")" | jget id)
 psql "UPDATE \"ClassSessions\" SET \"StartAt\"='2020-01-06 10:00:00', \"EndAt\"='2020-01-06 11:00:00' WHERE \"Id\"='$PASTS';"
 post "/api/studio/bookings/$PBOOK/attendance" '{"status":"Present"}' "$OTOK" >/dev/null
-ok "Geçmiş seans + yoklama (Present)"
+ok "Geçmiş seans + yoklama (Present); yaklaşan rezervasyonlar programdan"
 
-echo "== 7) Paket + ödemeler + telafi kredisi =="
-PLAN=$(body "$(post /api/studio/package-plans '{"name":"E2E 8 Ders Paketi","creditCount":8,"price":2400,"validityDays":90}' "$OTOK")" | jget id)
-post "/api/studio/students/$GS/packages" "{\"packagePlanId\":\"$PLAN\"}" "$OTOK" >/dev/null
+echo "== 7) Ödemeler + telafi kredisi (Sprint 18b: paket satışı kaldırıldı — paket modeli dormant) =="
 DUESOON=$(IST -d '+1 day' +%Y-%m-%d)
 post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"$DUESOON\"}" "$OTOK" >/dev/null            # due-soon
 PJ=$(post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-02-01\"}" "$OTOK"); PP=$(body "$PJ" | jget id)
 post "/api/studio/payments/$PP/mark-paid" '{}' "$OTOK" >/dev/null                                                  # paid
 post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-01-01\"}" "$OTOK" >/dev/null          # overdue
 post "/api/studio/students/$GS/makeup-credits/grant" '{"amount":1,"notes":"E2E demo"}' "$OTOK" >/dev/null
-ok "Paket + due-soon/paid/overdue ödeme + telafi kredisi"
+ok "due-soon/paid/overdue ödeme + telafi kredisi"
 
 echo "== 8) Bildirim üretimi (reminder trigger) =="
 post /api/studio/notifications/run-reminders '{}' "$OTOK" >/dev/null

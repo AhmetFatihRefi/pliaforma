@@ -33,19 +33,19 @@ guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\
 mkactive(){ local g; g=$(guest "$1"); post "/api/studio/students/$g/convert-to-user" "{\"email\":\"$1+$TS@pf.local\",\"initialPassword\":\"$PW\"}" "$ATOK" >/dev/null; echo "$g"; }
 SA=$(mkactive "sa"); SATOK=$(login "sa+$TS@pf.local")
 SB=$(mkactive "sb"); SBTOK=$(login "sb+$TS@pf.local")
-# Sprint 14: Regular self-booking artık geçerli paket ister. SB regular self-book yapacağı için paket sat.
-post "/api/studio/students/$SB/packages" '{"name":"S14 selfbook","creditCount":5}' "$ATOK" >/dev/null
+# Sprint 18b: Regular booking SÖZLEŞME ister (paket yok); self-booking kapalı. mkc → öğrenciye geniş sözleşme.
+mkc(){ curl -s -o /dev/null -X POST "$BASE/api/studio/students/$1/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"; }
 
-echo "--- Makeup seansı: kredi yokken 409, grant, kredi tüket, iptalde restore ---"
+echo "--- Makeup seansı: kredi yokken 409, grant, kredi tüket, iptalde restore (staff booking) ---"
 MS=$(mksess "$I1P" "$D" "09:00" 2 "Makeup")
-expect "kredisiz makeup self-book → 409" 409 "$(pcode "/api/student/class-sessions/$MS/book" '{}' "$SATOK")"
+expect "kredisiz makeup staff-book → 409" 409 "$(pcode "/api/studio/class-sessions/$MS/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")"
 GR=$(post "/api/studio/students/$SA/makeup-credits/grant" "{\"amount\":1,\"notes\":\"test\"}" "$ATOK")
 expect "manuel grant → 200" 200 "$(code "$GR")"
 expect "grant sonrası bakiye 1" 1 "$(body "$GR" | jnum balance)"
-R=$(post "/api/student/class-sessions/$MS/book" '{}' "$SATOK")
-expect "kredili makeup self-book → 200" 200 "$(code "$R")"; MBK=$(body "$R" | jget id)
+R=$(post "/api/studio/class-sessions/$MS/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")
+expect "kredili makeup staff-book → 200" 200 "$(code "$R")"; MBK=$(body "$R" | jget id)
 expect "makeup booking sonrası bakiye 0" 0 "$(bcredit "$SA")"
-expect "makeup booking iptal → 200" 200 "$(pcode "/api/student/bookings/$MBK/cancel" '{}' "$SATOK")"
+expect "makeup booking iptal → 200" 200 "$(pcode "/api/studio/bookings/$MBK/cancel" '{}' "$ATOK")"
 expect "iptal sonrası kredi restore → bakiye 1" 1 "$(bcredit "$SA")"
 
 echo "--- Manuel grant / aylık limit / revoke ---"
@@ -55,13 +55,13 @@ RV=$(post "/api/studio/students/$SB/makeup-credits/revoke" "{\"amount\":1}" "$AT
 expect "revoke → bakiye 1" 1 "$(body "$RV" | jnum balance)"
 expect "bakiyeden fazla revoke → 409" 409 "$(pcode "/api/studio/students/$SB/makeup-credits/revoke" "{\"amount\":5}" "$ATOK")"
 
-echo "--- Regular seans booking kredi tüketmez ---"
-RS=$(mksess "$I1P" "$D" "10:00" 2 "Regular")
-expect "SB regular self-book → 200" 200 "$(pcode "/api/student/class-sessions/$RS/book" '{}' "$SBTOK")"
+echo "--- Regular seans booking kredi tüketmez (staff + sözleşme) ---"
+RS=$(mksess "$I1P" "$D" "10:00" 2 "Regular"); mkc "$SB"
+expect "SB regular staff-book → 200" 200 "$(pcode "/api/studio/class-sessions/$RS/bookings" "{\"studentProfileId\":\"$SB\"}" "$ATOK")"
 expect "regular sonrası SB bakiye değişmedi (1)" 1 "$(bcredit "$SB")"
 
 echo "--- Session cancel + grantMakeupCredit ---"
-CS=$(mksess "$I1P" "$D" "11:00" 2 "Regular"); GC=$(guest "GC")
+CS=$(mksess "$I1P" "$D" "11:00" 2 "Regular"); GC=$(guest "GC"); mkc "$GC"
 pcode "/api/studio/class-sessions/$CS/bookings" "{\"studentProfileId\":\"$GC\"}" "$ATOK" >/dev/null
 expect "cancel + grant → 200" 200 "$(pcode "/api/studio/class-sessions/$CS/cancel" "{\"reason\":\"hoca yok\",\"grantMakeupCredit\":true}" "$ATOK")"
 expect "iptal booking sahibine +1 kredi" 1 "$(bcredit "$GC")"
@@ -88,14 +88,14 @@ expect "(B) closure makeup booking için ekstra grant yok (creditedCount=0)" 0 "
 expect "(B) bulk closure makeup sonrası bakiye 1 (2 DEĞİL)" 1 "$(bcredit "$GBk")"
 
 echo "--- Reschedule (yetki/tenant 404-403 önce, sonra fonksiyonel) ---"
-R1=$(mksess "$I1P" "$D" "12:00" 2); G2=$(guest "G2")
+R1=$(mksess "$I1P" "$D" "12:00" 2); G2=$(guest "G2"); mkc "$G2"
 pcode "/api/studio/class-sessions/$R1/bookings" "{\"studentProfileId\":\"$G2\"}" "$ATOK" >/dev/null
 expect "I2 başka hocanın seansını ertele → 403" 403 "$(pcode "/api/studio/class-sessions/$R1/reschedule" "{\"newStartAt\":\"${D}T20:00:00\",\"keepBookings\":true}" "$I2TOK")"
 expect "C başka stüdyo seansını ertele → 404" 404 "$(pcode "/api/studio/class-sessions/$R1/reschedule" "{\"newStartAt\":\"${D}T20:00:00\",\"keepBookings\":true}" "$CTOK")"
 expect "reschedule keepBookings=true → 200" 200 "$(pcode "/api/studio/class-sessions/$R1/reschedule" "{\"newStartAt\":\"${D}T20:00:00\",\"reason\":\"tasindi\",\"keepBookings\":true}" "$ATOK")"
 KB=$(curl -s "$BASE/api/studio/class-sessions/$R1/bookings" -H "Authorization: Bearer $ATOK" | grep -o '"status":"Booked"' | wc -l)
 expect "keepBookings: rezervasyon korundu" 1 "$KB"
-R2=$(mksess "$I1P" "$D" "13:00" 2); G3=$(guest "G3")
+R2=$(mksess "$I1P" "$D" "13:00" 2); G3=$(guest "G3"); mkc "$G3"
 pcode "/api/studio/class-sessions/$R2/bookings" "{\"studentProfileId\":\"$G3\"}" "$ATOK" >/dev/null
 expect "reschedule keepBookings=false → 200" 200 "$(pcode "/api/studio/class-sessions/$R2/reschedule" "{\"newStartAt\":\"${D}T21:00:00\",\"keepBookings\":false}" "$ATOK")"
 DROP=$(curl -s "$BASE/api/studio/class-sessions/$R2/bookings" -H "Authorization: Bearer $ATOK" | grep -o '"status":"CancelledByStudio"' | wc -l)
@@ -108,7 +108,7 @@ expect "C başka stüdyo seansını iptal → 404" 404 "$(pcode "/api/studio/cla
 
 echo "--- Toplu closure: cancelAndGrant ---"
 BC1=$(mksess "$I1P" "$D2" "14:00" 2); BC2=$(mksess "$I1P" "$D2" "15:00" 2)
-GB1=$(guest "GB1"); GB2=$(guest "GB2")
+GB1=$(guest "GB1"); GB2=$(guest "GB2"); mkc "$GB1"; mkc "$GB2"
 pcode "/api/studio/class-sessions/$BC1/bookings" "{\"studentProfileId\":\"$GB1\"}" "$ATOK" >/dev/null
 pcode "/api/studio/class-sessions/$BC2/bookings" "{\"studentProfileId\":\"$GB2\"}" "$ATOK" >/dev/null
 CL=$(post /api/studio/closures "{\"title\":\"Tatil\",\"startAt\":\"${D2}T00:00:00\",\"endAt\":\"${D2}T23:59:00\",\"actionType\":\"CancelAndGrantMakeupCredit\"}" "$ATOK")

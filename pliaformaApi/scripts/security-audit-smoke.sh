@@ -43,6 +43,8 @@ gactive(){ local g; g=$(body "$(post /api/studio/students/guest "{\"fullName\":\
 SA=$(gactive sa); SATOK=$(login "sa+$TS@pf.local")
 S1=$(body "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CTA\",\"startAt\":\"2026-12-01T10:00:00\",\"capacity\":5}" "$ATOK")" | jget id)
 S2=$(body "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I2P\",\"classTypeId\":\"$CTA\",\"startAt\":\"2026-12-01T12:00:00\",\"capacity\":5}" "$ATOK")" | jget id)
+# Sprint 18b: Regular booking sözleşme ister → SA'ya geniş sözleşme (CTA).
+curl -s -o /dev/null -X POST "$BASE/api/studio/students/$SA/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CTA\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"
 BA=$(body "$(post "/api/studio/class-sessions/$S1/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")" | jget id)
 PA=$(body "$(post "/api/studio/students/$SA/payments" "{\"amount\":100,\"dueDate\":\"2026-12-31\"}" "$ATOK")" | jget id)
 DUE=$(body "$(post "/api/studio/students/$SA/payments" "{\"amount\":50,\"dueDate\":\"2020-01-01\"}" "$ATOK")" | jget id)

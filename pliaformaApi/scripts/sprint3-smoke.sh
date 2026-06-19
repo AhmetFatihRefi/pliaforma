@@ -19,6 +19,7 @@ code(){ echo "$1" | tail -1; }; body(){ echo "$1" | sed '$d'; }
 login(){ body "$(post /api/auth/login "{\"email\":\"$1\",\"password\":\"$PW\"}")" | jget accessToken; }
 
 DAY=$(LC_ALL=C date -d "+3 days" +%A); DATE=$(date -d "+3 days" +%Y-%m-%d)
+OTHERDAY=$(LC_ALL=C date -d "+4 days" +%A)   # $DAY'den GARANTİLİ farklı gün (çakışma/availability-pencere testleriyle karışmaz)
 OWNA="s3a+$TS@pf.local"; OWNC="s3c+$TS@pf.local"; I1="s3i1+$TS@pf.local"; I2="s3i2+$TS@pf.local"; STU="s3stu+$TS@pf.local"
 echo "Gün=$DAY Tarih=$DATE"
 
@@ -48,7 +49,8 @@ echo "--- Müsaitlik ---"
 R=$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"$DAY\",\"startTime\":\"09:00:00\",\"endTime\":\"12:00:00\"}" "$ATOK")
 expect "Owner create availability (I1)" 200 "$(code "$R")"; AV1=$(body "$R" | jget id)
 expect "overlap availability → 409" 409 "$(code "$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"$DAY\",\"startTime\":\"11:00:00\",\"endTime\":\"13:00:00\"}" "$ATOK")")"
-expect "Instructor1 create OWN availability" 200 "$(code "$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"Monday\",\"startTime\":\"09:00:00\",\"endTime\":\"10:00:00\"}" "$I1TOK")")"
+# Not: sabit gün ($DAY=bugün+3 ile) çakışabilir → $DAY'den garantili farklı $OTHERDAY kullan (orijinal niyet: farklı gün).
+expect "Instructor1 create OWN availability" 200 "$(code "$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"$OTHERDAY\",\"startTime\":\"09:00:00\",\"endTime\":\"10:00:00\"}" "$I1TOK")")"
 expect "Instructor2 başka hocanın availability → 403" 403 "$(code "$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"Tuesday\",\"startTime\":\"09:00:00\",\"endTime\":\"10:00:00\"}" "$I2TOK")")"
 
 echo "--- Ders seansı + EndAt + çakışma + müsaitlik ---"

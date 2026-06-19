@@ -39,6 +39,9 @@ sbook(){ body "$(post "/api/studio/class-sessions/$1/bookings" "{\"studentProfil
 SA=$(mkactive "sa"); SATOK=$(login "sa+$TS@pf.local")
 SB=$(mkactive "sb"); SBTOK=$(login "sb+$TS@pf.local")
 GG=$(guest "GG")
+# Sprint 18b: Regular booking sözleşme ister → booked öğrencilere geniş sözleşme (auto-resolve).
+mkc(){ curl -s -o /dev/null -X POST "$BASE/api/studio/students/$1/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"; }
+mkc "$SA"; mkc "$SB"; mkc "$GG"
 
 # Yaklaşan dersler (Istanbul +20..+23h → 25h penceresi içinde, hepsi gelecek)
 STA=$(mksess "$(IST -d '+20 hours' +%Y-%m-%dT%H:%M:00)"); BA=$(sbook "$STA" "$SA")            # geçerli → reminder

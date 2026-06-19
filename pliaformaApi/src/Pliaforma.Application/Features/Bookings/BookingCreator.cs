@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.Contracts;
 using Pliaforma.Application.Features.MakeupCredits;
-using Pliaforma.Application.Features.Packages;
 using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
@@ -25,21 +24,21 @@ public sealed class BookingCreator
     private readonly IDateTime _clock;
     private readonly MakeupCreditService _credits;
     private readonly IMakeupCreditLock _creditLock;
-    private readonly PackageEligibilityChecker _eligibility;
     private readonly ContractEligibilityChecker _contracts;
+    private readonly ContractResolver _resolver;
 
     public BookingCreator(
         IAppDbContext db, IClassSessionCapacityService capacity, IDateTime clock,
-        MakeupCreditService credits, IMakeupCreditLock creditLock, PackageEligibilityChecker eligibility,
-        ContractEligibilityChecker contracts)
+        MakeupCreditService credits, IMakeupCreditLock creditLock,
+        ContractEligibilityChecker contracts, ContractResolver resolver)
     {
         _db = db;
         _capacity = capacity;
         _clock = clock;
         _credits = credits;
         _creditLock = creditLock;
-        _eligibility = eligibility;
         _contracts = contracts;
+        _resolver = resolver;
     }
 
     /// <param name="studentContractId">Sprint 18a: dolu → sözleşme yolu (paket yerine sözleşme uygunluğu).
@@ -81,39 +80,26 @@ public sealed class BookingCreator
         // Kullanılabilir-hak hesabı + makeup kredisi tüketimi için öğrenci satırını kilitle (serileştirme).
         await _creditLock.LockStudentAsync(studioId, student.Id, ct);
 
-        Guid? expectedPackageId = null;
-        bool requiresPayment = false;
-        PackageEligibilityStatus? eligStatus = null;
-        Guid? contractId = studentContractId;
+        // Sprint 18b: Regular ders SÖZLEŞME zorunlu (paket gate kaldırıldı). Makeup → telafi kredisi yolu;
+        // Trial/Special → istisna (sözleşme gerektirmez). Sözleşmesiz Regular → 409.
+        Guid? contractId = null;
 
         if (session.SessionKind == ClassSessionKind.Regular)
         {
-            if (studentContractId is { } cid)
+            var sessionDate = DateOnly.FromDateTime(session.StartAt);
+            if (studentContractId is { } provided)
             {
-                // SÖZLEŞME YOLU (Sprint 18a): paket yerine sözleşme uygunluğu.
-                var ce = await _contracts.EvaluateAsync(studioId, cid, student.Id, session.ClassTypeId, DateOnly.FromDateTime(session.StartAt), ct);
+                var ce = await _contracts.EvaluateAsync(studioId, provided, student.Id, session.ClassTypeId, sessionDate, ct);
                 if (!ce.IsEligible)
                     throw new ConflictException(ce.Message ?? "Sözleşme bu rezervasyon için uygun değil.");
+                contractId = provided;
             }
             else
             {
-                // ESKİ PAKET YOLU (değişmedi).
-                var today = DateOnly.FromDateTime(nowLocal);
-                var elig = await _eligibility.EvaluateAsync(studioId, student.Id, session.ClassTypeId, today, ct);
-                if (elig.IsEligible)
-                {
-                    expectedPackageId = elig.ExpectedStudentPackageId;
-                    eligStatus = PackageEligibilityStatus.Eligible;
-                }
-                else if (bookerRole is StudioRole.Owner or StudioRole.StudioAdmin)
-                {
-                    requiresPayment = true;
-                    eligStatus = PackageEligibilityStatus.RequiresPayment;
-                }
-                else
-                {
-                    throw new ConflictException(elig.Message);
-                }
+                var resolved = await _resolver.ResolveAsync(studioId, student.Id, session.ClassTypeId, sessionDate, ct);
+                if (resolved is null)
+                    throw new ConflictException("Bu ders için uygun aktif sözleşme yok. Önce sözleşme oluşturun.");
+                contractId = resolved.Id;
             }
         }
 
@@ -130,9 +116,10 @@ public sealed class BookingCreator
             StudentContractId = contractId,
             Status = ClassBookingStatus.Booked,
             BookedByUserId = bookedByUserId,
-            ExpectedStudentPackageId = expectedPackageId,
-            RequiresPayment = requiresPayment,
-            PackageEligibilityStatus = eligStatus,
+            // Sprint 18b: paket alanları yeni Regular akışında kullanılmaz (dormant; her zaman null/false).
+            ExpectedStudentPackageId = null,
+            RequiresPayment = false,
+            PackageEligibilityStatus = null,
         };
 
         // MAKEUP seansı: 1 telafi kredisi tüket. Booking ile aynı transaction'da (rollback ikisini de geri alır).
