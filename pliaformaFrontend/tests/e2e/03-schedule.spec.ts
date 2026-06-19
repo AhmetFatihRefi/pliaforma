@@ -26,6 +26,14 @@ test.describe("Schedule / booking / attendance (Owner)", () => {
     await expect(page.getByRole("button", { name: "İşlenmedi" }).first()).toBeVisible();
   });
 
+  test("Sprint 22: 'Grup düzeni' modalı açılır + öğrencileri getir", async ({ page }) => {
+    await page.getByRole("button", { name: "Grup düzeni" }).click();
+    await expect(page.getByRole("heading", { name: "Grup düzeni değiştir" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Öğrencileri getir" })).toBeVisible();
+    // Geçerlilik tarihi + yeni gün/saat alanları görünür.
+    await expect(page.getByText(/ve sonrası/)).toBeVisible();
+  });
+
   test("Sprint 21: taşıma modalında mod A/B (tek taşı + zincirleme kaydır)", async ({ page }) => {
     await page.getByRole("button", { name: "Ertele" }).first().click();
     await expect(page.getByRole("heading", { name: /Tarih\/Saat değiştir/ })).toBeVisible();

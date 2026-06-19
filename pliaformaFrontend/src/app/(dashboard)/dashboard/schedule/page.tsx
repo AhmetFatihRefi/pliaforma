@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, bookingService, classSessionService, classTypeService, makeupCreditService, studentService } from "@/lib/studioApi";
+import { attendanceService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, studentService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceItemDto,
@@ -13,11 +13,16 @@ import {
   type ClassSessionKind,
   type ChainShiftPreviewDto,
   type ClassTypeDto,
+  type DayOfWeek,
+  type GroupChangeCandidateDto,
+  type GroupChangePreviewDto,
   type MakeupEligibleStudentDto,
   type SessionAttendanceDto,
   type StudentDto,
   attendanceStatusLabels,
   bookingStatusLabels,
+  dayLabels,
+  daysOfWeek,
   isUnlimitedCapacity,
   sessionKindLabels,
   sessionStatusLabels,
@@ -46,6 +51,7 @@ export default function SchedulePage() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [groupChangeOpen, setGroupChangeOpen] = useState(false);
   const [bookFor, setBookFor] = useState<ClassSessionDto | null>(null);
   const [bookingsFor, setBookingsFor] = useState<ClassSessionDto | null>(null);
   const [cancelFor, setCancelFor] = useState<ClassSessionDto | null>(null);
@@ -121,8 +127,9 @@ export default function SchedulePage() {
           <h1 className="text-2xl font-semibold text-foreground">Ders Programı</h1>
           <p className="mt-1 text-sm text-muted">Ders seanslarını görüntüleyin ve oluşturun.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="secondary" loading={busyId === "today"} onClick={confirmToday}>Bugünü onayla</Button>
+          {isManager && <Button variant="secondary" onClick={() => setGroupChangeOpen(true)}>Grup düzeni</Button>}
           <Button variant="secondary" onClick={() => setBulkOpen(true)}>Toplu slot</Button>
           <Button onClick={() => setCreateOpen(true)}>+ Yeni seans</Button>
         </div>
@@ -255,7 +262,146 @@ export default function SchedulePage() {
           onDone={() => { setActualFor(null); load(); }}
         />
       )}
+      {groupChangeOpen && (
+        <GroupChangeModal
+          instructors={instructors}
+          classTypes={classTypes}
+          onClose={() => setGroupChangeOpen(false)}
+          onDone={() => { setGroupChangeOpen(false); load(); }}
+        />
+      )}
     </div>
+  );
+}
+
+// Sprint 22: köklü grup düzeni değişikliği — hoca+ders tipi+effectiveDate → öğrenci seç → yeni slot → önizle → uygula.
+function GroupChangeModal({ instructors, classTypes, onClose, onDone }: {
+  instructors: { id: string; name: string }[]; classTypes: ClassTypeDto[]; onClose: () => void; onDone: () => void;
+}) {
+  const [instructorId, setInstructorId] = useState(instructors[0]?.id ?? "");
+  const [classTypeId, setClassTypeId] = useState(classTypes[0]?.id ?? "");
+  const [effectiveDate, setEffectiveDate] = useState(todayStr());
+  const [candidates, setCandidates] = useState<GroupChangeCandidateDto[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [days, setDays] = useState<Set<DayOfWeek>>(new Set());
+  const [time, setTime] = useState("19:00");
+  const [preview, setPreview] = useState<GroupChangePreviewDto | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const slots = () => Array.from(days).map((d) => ({ dayOfWeek: d, startTime: `${time}:00` }));
+  const input = () => ({ instructorProfileId: instructorId, classTypeId, effectiveDate, contractIds: Array.from(selected), newSlots: slots() });
+  const reset = () => { setPreview(null); };
+
+  const loadCandidates = async () => {
+    setBusy(true); setErr(null); setPreview(null);
+    try { setCandidates(await groupScheduleChangeService.candidates(instructorId, classTypeId, effectiveDate)); setSelected(new Set()); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Adaylar getirilemedi."); }
+    finally { setBusy(false); }
+  };
+
+  const doPreview = async () => {
+    setBusy(true); setErr(null);
+    try { setPreview(await groupScheduleChangeService.preview(input())); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Önizleme alınamadı."); }
+    finally { setBusy(false); }
+  };
+
+  const apply = async () => {
+    setBusy(true); setErr(null);
+    try { await groupScheduleChangeService.apply(input()); onDone(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Uygulanamadı."); }
+    finally { setBusy(false); }
+  };
+
+  const toggleSel = (id: string) => setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); reset(); return n; });
+  const toggleDay = (d: DayOfWeek) => setDays((s) => { const n = new Set(s); n.has(d) ? n.delete(d) : n.add(d); reset(); return n; });
+
+  const canPreview = selected.size > 0 && days.size > 0;
+
+  return (
+    <Modal open onClose={onClose} title="Grup düzeni değiştir">
+      <div className="space-y-4">
+        {err && <Alert kind="error">{err}</Alert>}
+        <p className="text-xs text-muted">Seçili öğrencilerin <strong>{effectiveDate} ve sonrası</strong> gelecek dersleri yeni düzene taşınır (telafi üretmez). Seçilmeyen öğrenciler etkilenmez.</p>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <FormField label="Hoca">
+            <Select value={instructorId} onChange={(e) => { setInstructorId(e.target.value); setCandidates(null); }}>
+              {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </Select>
+          </FormField>
+          <FormField label="Grup (ClassType)">
+            <Select value={classTypeId} onChange={(e) => { setClassTypeId(e.target.value); setCandidates(null); }}>
+              {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </FormField>
+          <FormField label="Geçerlilik tarihi">
+            <Input type="date" value={effectiveDate} onChange={(e) => { setEffectiveDate(e.target.value); setCandidates(null); }} />
+          </FormField>
+        </div>
+        <Button size="sm" variant="secondary" loading={busy} onClick={loadCandidates}>Öğrencileri getir</Button>
+
+        {candidates && (
+          candidates.length === 0 ? (
+            <p className="text-sm text-muted">Bu hoca/ders tipinde gelecek dersi olan öğrenci yok.</p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted">Taşınacak öğrenciler (tek tek seçin):</p>
+              <div className="max-h-44 space-y-1 overflow-y-auto">
+                {candidates.map((c) => (
+                  <label key={c.contractId} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                    <span className="flex items-center gap-2">
+                      <input type="checkbox" checked={selected.has(c.contractId)} onChange={() => toggleSel(c.contractId)} />
+                      <span className="font-medium text-foreground">{c.studentName}</span>
+                      {c.isIndividual && <Badge tone="warning">Bireysel</Badge>}
+                    </span>
+                    <span className="text-xs text-muted">{c.currentSlotSummary} · kalan {c.availableLessonCount} · {c.futureRegularCount} gelecek</span>
+                  </label>
+                ))}
+              </div>
+
+              <p className="text-xs font-semibold text-muted">Yeni gün/saat:</p>
+              <div className="flex flex-wrap gap-1">
+                {daysOfWeek.map((d) => (
+                  <label key={d} className={`cursor-pointer rounded-lg border px-2 py-1 text-xs ${days.has(d) ? "border-primary bg-primary-soft text-primary-hover" : "border-border text-foreground"}`}>
+                    <input type="checkbox" className="hidden" checked={days.has(d)} onChange={() => toggleDay(d)} />
+                    {dayLabels[d]}
+                  </label>
+                ))}
+                <Input type="time" value={time} onChange={(e) => { setTime(e.target.value); reset(); }} className="w-28" />
+              </div>
+
+              {preview && (
+                <div className="max-h-52 space-y-1 overflow-y-auto rounded-xl border border-border p-2 text-xs">
+                  <p className="font-semibold text-muted">Önizleme · {preview.emptiedSessionsCancelled} boş ders iptal olacak</p>
+                  {preview.students.map((s) => (
+                    <div key={s.contractId} className="flex items-center justify-between gap-2">
+                      <span className="text-foreground">{s.studentName}</span>
+                      <span className="text-muted">−{s.removedCount} kaldır · +{s.plannedCount} üret (yeni {s.newSessionCount}, paylaşılan {s.reusedCount})</span>
+                      <span className="flex gap-1">
+                        {s.conflictCount > 0 && <Badge tone="danger">{s.conflictCount} çakışma</Badge>}
+                        {s.note && <Badge tone="warning">{s.note}</Badge>}
+                      </span>
+                    </div>
+                  ))}
+                  {!preview.canApply && <p className="text-danger">Çakışma var — uygulanamaz. Slot/tarih değiştirin.</p>}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
+                {!preview ? (
+                  <Button loading={busy} disabled={!canPreview} onClick={doPreview}>Önizle</Button>
+                ) : (
+                  <Button loading={busy} disabled={!preview.canApply} onClick={apply}>Uygula ({selected.size} öğrenci)</Button>
+                )}
+              </div>
+            </div>
+          )
+        )}
+      </div>
+    </Modal>
   );
 }
 

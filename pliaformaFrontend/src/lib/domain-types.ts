@@ -409,6 +409,42 @@ export interface ChainShiftPreviewDto {
   canApply: boolean;
 }
 
+// Sprint 22: köklü grup düzeni değişikliği.
+export interface GroupChangeCandidateDto {
+  contractId: string;
+  studentProfileId: string;
+  studentName: string;
+  availableLessonCount: number;
+  startDate: string;
+  endDate: string;
+  futureRegularCount: number;
+  currentSlotSummary: string;
+  isIndividual: boolean;
+}
+export interface GroupChangeSlotOutcomeDto {
+  startAt: string;
+  endAt: string;
+  outcome: string; // created-new | reused | skipped | conflict
+  reason?: string | null;
+}
+export interface GroupChangeStudentResultDto {
+  contractId: string;
+  studentName: string;
+  removedCount: number;
+  plannedCount: number;
+  reusedCount: number;
+  newSessionCount: number;
+  skippedCount: number;
+  conflictCount: number;
+  note?: string | null;
+  slots: GroupChangeSlotOutcomeDto[];
+}
+export interface GroupChangePreviewDto {
+  students: GroupChangeStudentResultDto[];
+  emptiedSessionsCancelled: number;
+  canApply: boolean;
+}
+
 export interface MakeupPolicyDto {
   monthlyManualCreditLimit: number;
   defaultCreditValidityDays: number;

@@ -53,6 +53,8 @@ import type {
   StudentMakeupCreditsDto,
   MakeupEligibleStudentDto,
   ChainShiftPreviewDto,
+  GroupChangeCandidateDto,
+  GroupChangePreviewDto,
   StudentSessionDto,
   StudioClosureActionType,
   StudioClosureDto,
@@ -181,6 +183,23 @@ export const classSessionService = {
     api<ChainShiftPreviewDto>(`/api/studio/class-sessions/${id}/chain-shift/preview?newStartAt=${encodeURIComponent(newStartAt)}`),
   chainShift: (id: string, input: { newStartAt: string; reason?: string }) =>
     api<ChainShiftPreviewDto>(`/api/studio/class-sessions/${id}/chain-shift`, { method: "POST", body: input }),
+};
+
+// Sprint 22: köklü grup düzeni değişikliği (Owner/StudioAdmin).
+export interface GroupChangeInput {
+  instructorProfileId: string;
+  classTypeId: string;
+  effectiveDate: string;
+  contractIds: string[];
+  newSlots: ContractScheduleSlotInput[];
+}
+export const groupScheduleChangeService = {
+  candidates: (instructorProfileId: string, classTypeId: string, effectiveDate: string) =>
+    api<GroupChangeCandidateDto[]>(`/api/studio/group-schedule-change/candidates?instructorProfileId=${instructorProfileId}&classTypeId=${classTypeId}&effectiveDate=${effectiveDate}`),
+  preview: (input: GroupChangeInput) =>
+    api<GroupChangePreviewDto>("/api/studio/group-schedule-change/preview", { method: "POST", body: input }),
+  apply: (input: GroupChangeInput) =>
+    api<GroupChangePreviewDto>("/api/studio/group-schedule-change/apply", { method: "POST", body: input }),
 };
 
 // Kapalı günler / toplu işlemler (/api/studio/closures) — Owner/StudioAdmin

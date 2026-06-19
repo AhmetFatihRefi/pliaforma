@@ -39,6 +39,54 @@ internal static class ContractScheduleEngine
 
     public static bool InAnyClosure(DateTime startAt, List<StudioClosure> closures) =>
         closures.Any(cl => cl.StartAt <= startAt && startAt < cl.EndAt);
+
+    // ---- Sprint 22: program üretiminin paylaşılan çekirdeği (generate + grup-değişikliği ortak) ----
+    /// <summary>Aynı slotta yeniden kullanılabilir mevcut GRUP seansı (bireysel değil, Scheduled). Yoksa null.</summary>
+    public static Task<ClassSession?> FindReusableGroupAsync(
+        IAppDbContext db, Guid studioId, Guid instructorProfileId, Guid classTypeId, DateTime startAt, CancellationToken ct) =>
+        db.ClassSessions.FirstOrDefaultAsync(s => s.StudioId == studioId
+            && s.InstructorProfileId == instructorProfileId && s.ClassTypeId == classTypeId
+            && s.StartAt == startAt && s.Status == ClassSessionStatus.Scheduled && !s.IsIndividual, ct);
+
+    /// <summary>Öğrencinin verilen aralıkta örtüşen aktif (Booked, Scheduled) bir dersi var mı?</summary>
+    public static Task<bool> StudentBusyAsync(
+        IAppDbContext db, Guid studioId, Guid studentProfileId, DateTime startAt, DateTime endAt, CancellationToken ct) =>
+        db.ClassBookings.AnyAsync(b => b.StudioId == studioId && b.StudentProfileId == studentProfileId
+            && b.Status == ClassBookingStatus.Booked && b.ClassSession!.Status == ClassSessionStatus.Scheduled
+            && b.ClassSession.StartAt < endAt && startAt < b.ClassSession.EndAt, ct);
+
+    /// <summary>Sözleşmenin rezerve (Booked + Regular) ders sayısı. AvailableLesson = Total − bu sayı.</summary>
+    public static Task<int> ReservedRegularAsync(IAppDbContext db, Guid contractId, CancellationToken ct) =>
+        db.ClassBookings.CountAsync(b => b.StudentContractId == contractId
+            && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular, ct);
+
+    public static ClassSession NewSession(
+        Guid studioId, Guid instructorProfileId, Guid classTypeId, DateTime startAt, DateTime endAt, bool individual, Guid userId) =>
+        new()
+        {
+            StudioId = studioId,
+            InstructorProfileId = instructorProfileId,
+            ClassTypeId = classTypeId,
+            StartAt = startAt,
+            EndAt = endAt,
+            Capacity = individual ? 1 : GroupUnlimitedCapacity,
+            BookedCount = 0,
+            Status = ClassSessionStatus.Scheduled,
+            SessionKind = ClassSessionKind.Regular,
+            IsIndividual = individual,
+            CreatedByUserId = userId,
+        };
+
+    public static ClassBooking NewBooking(Guid studioId, Guid sessionId, Guid studentProfileId, Guid contractId, Guid userId) =>
+        new()
+        {
+            StudioId = studioId,
+            ClassSessionId = sessionId,
+            StudentProfileId = studentProfileId,
+            StudentContractId = contractId,
+            Status = ClassBookingStatus.Booked,
+            BookedByUserId = userId,
+        };
 }
 
 // ======================= ÖNİZLEME (oluşturma yok) =======================
@@ -142,8 +190,7 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
         var duration = classType.DefaultDurationMinutes;
         var individual = request.Individual ?? contract.IsIndividualDefault;
 
-        var reserved = await _db.ClassBookings.CountAsync(b => b.StudentContractId == contract.Id
-            && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular, ct);
+        var reserved = await ContractScheduleEngine.ReservedRegularAsync(_db, contract.Id, ct);
         var available = Math.Max(0, contract.TotalLessonCount - reserved);
         if (available == 0)
             return new GenerateContractScheduleResultDto(0, 0, 0, 0, Array.Empty<DateTime>());
@@ -169,11 +216,7 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
             // Reuse: aynı slotta mevcut grup seansı (bireysel değil) varsa ona bağlan.
             ClassSession? target = null;
             if (!individual && request.ReuseExistingGroup)
-            {
-                target = await _db.ClassSessions.FirstOrDefaultAsync(s => s.StudioId == studioId
-                    && s.InstructorProfileId == contract.InstructorProfileId && s.ClassTypeId == contract.ClassTypeId
-                    && s.StartAt == c.StartAt && s.Status == ClassSessionStatus.Scheduled && !s.IsIndividual, ct);
-            }
+                target = await ContractScheduleEngine.FindReusableGroupAsync(_db, studioId, contract.InstructorProfileId, contract.ClassTypeId, c.StartAt, ct);
 
             // Çakışma: hoca (reuse hedefi yoksa) + öğrenci. Batch içi meşguliyet de kontrol edilir.
             var instructorBusy = batchInstructor.Any(x => x.s < c.EndAt && c.StartAt < x.e)
@@ -181,27 +224,12 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
             if (target is null && instructorBusy) { skipped++; continue; }
 
             var studentBusy = batchStudent.Any(x => x.s < c.EndAt && c.StartAt < x.e)
-                || await _db.ClassBookings.AnyAsync(b => b.StudioId == studioId && b.StudentProfileId == contract.StudentProfileId
-                    && b.Status == ClassBookingStatus.Booked && b.ClassSession!.Status == ClassSessionStatus.Scheduled
-                    && b.ClassSession.StartAt < c.EndAt && c.StartAt < b.ClassSession.EndAt, ct);
+                || await ContractScheduleEngine.StudentBusyAsync(_db, studioId, contract.StudentProfileId, c.StartAt, c.EndAt, ct);
             if (studentBusy) { skipped++; continue; }
 
             if (target is null)
             {
-                target = new ClassSession
-                {
-                    StudioId = studioId,
-                    InstructorProfileId = contract.InstructorProfileId,
-                    ClassTypeId = contract.ClassTypeId,
-                    StartAt = c.StartAt,
-                    EndAt = c.EndAt,
-                    Capacity = individual ? 1 : ContractScheduleEngine.GroupUnlimitedCapacity,
-                    BookedCount = 0,
-                    Status = ClassSessionStatus.Scheduled,
-                    SessionKind = ClassSessionKind.Regular,
-                    IsIndividual = individual,
-                    CreatedByUserId = userId,
-                };
+                target = ContractScheduleEngine.NewSession(studioId, contract.InstructorProfileId, contract.ClassTypeId, c.StartAt, c.EndAt, individual, userId);
                 _db.ClassSessions.Add(target);
                 newSessions++;
             }
@@ -211,15 +239,7 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
             }
 
             target.BookedCount += 1;
-            _db.ClassBookings.Add(new ClassBooking
-            {
-                StudioId = studioId,
-                ClassSessionId = target.Id,
-                StudentProfileId = contract.StudentProfileId,
-                StudentContractId = contract.Id,
-                Status = ClassBookingStatus.Booked,
-                BookedByUserId = userId,
-            });
+            _db.ClassBookings.Add(ContractScheduleEngine.NewBooking(studioId, target.Id, contract.StudentProfileId, contract.Id, userId));
 
             batchInstructor.Add((c.StartAt, c.EndAt));
             batchStudent.Add((c.StartAt, c.EndAt));
