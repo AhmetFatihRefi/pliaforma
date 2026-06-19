@@ -20,6 +20,13 @@ public class Payment : BaseEntity, ITenantScoped
     public Guid? StudentPackageId { get; set; }
     public StudentPackage? StudentPackage { get; set; }
 
+    /// <summary>
+    /// Sprint 23: ödemenin bağlandığı sözleşme (opsiyonel). Sözleşme-bazlı borç hesabı bu bağa dayanır.
+    /// NULL → etiketsiz ödeme; hiçbir sözleşmenin borcundan düşülmez (yalnız bilgi amaçlı gösterilir).
+    /// </summary>
+    public Guid? StudentContractId { get; set; }
+    public StudentContract? StudentContract { get; set; }
+
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "TRY";
 

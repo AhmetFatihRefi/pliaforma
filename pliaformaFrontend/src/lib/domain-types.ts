@@ -250,6 +250,49 @@ export interface ContractScheduleSlotPreviewDto { startAt: string; endAt: string
 export interface ContractSchedulePreviewDto { availableLessonCount: number; plannableCount: number; slots: ContractScheduleSlotPreviewDto[] }
 export interface GenerateContractScheduleResultDto { createdCount: number; newSessionCount: number; reusedSessionCount: number; skippedCount: number; createdStartAts: string[] }
 
+// ===== Sprint 23: Sözleşme ek işlemi (amendment) + borç =====
+export type ContractAmendmentKind = "ExtraLessons" | "DateExtension" | "PriceAdjustment" | "Mixed" | "Correction" | "Other";
+export const contractAmendmentKindLabels: Record<ContractAmendmentKind, string> = {
+  ExtraLessons: "Ek ders", DateExtension: "Tarih uzatma", PriceAdjustment: "Ücret düzeltme",
+  Mixed: "Karma", Correction: "Düzeltme", Other: "Diğer",
+};
+export const contractAmendmentKinds: ContractAmendmentKind[] = ["ExtraLessons", "DateExtension", "PriceAdjustment", "Mixed", "Correction", "Other"];
+export interface ContractAmendmentDto {
+  id: string;
+  studentContractId: string;
+  kind: ContractAmendmentKind;
+  additionalLessonCount: number;
+  previousTotalLessonCount: number;
+  newTotalLessonCount: number;
+  previousEndDate: string;
+  newEndDate: string;
+  additionalPrice: number;
+  currency: string;
+  description?: string | null;
+  createdByName: string;
+  createdAt: string;
+}
+export interface ContractDebtDto {
+  contractId: string;
+  classTypeName: string;
+  status: StudentContractStatus;
+  currency: string;
+  basePrice: number;
+  additionalCharges: number;
+  totalCharges: number;
+  paid: number;
+  outstanding: number;
+}
+export interface StudentDebtSummaryDto {
+  studentProfileId: string;
+  currency: string;
+  totalCharges: number;
+  totalPaid: number;
+  totalOutstanding: number;
+  untaggedPaid: number;
+  contracts: ContractDebtDto[];
+}
+
 // ===== Sprint 4: Rezervasyon =====
 export type ClassBookingStatus = "Booked" | "CancelledByStudent" | "CancelledByStudio";
 
@@ -682,6 +725,7 @@ export interface PaymentDto {
   method?: PaymentMethod | null;
   notes?: string | null;
   createdAt: string;
+  studentContractId?: string | null;
 }
 
 // ===== Sprint 8: Dashboard & Raporlar =====

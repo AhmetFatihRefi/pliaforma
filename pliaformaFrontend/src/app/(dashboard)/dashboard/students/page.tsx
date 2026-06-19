@@ -6,14 +6,19 @@ import { ApiError } from "@/lib/api";
 import {
   type AttendanceSummaryDto,
   type ClassTypeDto,
+  type ContractAmendmentDto,
+  type ContractAmendmentKind,
   type ContractScheduleSlotInput,
   type DayOfWeek,
   type GuestInput,
   type MemberDto,
   type PaymentDto,
   type StudentContractDto,
+  type StudentDebtSummaryDto,
   type StudentDto,
   type StudentSource,
+  contractAmendmentKindLabels,
+  contractAmendmentKinds,
   daysOfWeek,
   dayLabels,
   paymentStatusLabels,
@@ -287,6 +292,46 @@ function ContractRow({ contract, onChanged, onCancel }: { contract: StudentContr
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Sprint 23: ek işlem (amendment).
+  const [amendOpen, setAmendOpen] = useState(false);
+  const [amendments, setAmendments] = useState<ContractAmendmentDto[]>([]);
+  const [amendForm, setAmendForm] = useState<{ kind: ContractAmendmentKind; lessons: number; newEnd: string; price: number; description: string }>(
+    { kind: "ExtraLessons", lessons: 0, newEnd: "", price: 0, description: "" });
+  const [amendMsg, setAmendMsg] = useState<string | null>(null);
+  const [amendBusy, setAmendBusy] = useState(false);
+
+  const loadAmendments = useCallback(async () => {
+    try { setAmendments(await contractService.amendments(contract.id)); }
+    catch (e) { setAmendMsg(e instanceof ApiError ? e.message : "Geçmiş yüklenemedi."); }
+  }, [contract.id]);
+
+  const toggleAmend = () => {
+    setAmendOpen((v) => {
+      if (!v) { setAmendMsg(null); loadAmendments(); }
+      return !v;
+    });
+  };
+
+  const addAmendment = async () => {
+    setAmendBusy(true); setAmendMsg(null);
+    try {
+      await contractService.addAmendment(contract.id, {
+        kind: amendForm.kind,
+        additionalLessonCount: Number(amendForm.lessons),
+        newEndDate: amendForm.newEnd || null,
+        additionalPrice: Number(amendForm.price),
+        description: amendForm.description || null,
+      });
+      setAmendForm({ kind: "ExtraLessons", lessons: 0, newEnd: "", price: 0, description: "" });
+      await loadAmendments();
+      onChanged();
+    } catch (e) {
+      setAmendMsg(e instanceof ApiError ? e.message : "Ek işlem kaydedilemedi.");
+    } finally {
+      setAmendBusy(false);
+    }
+  };
+
   const slots = (): ContractScheduleSlotInput[] => days.map((d) => ({ dayOfWeek: d, startTime: `${time}:00` }));
 
   const generate = async () => {
@@ -319,12 +364,53 @@ function ContractRow({ contract, onChanged, onCancel }: { contract: StudentContr
           <Badge tone={contract.status === "Active" ? "success" : "neutral"}>{studentContractStatusLabels[contract.status]}</Badge>
           {contract.status === "Active" && (
             <>
+              <Button variant="ghost" size="sm" onClick={toggleAmend}>Ek işlem</Button>
               <Button variant="ghost" size="sm" onClick={() => setGenOpen((v) => !v)}>Programı oluştur</Button>
               <Button variant="ghost" size="sm" onClick={onCancel}>İptal</Button>
             </>
           )}
         </div>
       </div>
+
+      {amendOpen && contract.status === "Active" && (
+        <div className="mt-3 space-y-3 border-t border-border pt-3">
+          {amendMsg && <Alert kind="error">{amendMsg}</Alert>}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <FormField label="Tür">
+              <Select value={amendForm.kind} onChange={(e) => setAmendForm((f) => ({ ...f, kind: e.target.value as ContractAmendmentKind }))}>
+                {contractAmendmentKinds.map((k) => <option key={k} value={k}>{contractAmendmentKindLabels[k]}</option>)}
+              </Select>
+            </FormField>
+            <FormField label="Ek ders (±)"><Input type="number" value={amendForm.lessons} onChange={(e) => setAmendForm((f) => ({ ...f, lessons: Number(e.target.value) }))} /></FormField>
+            <FormField label={`Ek ücret (${contract.currency}, ±)`}><Input type="number" step="0.01" value={amendForm.price} onChange={(e) => setAmendForm((f) => ({ ...f, price: Number(e.target.value) }))} /></FormField>
+            <FormField label="Yeni bitiş (ileri)"><Input type="date" min={contract.endDate} value={amendForm.newEnd} onChange={(e) => setAmendForm((f) => ({ ...f, newEnd: e.target.value }))} /></FormField>
+            <FormField label="Açıklama"><Input value={amendForm.description} onChange={(e) => setAmendForm((f) => ({ ...f, description: e.target.value }))} placeholder="Ek paket / uzatma / özel anlaşma" /></FormField>
+            <div className="flex items-end">
+              <Button size="sm" loading={amendBusy} onClick={addAmendment}>Ek işlem kaydet</Button>
+            </div>
+          </div>
+
+          {amendments.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-muted">Ek işlem geçmişi</p>
+              {amendments.map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-2 py-1 text-xs">
+                  <span className="flex items-center gap-2">
+                    <Badge tone="neutral">{contractAmendmentKindLabels[a.kind]}</Badge>
+                    <span className="text-foreground">
+                      {a.additionalLessonCount !== 0 && `${a.additionalLessonCount > 0 ? "+" : ""}${a.additionalLessonCount} ders `}
+                      {a.previousEndDate !== a.newEndDate && `· bitiş ${a.newEndDate} `}
+                      {a.additionalPrice !== 0 && `· ${a.additionalPrice > 0 ? "+" : ""}${a.additionalPrice.toLocaleString("tr-TR")} ${a.currency}`}
+                    </span>
+                    {a.description && <span className="text-muted">— {a.description}</span>}
+                  </span>
+                  <span className="shrink-0 text-muted">{a.createdByName} · {a.createdAt.slice(0, 10)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {genOpen && contract.status === "Active" && (
         <div className="mt-3 space-y-2 border-t border-border pt-3">
@@ -352,16 +438,24 @@ function ContractRow({ contract, onChanged, onCancel }: { contract: StudentContr
 }
 
 function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClose: () => void }) {
-  // Sprint 18b: paket bölümü kaldırıldı (paket modeli dormant). Yalnız ödeme/borç yönetimi.
+  // Sprint 18b: paket bölümü kaldırıldı (paket modeli dormant). Sprint 23: sözleşme-bazlı borç + ödeme eşleme.
   const [payments, setPayments] = useState<PaymentDto[]>([]);
+  const [debt, setDebt] = useState<StudentDebtSummaryDto | null>(null);
+  const [contracts, setContracts] = useState<StudentContractDto[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [payDue, setPayDue] = useState(new Date().toISOString().slice(0, 10));
+  const [payContractId, setPayContractId] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setPayments(await paymentService.forStudent(student.id));
+      const [ps, d, cs] = await Promise.all([
+        paymentService.forStudent(student.id),
+        contractService.debt(student.id),
+        contractService.forStudent(student.id),
+      ]);
+      setPayments(ps); setDebt(d); setContracts(cs);
       setErr(null);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Yüklenemedi.");
@@ -379,20 +473,55 @@ function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClos
 
   const createPayment = () => {
     if (!payAmount) { setErr("Tutar girin."); return; }
-    wrap(() => paymentService.create(student.id, { amount: Number(payAmount), dueDate: payDue })).then(() => setPayAmount(""));
+    wrap(() => paymentService.create(student.id, {
+      amount: Number(payAmount), dueDate: payDue, studentContractId: payContractId || null,
+    })).then(() => setPayAmount(""));
   };
 
+  const contractLabel = (id?: string | null) => {
+    if (!id) return null;
+    const c = contracts.find((x) => x.id === id);
+    return c ? `${c.classTypeName}` : "sözleşme";
+  };
+  const money = (n: number, cur: string) => `${n.toLocaleString("tr-TR")} ${cur}`;
+
   return (
-    <Modal open onClose={onClose} title={`${student.fullName} — Ödemeler`}>
+    <Modal open onClose={onClose} title={`${student.fullName} — Finans`}>
       <div className="space-y-4">
         {err && <Alert kind="error">{err}</Alert>}
+
+        {/* Sprint 23: borç özeti */}
+        {debt && (
+          <div className="rounded-xl border border-border bg-surface p-3">
+            <h3 className="mb-2 text-sm font-semibold text-foreground">Borç özeti</h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
+              <div><span className="text-muted">Sözleşme ücreti</span><div className="font-medium text-foreground">{money(debt.contracts.reduce((s, c) => s + c.basePrice, 0), debt.currency)}</div></div>
+              <div><span className="text-muted">Ek ücretler</span><div className="font-medium text-foreground">{money(debt.contracts.reduce((s, c) => s + c.additionalCharges, 0), debt.currency)}</div></div>
+              <div><span className="text-muted">Ödenen</span><div className="font-medium text-foreground">{money(debt.totalPaid, debt.currency)}</div></div>
+              <div><span className="text-muted">Kalan borç</span><div className={`font-semibold ${debt.totalOutstanding > 0 ? "text-danger" : "text-success"}`}>{money(debt.totalOutstanding, debt.currency)}</div></div>
+            </div>
+            {debt.contracts.length > 0 && (
+              <div className="mt-2 space-y-1 border-t border-border pt-2 text-xs">
+                {debt.contracts.map((c) => (
+                  <div key={c.contractId} className="flex items-center justify-between gap-2">
+                    <span className="text-muted">{c.classTypeName}</span>
+                    <span className="text-foreground">borç {money(c.outstanding, c.currency)} <span className="text-muted">(ücret {money(c.totalCharges, c.currency)} − ödenen {money(c.paid, c.currency)})</span></span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {debt.untaggedPaid > 0 && (
+              <p className="mt-2 text-xs text-muted">Etiketsiz ödemeler: {money(debt.untaggedPaid, debt.currency)} (sözleşme borcuna sayılmaz)</p>
+            )}
+          </div>
+        )}
 
         <div>
           <h3 className="mb-2 text-sm font-semibold text-foreground">Ödemeler</h3>
           <div className="space-y-2">
             {payments.length === 0 ? <p className="text-sm text-muted">Ödeme yok.</p> : payments.map((p) => (
               <div key={p.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm">
-                <span>{p.amount.toLocaleString("tr-TR")} {p.currency} · <span className="text-muted">vade {p.dueDate}</span></span>
+                <span>{p.amount.toLocaleString("tr-TR")} {p.currency} · <span className="text-muted">vade {p.dueDate}</span>{contractLabel(p.studentContractId) && <span className="text-muted"> · {contractLabel(p.studentContractId)}</span>}</span>
                 <div className="flex items-center gap-2">
                   <Badge tone={p.status === "Paid" ? "success" : p.status === "Overdue" ? "danger" : "warning"}>{paymentStatusLabels[p.status]}</Badge>
                   {(p.status === "Pending" || p.status === "Overdue") && (
@@ -405,9 +534,13 @@ function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClos
               </div>
             ))}
           </div>
-          <div className="mt-2 flex gap-2">
-            <Input type="number" min={0} step="0.01" placeholder="Tutar" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
-            <Input type="date" value={payDue} onChange={(e) => setPayDue(e.target.value)} />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Input type="number" min={0} step="0.01" placeholder="Tutar" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28" />
+            <Input type="date" value={payDue} onChange={(e) => setPayDue(e.target.value)} className="w-40" />
+            <Select value={payContractId} onChange={(e) => setPayContractId(e.target.value)} className="w-44">
+              <option value="">Sözleşmesiz</option>
+              {contracts.map((c) => <option key={c.id} value={c.id}>{c.classTypeName} ({c.currency})</option>)}
+            </Select>
             <Button size="sm" disabled={busy} onClick={createPayment}>Ödeme ekle</Button>
           </div>
         </div>

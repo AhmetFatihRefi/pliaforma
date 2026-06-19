@@ -346,6 +346,71 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("ClassTypes", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.ContractAmendment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AdditionalLessonCount")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("AdditionalPrice")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateOnly>("NewEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("NewTotalLessonCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("PreviousEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("PreviousTotalLessonCount")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StudentContractId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentContractId");
+
+                    b.HasIndex("StudioId", "StudentContractId");
+
+                    b.ToTable("ContractAmendments", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.InstructorAvailability", b =>
                 {
                     b.Property<Guid>("Id")
@@ -806,6 +871,9 @@ namespace Pliaforma.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<Guid?>("StudentContractId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("StudentPackageId")
                         .HasColumnType("uuid");
 
@@ -820,6 +888,8 @@ namespace Pliaforma.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StudentContractId");
+
                     b.HasIndex("StudentPackageId");
 
                     b.HasIndex("StudentProfileId");
@@ -827,6 +897,8 @@ namespace Pliaforma.Persistence.Migrations
                     b.HasIndex("StudioId", "DueDate");
 
                     b.HasIndex("StudioId", "Status");
+
+                    b.HasIndex("StudioId", "StudentContractId");
 
                     b.HasIndex("StudioId", "StudentProfileId");
 
@@ -1859,6 +1931,25 @@ namespace Pliaforma.Persistence.Migrations
                     b.Navigation("Studio");
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.ContractAmendment", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.StudentContract", "StudentContract")
+                        .WithMany()
+                        .HasForeignKey("StudentContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StudentContract");
+
+                    b.Navigation("Studio");
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.InstructorAvailability", b =>
                 {
                     b.HasOne("Pliaforma.Domain.Entities.InstructorProfile", "InstructorProfile")
@@ -2013,6 +2104,11 @@ namespace Pliaforma.Persistence.Migrations
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.Payment", b =>
                 {
+                    b.HasOne("Pliaforma.Domain.Entities.StudentContract", "StudentContract")
+                        .WithMany()
+                        .HasForeignKey("StudentContractId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Pliaforma.Domain.Entities.StudentPackage", "StudentPackage")
                         .WithMany()
                         .HasForeignKey("StudentPackageId")
@@ -2029,6 +2125,8 @@ namespace Pliaforma.Persistence.Migrations
                         .HasForeignKey("StudioId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("StudentContract");
 
                     b.Navigation("StudentPackage");
 

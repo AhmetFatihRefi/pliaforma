@@ -1,18 +1,21 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
-using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Common.Exceptions;
 using Pliaforma.Application.Features.Scheduling;
+using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
+using ValidationException = Pliaforma.Application.Common.Exceptions.ValidationException;
 
 namespace Pliaforma.Application.Features.Payments;
 
 public sealed record PaymentDto(
     Guid Id, Guid StudentProfileId, string StudentName, Guid? StudentPackageId,
     decimal Amount, string Currency, DateOnly DueDate, DateTime? PaidAt,
-    PaymentStatus Status, PaymentMethod? Method, string? Notes, DateTime CreatedAt);
+    PaymentStatus Status, PaymentMethod? Method, string? Notes, DateTime CreatedAt,
+    Guid? StudentContractId = null);
 
 internal static class PaymentMapping
 {
@@ -22,7 +25,8 @@ internal static class PaymentMapping
 
     public static PaymentDto ToDto(Payment p, string studentName, DateOnly today) =>
         new(p.Id, p.StudentProfileId, studentName, p.StudentPackageId, p.Amount, p.Currency, p.DueDate,
-            p.PaidAt, Effective(p.Status, p.PaidAt, p.DueDate, today), p.Method, p.Notes, p.CreatedAt);
+            p.PaidAt, Effective(p.Status, p.PaidAt, p.DueDate, today), p.Method, p.Notes, p.CreatedAt,
+            p.StudentContractId);
 }
 
 // ---- Öğrencinin ödemeleri (staff) ----
@@ -88,7 +92,7 @@ public sealed class GetPaymentsHandler : IQueryHandler<GetPaymentsQuery, IReadOn
 // ---- Oluştur ----
 public sealed record CreatePaymentCommand(
     Guid StudentProfileId, Guid? StudentPackageId, decimal Amount, string? Currency, DateOnly DueDate,
-    PaymentMethod? Method, string? Notes) : ICommand<PaymentDto>, IStudioWriteRequest;
+    PaymentMethod? Method, string? Notes, Guid? StudentContractId = null) : ICommand<PaymentDto>, IStudioWriteRequest;
 
 public sealed class CreatePaymentValidator : AbstractValidator<CreatePaymentCommand>
 {
@@ -123,15 +127,31 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
             && !await _db.StudentPackages.AnyAsync(p => p.Id == pkgId && p.StudioId == studioId && p.StudentProfileId == student.Id, ct))
             throw new NotFoundException("Öğrenci paketi", pkgId);
 
+        // Sprint 23: ödeme bir sözleşmeye bağlanıyorsa, sözleşme bu öğrenciye ait olmalı ve para birimi uyuşmalı.
+        StudentContract? contract = null;
+        if (request.StudentContractId is { } contractId)
+        {
+            contract = await _db.StudentContracts
+                .FirstOrDefaultAsync(c => c.Id == contractId && c.StudioId == studioId && c.StudentProfileId == student.Id, ct)
+                ?? throw new NotFoundException("Sözleşme", contractId);
+        }
+
         var currency = string.IsNullOrWhiteSpace(request.Currency)
-            ? await _db.Studios.Where(s => s.Id == studioId).Select(s => s.Currency).FirstAsync(ct)
+            ? contract?.Currency ?? await _db.Studios.Where(s => s.Id == studioId).Select(s => s.Currency).FirstAsync(ct)
             : request.Currency.Trim().ToUpperInvariant();
+
+        if (contract is not null && !string.Equals(currency, contract.Currency, StringComparison.OrdinalIgnoreCase))
+            throw new ValidationException(new Dictionary<string, string[]>
+            {
+                ["currency"] = new[] { $"Ödeme para birimi sözleşme ile aynı olmalı ({contract.Currency})." },
+            });
 
         var payment = new Payment
         {
             StudioId = studioId,
             StudentProfileId = student.Id,
             StudentPackageId = request.StudentPackageId,
+            StudentContractId = request.StudentContractId,
             Amount = request.Amount,
             Currency = currency,
             DueDate = request.DueDate,

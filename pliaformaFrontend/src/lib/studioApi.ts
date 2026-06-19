@@ -46,6 +46,9 @@ import type {
   ContractScheduleSlotInput,
   ContractSchedulePreviewDto,
   GenerateContractScheduleResultDto,
+  ContractAmendmentDto,
+  ContractAmendmentKind,
+  StudentDebtSummaryDto,
   SessionAttendanceDto,
   ConfirmTodayResultDto,
   RateType,
@@ -107,6 +110,13 @@ export const contractService = {
     api<ContractSchedulePreviewDto>(`/api/studio/contracts/${id}/schedule/preview`, { method: "POST", body: { slots } }),
   generateSchedule: (id: string, input: { slots: ContractScheduleSlotInput[]; reuseExistingGroup: boolean; individual: boolean | null }) =>
     api<GenerateContractScheduleResultDto>(`/api/studio/contracts/${id}/schedule/generate`, { method: "POST", body: input }),
+  // Sprint 23: ek işlem (amendment) + borç.
+  amendments: (id: string) => api<ContractAmendmentDto[]>(`/api/studio/contracts/${id}/amendments`),
+  addAmendment: (id: string, input: {
+    kind: ContractAmendmentKind; additionalLessonCount: number; newEndDate?: string | null;
+    additionalPrice: number; currency?: string | null; description?: string | null;
+  }) => api<ContractAmendmentDto>(`/api/studio/contracts/${id}/amendments`, { method: "POST", body: input }),
+  debt: (studentId: string) => api<StudentDebtSummaryDto>(`/api/studio/students/${studentId}/debt`),
 };
 
 // Kullanıcı tarafı üyelik aksiyonları (/api/members)
@@ -291,7 +301,7 @@ export const paymentService = {
     return api<PaymentDto[]>(`/api/studio/payments${qs ? `?${qs}` : ""}`);
   },
   forStudent: (studentId: string) => api<PaymentDto[]>(`/api/studio/students/${studentId}/payments`),
-  create: (studentId: string, input: { studentPackageId?: string | null; amount: number; currency?: string; dueDate: string; method?: PaymentMethod | null; notes?: string }) =>
+  create: (studentId: string, input: { studentPackageId?: string | null; studentContractId?: string | null; amount: number; currency?: string; dueDate: string; method?: PaymentMethod | null; notes?: string }) =>
     api<PaymentDto>(`/api/studio/students/${studentId}/payments`, { method: "POST", body: input }),
   update: (id: string, input: { amount: number; dueDate: string; method?: PaymentMethod | null; notes?: string }) =>
     api<PaymentDto>(`/api/studio/payments/${id}`, { method: "PUT", body: input }),

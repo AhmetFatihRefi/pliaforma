@@ -37,4 +37,18 @@ public sealed class ContractsController : ApiControllerBase
     [HttpPost("contracts/{id:guid}/schedule/generate")]
     public Task<IActionResult> Generate(Guid id, GenerateContractScheduleCommand body, CancellationToken ct) =>
         Send(body with { ContractId = id }, "Program oluşturuldu.", ct);
+
+    // ---- Sprint 23: ek işlem (amendment) + borç ----
+
+    [HttpPost("contracts/{id:guid}/amendments")]
+    public Task<IActionResult> AddAmendment(Guid id, AddContractAmendmentCommand body, CancellationToken ct) =>
+        Send(body with { ContractId = id }, "Ek işlem kaydedildi.", ct);
+
+    [HttpGet("contracts/{id:guid}/amendments")]
+    public Task<IActionResult> ListAmendments(Guid id, CancellationToken ct) =>
+        Send(new GetContractAmendmentsQuery(id), ct: ct);
+
+    [HttpGet("students/{studentId:guid}/debt")]
+    public Task<IActionResult> StudentDebt(Guid studentId, CancellationToken ct) =>
+        Send(new GetStudentDebtQuery(studentId), ct: ct);
 }
