@@ -293,6 +293,42 @@ export interface StudentDebtSummaryDto {
   contracts: ContractDebtDto[];
 }
 
+// ===== Sprint 24: Öğrenci self-servis (salt-okunur) trimmed görünümler =====
+export interface StudentAmendmentDto {
+  kind: ContractAmendmentKind;
+  additionalLessonCount: number;
+  datesExtended: boolean;
+  newEndDate: string;
+  additionalPrice: number;
+  currency: string;
+  description?: string | null;
+  createdAt: string;
+}
+export interface StudentContractViewDto {
+  id: string;
+  classTypeName: string;
+  instructorName: string;
+  startDate: string;
+  endDate: string;
+  totalLessonCount: number;
+  scheduledLessonCount: number;
+  availableLessonCount: number;
+  status: StudentContractStatus;
+  amendments: StudentAmendmentDto[];
+}
+export interface CurrencyDebtDto {
+  currency: string;
+  totalCharges: number;
+  totalPaid: number;
+  totalOutstanding: number;
+}
+export interface CurrencyPaidDto { currency: string; paid: number }
+export interface MyDebtSummaryDto {
+  byCurrency: CurrencyDebtDto[];
+  untaggedByCurrency: CurrencyPaidDto[];
+  contracts: ContractDebtDto[];
+}
+
 // ===== Sprint 4: Rezervasyon =====
 export type ClassBookingStatus = "Booked" | "CancelledByStudent" | "CancelledByStudio";
 

@@ -88,3 +88,48 @@ public sealed record StudentDebtSummaryDto(
     decimal TotalOutstanding,
     decimal UntaggedPaid,
     IReadOnlyList<ContractDebtDto> Contracts);
+
+// ---------------------------------------------------------------------------------------------------
+// Sprint 24 — Öğrenci self-servis (salt-okunur) trimmed DTO'ları. Staff-internal alanlar (CreatedByName,
+// staff Notes, Price, audit snapshot) ÖĞRENCİYE SIZMAZ. Borç multi-currency-safe (tek cross-currency toplam yok).
+// ---------------------------------------------------------------------------------------------------
+
+/// <summary>Öğrenciye gösterilen sözleşme ek işlemi (trimmed) — kim yaptığı / audit snapshot YOK.</summary>
+public sealed record StudentAmendmentDto(
+    ContractAmendmentKind Kind,
+    int AdditionalLessonCount,
+    bool DatesExtended,
+    DateOnly NewEndDate,
+    decimal AdditionalPrice,
+    string Currency,
+    string? Description,
+    DateTime CreatedAt);
+
+/// <summary>Öğrenciye gösterilen sözleşme (trimmed) — Price / staff Notes / internal alan YOK. Ücret bilgisi borç bölümünde.</summary>
+public sealed record StudentContractViewDto(
+    Guid Id,
+    string ClassTypeName,
+    string InstructorName,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    int TotalLessonCount,
+    int ScheduledLessonCount,
+    int AvailableLessonCount,
+    StudentContractStatus Status,
+    IReadOnlyList<StudentAmendmentDto> Amendments);
+
+/// <summary>Para birimi bazlı borç bloğu — cross-currency toplam ÜRETİLMEZ.</summary>
+public sealed record CurrencyDebtDto(
+    string Currency,
+    decimal TotalCharges,
+    decimal TotalPaid,
+    decimal TotalOutstanding);
+
+/// <summary>Para birimi bazlı etiketsiz ödeme bloğu (bilgi amaçlı).</summary>
+public sealed record CurrencyPaidDto(string Currency, decimal Paid);
+
+/// <summary>Öğrenci self-servis borç özeti — para birimine göre AYRI; tek cross-currency toplam yoktur.</summary>
+public sealed record MyDebtSummaryDto(
+    IReadOnlyList<CurrencyDebtDto> ByCurrency,
+    IReadOnlyList<CurrencyPaidDto> UntaggedByCurrency,
+    IReadOnlyList<ContractDebtDto> Contracts);

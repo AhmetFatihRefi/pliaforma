@@ -22,6 +22,22 @@ test.describe("Self-service kayıt & katılım (Sprint 15)", () => {
     await expect(page.getByRole("heading", { name: "E-posta adresinizi doğrulayın" })).toBeVisible();
   });
 
+  // Sprint 24: öğrenci kendi sözleşmesini + ödeme durumunu salt-okunur görür.
+  test("öğrenci 'Sözleşmelerim' sayfasında kendi sözleşmesini + ödeme durumunu görür", async ({ page }) => {
+    await login(page, users.student);
+    // Nav'da "Sözleşmelerim" görünür.
+    await page.goto("/dashboard/my-contracts");
+    await expect(page.getByRole("heading", { name: "Sözleşmelerim" })).toBeVisible();
+    // Seed öğrenciye Reformer sözleşmesi üretir → ders hakkı + ödeme durumu kartları.
+    await expect(page.getByText("Reformer").first()).toBeVisible();
+    await expect(page.getByText("Kalan planlanabilir")).toBeVisible();
+    await expect(page.getByText("Ödeme durumu").first()).toBeVisible();
+    // Internal alan sızmamalı: "createdByName" sayfada görünmez (ham alan adı).
+    const bodyText = await page.locator("body").innerText();
+    expect(bodyText).not.toContain("createdByName");
+    expect(bodyText).not.toContain("9999");
+  });
+
   // Sprint 17 Rev3 (invite-only): JoinCode kartı ayarlardan kaldırıldı → artık görünmemeli.
   test("Owner ayarlarında 'Katılım kodu' kartı YOK (invite-only)", async ({ page }) => {
     await login(page, users.owner);

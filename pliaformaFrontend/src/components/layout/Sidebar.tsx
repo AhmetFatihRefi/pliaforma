@@ -35,6 +35,7 @@ const nav: NavItem[] = [
   { href: "/dashboard/settings", label: "Ayarlar", icon: "⚙", roles: MANAGER },
   // Sprint 18b: öğrenci self-booking kaldırıldı ("Ders Bul" yok); öğrenci yalnız programını görür.
   { href: "/dashboard/my-bookings", label: "Programım", icon: "✓", roles: ["Student"] },
+  { href: "/dashboard/my-contracts", label: "Sözleşmelerim", icon: "▤", roles: ["Student"] },
   { href: "/dashboard/my-makeup-credits", label: "Telafi Kredilerim", icon: "♺", roles: ["Student"] },
   { href: "/dashboard/my-attendance", label: "Katılım Geçmişim", icon: "✔", roles: ["Student"] },
   { href: "/dashboard/my-payments", label: "Ödemelerim", icon: "₺", roles: ["Student"] },

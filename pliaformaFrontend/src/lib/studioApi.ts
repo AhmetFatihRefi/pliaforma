@@ -49,6 +49,8 @@ import type {
   ContractAmendmentDto,
   ContractAmendmentKind,
   StudentDebtSummaryDto,
+  StudentContractViewDto,
+  MyDebtSummaryDto,
   SessionAttendanceDto,
   ConfirmTodayResultDto,
   RateType,
@@ -314,6 +316,12 @@ export const paymentService = {
 export const studentFinanceService = {
   myPackages: () => api<StudentPackageDto[]>("/api/student/packages"),
   myPayments: () => api<PaymentDto[]>("/api/student/payments"),
+};
+
+// Sprint 24: öğrenci self-servis sözleşme + borç (salt-okunur, /api/student, Student rolü)
+export const studentContractService = {
+  myContracts: () => api<StudentContractViewDto[]>("/api/student/contracts"),
+  myDebt: () => api<MyDebtSummaryDto>("/api/student/debt"),
 };
 
 // Dashboard & raporlar (/api/studio, /api/instructor, /api/student)
