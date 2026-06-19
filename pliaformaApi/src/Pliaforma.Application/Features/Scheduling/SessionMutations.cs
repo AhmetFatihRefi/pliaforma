@@ -55,7 +55,7 @@ public sealed class UpdateClassSessionHandler : ICommandHandler<UpdateClassSessi
         {
             var newStart = DateTime.SpecifyKind(newStartRaw, DateTimeKind.Unspecified);
             var newEnd = newStart.AddMinutes(classType.DefaultDurationMinutes);
-            await SessionRules.EnsureValidAsync(_db, _currentUser, _clock, studioId, session.InstructorProfileId, newStart, newEnd, excludeId: session.Id, cancellationToken);
+            await SessionRules.EnsureValidAsync(_db, _clock, studioId, session.InstructorProfileId, newStart, newEnd, excludeId: session.Id, cancellationToken);
             session.StartAt = newStart;
             session.EndAt = newEnd;
         }

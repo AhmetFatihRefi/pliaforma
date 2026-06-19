@@ -26,6 +26,12 @@ test.describe("Schedule / booking / attendance (Owner)", () => {
     await expect(page.getByRole("button", { name: "İşlenmedi" }).first()).toBeVisible();
   });
 
+  test("Sprint 26: hoca filtresi seçilince o hocanın programı gösterilir", async ({ page }) => {
+    // Hoca filtresi (sayfadaki ilk select) bir hoca seçilince "… hocanın programı gösteriliyor" bilgisi çıkar.
+    await page.locator("select").first().selectOption({ index: 1 });
+    await expect(page.getByText(/hocanın programı gösteriliyor/)).toBeVisible();
+  });
+
   test("Sprint 22: 'Grup düzeni' modalı açılır + öğrencileri getir", async ({ page }) => {
     await page.getByRole("button", { name: "Grup düzeni" }).click();
     await expect(page.getByRole("heading", { name: "Grup düzeni değiştir" })).toBeVisible();

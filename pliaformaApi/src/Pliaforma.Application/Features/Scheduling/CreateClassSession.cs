@@ -9,9 +9,9 @@ using Pliaforma.Domain.Exceptions;
 namespace Pliaforma.Application.Features.Scheduling;
 
 /// <summary>
-/// Tek bir ders seansı oluşturur. EndAt, ClassType.DefaultDurationMinutes ile hesaplanır; Capacity
-/// verilmezse ClassType.MaxCapacity kullanılır. Geçmiş zaman, hoca çakışması ve müsaitlik kuralları
-/// uygulanır. StartAt stüdyo-yerel duvar saatidir.
+/// Tek bir ders seansı oluşturur (Owner/StudioAdmin — stüdyo yetkilisi hocaya ders atar). EndAt,
+/// ClassType.DefaultDurationMinutes ile hesaplanır; Capacity verilmezse ClassType.MaxCapacity. HARD kontrol:
+/// geçmiş zaman + hoca çakışması (Sprint 26: müsaitlik penceresi kontrolü YOK). StartAt stüdyo-yerel duvar saati.
 /// </summary>
 public sealed record CreateClassSessionCommand(
     Guid InstructorProfileId,
@@ -61,7 +61,7 @@ public sealed class CreateClassSessionHandler : ICommandHandler<CreateClassSessi
         var capacity = request.Capacity ?? classType.MaxCapacity;
         if (capacity < 1) capacity = 1;
 
-        await SessionRules.EnsureValidAsync(_db, _currentUser, _clock, studioId, profile.Id, startAt, endAt, excludeId: null, cancellationToken);
+        await SessionRules.EnsureValidAsync(_db, _clock, studioId, profile.Id, startAt, endAt, excludeId: null, cancellationToken);
 
         var entity = new ClassSession
         {

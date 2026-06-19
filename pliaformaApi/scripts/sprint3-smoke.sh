@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Pliaforma — Sprint 3 smoke (müsaitlik + ders seansı + EndAt + çakışma + müsaitlik validasyonu +
-# bulk-generate + instructor scope + tenant izolasyonu + student engeli).
+# Pliaforma — Sprint 3 smoke (ders seansı + EndAt + çakışma + bulk-generate + instructor scope +
+# tenant izolasyonu + student engeli).  Sprint 26: hoca müsaitlik (availability) modülü kaldırıldı.
 # Kullanım: scripts/sprint3-smoke.sh [BASE]   (varsayılan http://localhost:5132)
 set -u
 BASE="${1:-http://localhost:5132}"
@@ -45,23 +45,16 @@ I1TOK=$(login "$I1"); I2TOK=$(login "$I2"); I1P=${PROF[$I1]}; I2P=${PROF[$I2]}
 # ClassType (süre 60, kapasite 6)
 CT=$(body "$(post /api/class-types "{\"name\":\"Reformer\",\"equipment\":\"Reformer\",\"capacityType\":\"Group\",\"maxCapacity\":6,\"level\":\"AllLevels\",\"purpose\":\"General\",\"defaultDurationMinutes\":60}" "$ATOK")" | jget id)
 
-echo "--- Müsaitlik ---"
-R=$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"$DAY\",\"startTime\":\"09:00:00\",\"endTime\":\"12:00:00\"}" "$ATOK")
-expect "Owner create availability (I1)" 200 "$(code "$R")"; AV1=$(body "$R" | jget id)
-expect "overlap availability → 409" 409 "$(code "$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"$DAY\",\"startTime\":\"11:00:00\",\"endTime\":\"13:00:00\"}" "$ATOK")")"
-# Not: sabit gün ($DAY=bugün+3 ile) çakışabilir → $DAY'den garantili farklı $OTHERDAY kullan (orijinal niyet: farklı gün).
-expect "Instructor1 create OWN availability" 200 "$(code "$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"$OTHERDAY\",\"startTime\":\"09:00:00\",\"endTime\":\"10:00:00\"}" "$I1TOK")")"
-expect "Instructor2 başka hocanın availability → 403" 403 "$(code "$(post "/api/studio/instructors/$I1P/availabilities" "{\"dayOfWeek\":\"Tuesday\",\"startTime\":\"09:00:00\",\"endTime\":\"10:00:00\"}" "$I2TOK")")"
-
-echo "--- Ders seansı + EndAt + çakışma + müsaitlik ---"
+# Sprint 26: Hoca müsaitlik (availability) modülü ana üründen kaldırıldı → gate testi yok.
+echo "--- Ders seansı + EndAt + çakışma (Sprint 26: müsaitlik kontrolü YOK) ---"
 R=$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T10:00:00\"}" "$ATOK")
-expect "create session (avail içinde)" 200 "$(code "$R")"; SESS=$(body "$R" | jget id)
+expect "create session → 200 (availability gerekmez)" 200 "$(code "$R")"; SESS=$(body "$R" | jget id)
 expect "EndAt = start+60 (11:00)" yes "$(has "$(body "$R")" "${DATE}T11:00:00")"
 expect "capacity default=ClassType.MaxCapacity(6)" yes "$(has "$(body "$R")" '"capacity":6')"
 expect "çakışan session → 409" 409 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T10:30:00\"}" "$ATOK")")"
-expect "müsaitlik dışı session → 409" 409 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T13:00:00\"}" "$ATOK")")"
+expect "müsaitlik kontrolü YOK: herhangi saat (13:00) → 200" 200 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T13:00:00\"}" "$ATOK")")"
 expect "geçmiş tarihe session → 409" 409 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"2020-01-01T10:00:00\"}" "$ATOK")")"
-expect "Instructor (müsaitliksiz) kendi session → 409" 409 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I2P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T10:00:00\"}" "$I2TOK")")"
+expect "Instructor session create → 403 (Sprint 26: yalnız Owner/StudioAdmin atar)" 403 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I2P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T10:00:00\"}" "$I2TOK")")"
 
 echo "--- Bulk generate (09-12, 60dk → 09/10/11; 10 çakışır) ---"
 R=$(post /api/studio/class-sessions/bulk-generate "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"date\":\"$DATE\",\"rangeStart\":\"09:00:00\",\"rangeEnd\":\"12:00:00\"}" "$ATOK")
@@ -76,15 +69,12 @@ expect "Instructor2 başkasının session cancel → 403" 403 "$(code "$(post "/
 echo "--- Tenant izolasyonu (Owner C) ---"
 expect "C get A session → 404" 404 "$(gcode "/api/studio/class-sessions/$SESS" "$CTOK")"
 expect "C cancel A session → 404" 404 "$(code "$(post "/api/studio/class-sessions/$SESS/cancel" '{}' "$CTOK")")"
-expect "C update A availability → 404" 404 "$(put "/api/studio/instructor-availabilities/$AV1" "{\"dayOfWeek\":\"$DAY\",\"startTime\":\"08:00:00\",\"endTime\":\"09:00:00\",\"isActive\":true}" "$CTOK")"
-expect "C delete A availability → 404" 404 "$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE/api/studio/instructor-availabilities/$AV1" -H "Authorization: Bearer $CTOK")"
 
 echo "--- Student erişim engeli (üyelik DB arrange) ---"
 SQL="INSERT INTO \"StudioMemberships\" (\"Id\",\"StudioId\",\"UserId\",\"Role\",\"Status\",\"Direction\",\"CreatedAt\",\"IsDeleted\") VALUES (gen_random_uuid(),'$SID','$STU_ID','Student','Active','InvitedByStudio', now() at time zone 'utc', false);"
 if docker exec "$PGC" psql -U postgres -d pliaforma -c "$SQL" >/dev/null 2>&1; then
   STOK=$(login "$STU")
   expect "Student session listesine → 403" 403 "$(gcode /api/studio/class-sessions "$STOK")"
-  expect "Student availability listesine → 403" 403 "$(gcode /api/studio/instructor-availabilities "$STOK")"
 else
   bad "Student arrange (DB insert) başarısız"
 fi

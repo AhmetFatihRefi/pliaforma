@@ -306,7 +306,7 @@ const FEATURES = [
   { icon: TagIcon, title: "Fiyat Geçerlilikleri", text: "Yeni fiyatları belirli tarihten itibaren geçerli olacak şekilde planlayın; mevcut öğrencilerin paket hakları korunur." },
   { icon: CheckCircleIcon, title: "Yoklama & Katılım", text: "Derse katılan, gelmeyen veya telafi hakkı oluşan öğrencileri takip edin." },
   { icon: RepeatIcon, title: "Telafi Dersleri", text: "İptal, erteleme ve telafi kredilerini düzenli şekilde yönetin." },
-  { icon: UserIcon, title: "Hoca Yönetimi", text: "Hocaların müsaitliklerini, derslerini ve katılım süreçlerini takip edin." },
+  { icon: UserIcon, title: "Hoca Yönetimi", text: "Hocaların ders programını ve katılım süreçlerini takip edin." },
   { icon: UserPlusIcon, title: "Stüdyoya Katılım İstekleri", text: "Öğrenci veya hoca kendi hesabını oluşturur, katılmak için istek gönderir; stüdyo sahibi onaylar." },
   { icon: BellIcon, title: "Bildirimler", text: "Yaklaşan dersler, ödeme durumları ve önemli aksiyonlar için sistem içi bildirimler." },
 ];

@@ -144,7 +144,8 @@ public sealed class CreateStudioClosureHandler : ICommandHandler<CreateStudioClo
         return new CreateClosureResultDto(StudioClosureDto.From(closure), outcomes);
     }
 
-    /// <summary>Erteleme için engel sebebi (past/conflict/outside-availability) ya da null (uygun).</summary>
+    /// <summary>Erteleme için engel sebebi (past/conflict) ya da null (uygun).
+    /// Sprint 26: müsaitlik (availability) kontrolü KALDIRILDI — yalnız gerçek çakışma + geçmiş.</summary>
     private async Task<string?> ResolveRescheduleSkipAsync(
         Guid studioId, ClassSession session, DateTime newStart, DateTime newEnd,
         HashSet<Guid> batchIds, DateTime nowLocal, CancellationToken ct)
@@ -161,9 +162,6 @@ public sealed class CreateStudioClosureHandler : ICommandHandler<CreateStudioClo
                  && s.StartAt < newEnd && newStart < s.EndAt, ct);
         if (conflict)
             return "conflict";
-
-        if (!await SessionRules.FitsAvailabilityAsync(_db, _currentUser, studioId, session.InstructorProfileId, newStart, newEnd, ct))
-            return "outside-availability";
 
         return null;
     }

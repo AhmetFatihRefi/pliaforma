@@ -10,7 +10,8 @@ namespace Pliaforma.Application.Features.Scheduling;
 
 /// <summary>
 /// Tek gün / tek aralık içinde ardışık ders seansları üretir (ClassType süresi + opsiyonel ara).
-/// Bu RECURRING booking DEĞİLDİR. Geçmiş/çakışan/müsaitlik-dışı slotlar atlanır; created+skipped döner.
+/// Bu RECURRING booking DEĞİLDİR. Geçmiş/çakışan slotlar atlanır; created+skipped döner.
+/// Sprint 26: müsaitlik penceresi kontrolü YOK — yalnız gerçek çakışma + geçmiş atlanır.
 /// </summary>
 public sealed record BulkGenerateClassSessionsCommand(
     Guid InstructorProfileId,
@@ -64,13 +65,6 @@ public sealed class BulkGenerateClassSessionsHandler
 
         var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, cancellationToken);
 
-        // Müsaitlik penceresi (bir kez yüklenir, in-memory kontrol).
-        var avails = await _db.InstructorAvailabilities
-            .Where(a => a.StudioId == studioId && a.InstructorProfileId == profile.Id && a.IsActive)
-            .ToListAsync(cancellationToken);
-        if (avails.Count == 0 && _currentUser.StudioRole == StudioRole.Instructor)
-            throw new BusinessRuleException("Bu hoca için önce müsaitlik tanımlanmalı.");
-
         // O günkü mevcut Scheduled seanslar (çakışma için, in-memory).
         var dayStart = request.Date.ToDateTime(TimeOnly.MinValue);
         var dayEnd = request.Date.AddDays(1).ToDateTime(TimeOnly.MinValue);
@@ -79,14 +73,6 @@ public sealed class BulkGenerateClassSessionsHandler
                         && s.Status == ClassSessionStatus.Scheduled && s.StartAt < dayEnd && s.EndAt > dayStart)
             .Select(s => new { s.StartAt, s.EndAt })
             .ToListAsync(cancellationToken);
-
-        bool FitsAvailability(DateTime start, DateTime end)
-        {
-            if (avails.Count == 0) return _currentUser.StudioRole != StudioRole.Instructor;
-            var s = TimeOnly.FromDateTime(start);
-            var e = TimeOnly.FromDateTime(end);
-            return avails.Any(a => a.DayOfWeek == start.DayOfWeek && a.StartTime <= s && e <= a.EndTime);
-        }
 
         var created = new List<ClassSession>();
         var skipped = new List<SkippedSlotDto>();
@@ -106,7 +92,6 @@ public sealed class BulkGenerateClassSessionsHandler
                 skipped.Add(new SkippedSlotDto(start, "conflict"));
                 continue;
             }
-            if (!FitsAvailability(start, end)) { skipped.Add(new SkippedSlotDto(start, "outside-availability")); continue; }
 
             created.Add(new ClassSession
             {

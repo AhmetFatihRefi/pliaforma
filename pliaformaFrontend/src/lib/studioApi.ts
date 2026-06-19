@@ -26,7 +26,6 @@ import type {
   DayOfWeek,
   GuestInput,
   InstructorAssignmentDto,
-  InstructorAvailabilityDto,
   InstructorDashboardDto,
   InstructorSelfDto,
   InstructorsReportDto,
@@ -148,16 +147,8 @@ export const instructorService = {
   me: () => api<InstructorSelfDto>("/api/instructors/me"),
 };
 
-// Hoca müsaitliği (/api/studio/...)
-export const availabilityService = {
-  list: (instructorProfileId?: string) =>
-    api<InstructorAvailabilityDto[]>(`/api/studio/instructor-availabilities${instructorProfileId ? `?instructorProfileId=${instructorProfileId}` : ""}`),
-  create: (instructorId: string, input: { dayOfWeek: DayOfWeek; startTime: string; endTime: string }) =>
-    api<InstructorAvailabilityDto>(`/api/studio/instructors/${instructorId}/availabilities`, { method: "POST", body: input }),
-  update: (id: string, input: { dayOfWeek: DayOfWeek; startTime: string; endTime: string; isActive: boolean }) =>
-    api<InstructorAvailabilityDto>(`/api/studio/instructor-availabilities/${id}`, { method: "PUT", body: input }),
-  remove: (id: string) => api<null>(`/api/studio/instructor-availabilities/${id}`, { method: "DELETE" }),
-};
+// Sprint 26: Hoca müsaitlik (availability) modülü ana üründen kaldırıldı. Endpoint backend'de dormant kalır
+// (DB/entity korunur) ama UI servisi yok; hoca boş/dolu bilgisi Ders Programı ekranından (hoca filtresi) anlaşılır.
 
 // Ders seansları (/api/studio/class-sessions)
 export const classSessionService = {

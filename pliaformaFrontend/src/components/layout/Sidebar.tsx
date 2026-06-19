@@ -22,7 +22,7 @@ const nav: NavItem[] = [
   { href: "/dashboard", label: "Panel", icon: "▦" },
   { href: "/dashboard/notifications", label: "Bildirimler", icon: "🔔" },
   { href: "/dashboard/schedule", label: "Ders Programı", icon: "◷", roles: STAFF },
-  { href: "/dashboard/availability", label: "Müsaitlik", icon: "◴", roles: STAFF },
+  // Sprint 26: Hoca müsaitlik modülü ana üründen çıkarıldı (hoca boş/dolu = ders programından).
   { href: "/dashboard/students", label: "Öğrenciler", icon: "☺", roles: STAFF },
   { href: "/dashboard/makeup-credits", label: "Telafi Kredileri", icon: "♺", roles: STAFF },
   { href: "/dashboard/reports", label: "Raporlar", icon: "▣", roles: MANAGER },

@@ -14,6 +14,8 @@ test.describe("Owner dashboard", () => {
     await expect(page.getByRole("link", { name: "Raporlar" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Ders Programı" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Öğrenciler" })).toBeVisible();
+    // Sprint 26: Hoca müsaitlik modülü ana üründen kaldırıldı → sidebar'da "Müsaitlik" YOK.
+    await expect(page.getByRole("link", { name: "Müsaitlik" })).toHaveCount(0);
   });
 
   test("/dashboard/reports açılır + hoca raporu PARASIZ (Sprint 19)", async ({ page }) => {

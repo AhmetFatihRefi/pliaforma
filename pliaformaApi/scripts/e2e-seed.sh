@@ -73,10 +73,10 @@ post /api/auth/register "{\"fullName\":\"E2E NoJoin Student\",\"email\":\"$NOJOI
 psql "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$NOJOIN';"
 ok "Stüdyosuz öğrenci (Student intent): $NOJOIN"
 
-echo "== 4) ClassType + Availability =="
+echo "== 4) ClassType =="
+# Sprint 26: hoca müsaitlik (availability) kaldırıldı → seed availability oluşturmaz; program gerçek derslerden.
 CT=$(body "$(post /api/class-types '{"name":"E2E Reformer","equipment":"Reformer","capacityType":"Group","maxCapacity":6,"level":"AllLevels","purpose":"General","defaultDurationMinutes":60}' "$OTOK")" | jget id)
-post "/api/studio/instructors/$I1P/availabilities" '{"dayOfWeek":"Monday","startTime":"09:00:00","endTime":"18:00:00"}' "$OTOK" >/dev/null
-ok "ClassType E2E Reformer + müsaitlik"
+ok "ClassType E2E Reformer"
 
 echo "== 5) Öğrenciler (1 user + 1 guest) =="
 mksess(){ local r id; r=$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I2P\",\"classTypeId\":\"$CT\",\"startAt\":\"$1\",\"capacity\":6}" "$OTOK"); id=$(body "$r" | jget id); [ -z "$id" ] && echo "MKSESS FAIL [$1]: $(body "$r")" >&2; echo "$id"; }

@@ -153,18 +153,9 @@ export const studentSourceLabels: Record<StudentSource, string> = {
   Phone: "Telefon", WalkIn: "Kapıdan", Web: "Web", Referral: "Tavsiye", Other: "Diğer",
 };
 
-// ===== Sprint 3: Müsaitlik & Ders Seansları =====
+// ===== Sprint 3: Ders Seansları (Sprint 26: hoca müsaitlik DTO'su kaldırıldı — modül ana üründen çıktı) =====
 export type DayOfWeek = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday";
 export type ClassSessionStatus = "Scheduled" | "Cancelled" | "Completed";
-
-export interface InstructorAvailabilityDto {
-  id: string;
-  instructorProfileId: string;
-  dayOfWeek: DayOfWeek;
-  startTime: string; // "HH:mm:ss"
-  endTime: string;
-  isActive: boolean;
-}
 
 export interface ClassSessionDto {
   id: string;
@@ -480,8 +471,7 @@ export interface ChainShiftItemDto {
   oldEndAt: string;
   newStartAt: string;
   newEndAt: string;
-  conflictReason?: string | null; // "past" | "instructor" | "student"
-  outsideAvailability: boolean;
+  conflictReason?: string | null; // "past" | "instructor" | "student" (Sprint 26: availability yok)
 }
 export interface ChainShiftPreviewDto {
   affected: ChainShiftItemDto[];

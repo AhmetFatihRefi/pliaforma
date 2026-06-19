@@ -64,6 +64,8 @@ export default function SchedulePage() {
   const [actualFor, setActualFor] = useState<ClassSessionDto | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  // Sprint 26: seçili hoca filtresi adı (boş/dolu programdan anlaşılır mesajı için).
+  const selectedInstructorName = instructorFilter ? instructors.find((i) => i.id === instructorFilter)?.name ?? null : null;
 
   useEffect(() => {
     classTypeService.list(true).then(setClassTypes).catch(() => setClassTypes([]));
@@ -134,8 +136,9 @@ export default function SchedulePage() {
         <div className="flex flex-wrap gap-2">
           {isManager && <Button variant="secondary" loading={busyId === "today"} onClick={confirmToday}>Bugünü onayla</Button>}
           {isManager && <Button variant="secondary" onClick={() => setGroupChangeOpen(true)}>Grup düzeni</Button>}
-          <Button variant="secondary" onClick={() => setBulkOpen(true)}>Toplu slot</Button>
-          <Button onClick={() => setCreateOpen(true)}>+ Yeni seans</Button>
+          {/* Sprint 26: ders atama yalnız stüdyo yetkilisi (Owner/StudioAdmin). */}
+          {isManager && <Button variant="secondary" onClick={() => setBulkOpen(true)}>Toplu slot</Button>}
+          {isManager && <Button onClick={() => setCreateOpen(true)}>+ Yeni seans</Button>}
         </div>
       </div>
 
@@ -163,10 +166,17 @@ export default function SchedulePage() {
       {error && <Alert kind="error">{error}</Alert>}
       {banner && <Alert kind="success">{banner}</Alert>}
 
+      {/* Sprint 26: hoca filtresi seçiliyse o hocanın programı gösterilir (boş/dolu saatler buradan anlaşılır). */}
+      {selectedInstructorName && (
+        <p className="text-sm text-muted">
+          <strong className="text-foreground">{selectedInstructorName}</strong> hocanın programı gösteriliyor — dolu saatler aşağıdaki dersler, boş saatler ders olmayan saatlerdir.
+        </p>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted">Yükleniyor…</p>
       ) : sessions.length === 0 ? (
-        <Card><p className="text-sm text-muted">Bu aralıkta ders seansı yok.</p></Card>
+        <Card><p className="text-sm text-muted">{selectedInstructorName ? `${selectedInstructorName} hocanın seçili tarihte dersi yok.` : "Bu aralıkta ders seansı yok."}</p></Card>
       ) : (
         <div className="space-y-4">
           {Object.entries(grouped).map(([date, list]) => (
@@ -705,7 +715,6 @@ function RescheduleModal({ session, onClose, onDone, isManager }: {
                     <span className="text-muted">{fmtDate(it.oldStartAt)} {fmtTime(it.oldStartAt)} → {fmtDate(it.newStartAt)} {fmtTime(it.newStartAt)}</span>
                     <span className="flex gap-1">
                       {conflictLabel(it.conflictReason) && <Badge tone="danger">{conflictLabel(it.conflictReason)}</Badge>}
-                      {it.outsideAvailability && <Badge tone="warning">müsaitlik dışı</Badge>}
                     </span>
                   </div>
                 ))}

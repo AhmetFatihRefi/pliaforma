@@ -22,10 +22,13 @@ public sealed class ClassSessionsController : ApiControllerBase
     public Task<IActionResult> Get(Guid id, CancellationToken ct) =>
         Send(new GetClassSessionQuery(id), ct: ct);
 
+    // Sprint 26: ders atama yalnız Owner/StudioAdmin (stüdyo yetkilisi hocaya ders atar; hoca kendi açmaz).
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost]
     public Task<IActionResult> Create(CreateClassSessionCommand command, CancellationToken ct) =>
         Send(command, "Ders seansı oluşturuldu.", ct);
 
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("bulk-generate")]
     public Task<IActionResult> BulkGenerate(BulkGenerateClassSessionsCommand command, CancellationToken ct) =>
         Send(command, "Slotlar üretildi.", ct);

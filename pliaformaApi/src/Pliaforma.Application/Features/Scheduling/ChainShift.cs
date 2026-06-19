@@ -8,12 +8,11 @@ using Pliaforma.Domain.Exceptions;
 namespace Pliaforma.Application.Features.Scheduling;
 
 // ---- DTO'lar ----
-/// <summary>Zincirde kayacak tek ders (eski/yeni saat + opsiyonel çakışma/availability bilgisi).</summary>
+/// <summary>Zincirde kayacak tek ders (eski/yeni saat + opsiyonel gerçek çakışma bilgisi).</summary>
 public sealed record ChainShiftItemDto(
     Guid SessionId, string ClassTypeName,
     DateTime OldStartAt, DateTime OldEndAt, DateTime NewStartAt, DateTime NewEndAt,
-    string? ConflictReason,   // null | "past" | "instructor" | "student"
-    bool OutsideAvailability);
+    string? ConflictReason);   // null | "past" | "instructor" | "student"  (Sprint 26: availability YOK)
 
 /// <summary>Zincirleme kaydırma önizlemesi: kayacak dersler + uygulanabilir mi.</summary>
 public sealed record ChainShiftPreviewDto(IReadOnlyList<ChainShiftItemDto> Affected, bool CanApply);
@@ -64,14 +63,15 @@ internal static class ChainShiftPlanner
         return chain;
     }
 
-    /// <summary>Zinciri değerlendirir: her üye için çakışma (hard) + availability (advisory). Mutasyon yok.</summary>
+    /// <summary>Zinciri değerlendirir: her üye için yalnız GERÇEK çakışma (past/instructor/student). Mutasyon yok.
+    /// Sprint 26: müsaitlik (availability) değerlendirmesi KALDIRILDI.</summary>
     public static async Task<List<ChainShiftItemDto>> EvaluateAsync(
         IAppDbContext db, IDateTime clock, Guid studioId, List<Member> chain, CancellationToken ct)
     {
         var chainIds = chain.Select(m => m.Session.Id).ToHashSet();
         var nowLocal = await SessionRules.StudioNowAsync(db, clock, studioId, ct);
 
-        // Toplu yükleme: ders tipi adları + zincirdeki seansların booked öğrencileri + hoca müsaitlikleri.
+        // Toplu yükleme: ders tipi adları + zincirdeki seansların booked öğrencileri.
         var sessionIds = chainIds.ToList();
         var classTypeNames = await db.ClassSessions
             .Where(s => sessionIds.Contains(s.Id))
@@ -85,10 +85,6 @@ internal static class ChainShiftPlanner
             .ToDictionary(g => g.Key, g => g.Select(x => x.StudentProfileId).ToList());
 
         var instructorId = chain[0].Session.InstructorProfileId;
-        var avails = await db.InstructorAvailabilities
-            .Where(a => a.StudioId == studioId && a.InstructorProfileId == instructorId && a.IsActive)
-            .Select(a => new { a.DayOfWeek, a.StartTime, a.EndTime })
-            .ToListAsync(ct);
 
         var items = new List<ChainShiftItemDto>(chain.Count);
         foreach (var m in chain)
@@ -107,14 +103,9 @@ internal static class ChainShiftPlanner
                     reason = "student";
             }
 
-            var outsideAvail = avails.Count > 0
-                && !avails.Any(a => a.DayOfWeek == m.NewStart.DayOfWeek
-                                    && a.StartTime <= TimeOnly.FromDateTime(m.NewStart)
-                                    && TimeOnly.FromDateTime(m.NewEnd) <= a.EndTime);
-
             items.Add(new ChainShiftItemDto(
                 m.Session.Id, classTypeNames.TryGetValue(m.Session.Id, out var n) ? n : "",
-                m.Session.StartAt, m.Session.EndAt, m.NewStart, m.NewEnd, reason, outsideAvail));
+                m.Session.StartAt, m.Session.EndAt, m.NewStart, m.NewEnd, reason));
         }
         return items;
     }
