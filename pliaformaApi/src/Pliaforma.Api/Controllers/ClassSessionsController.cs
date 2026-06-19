@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Pliaforma.Application.Common.Cqrs;
+using Pliaforma.Application.Features.Attendance;
 using Pliaforma.Application.Features.Scheduling;
 
 namespace Pliaforma.Api.Controllers;
@@ -40,6 +41,20 @@ public sealed class ClassSessionsController : ApiControllerBase
     [HttpPost("{id:guid}/reschedule")]
     public Task<IActionResult> Reschedule(Guid id, RescheduleClassSessionCommand command, CancellationToken ct) =>
         Send(command with { Id = id }, "Ders seansı ertelendi.", ct);
+
+    // ---- Sprint 19: ders onayı + fiilî hoca ----
+    [HttpPost("{id:guid}/confirm")]
+    public Task<IActionResult> Confirm(Guid id, CancellationToken ct) =>
+        Send(new ConfirmSessionCommand(id), "Ders onaylandı.", ct);
+
+    [HttpPost("confirm-today")]
+    public Task<IActionResult> ConfirmToday(CancellationToken ct) =>
+        Send(new ConfirmTodaySessionsCommand(), "Bugünün dersleri onaylandı.", ct);
+
+    [Authorize(Roles = "Owner,StudioAdmin")]
+    [HttpPost("{id:guid}/actual-instructor")]
+    public Task<IActionResult> SetActualInstructor(Guid id, SetActualInstructorCommand command, CancellationToken ct) =>
+        Send(command with { SessionId = id }, "Fiilî hoca güncellendi.", ct);
 
     [HttpDelete("{id:guid}")]
     public Task<IActionResult> Delete(Guid id, CancellationToken ct) =>

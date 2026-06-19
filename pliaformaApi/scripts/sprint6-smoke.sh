@@ -48,7 +48,7 @@ echo "--- Gelecek seans → 409 ---"
 FS=$(mksess "$I1P" "09:00"); GF=$(guest "GF"); BF=$(sbook "$FS" "$GF")
 expect "gelecek seans yoklama → 409" 409 "$(putcode "/api/studio/class-sessions/$FS/attendance" "{\"items\":[{\"bookingId\":\"$BF\",\"status\":\"Present\"}]}" "$ATOK")"
 
-echo "--- Geçmiş seans → 200, batch, Present/Absent kredi vermez ---"
+echo "--- Geçmiş seans → 200, batch; Present kredi vermez, Absent → Sprint 19 telafi (+1) ---"
 PS=$(mksess "$I1P" "10:00"); GA=$(guest "GA"); GB=$(guest "GB")
 BA=$(sbook "$PS" "$GA"); BB=$(sbook "$PS" "$GB")
 backdate "$PS"
@@ -58,7 +58,7 @@ R=$(putj "/api/studio/class-sessions/$PS/attendance" "{\"items\":[{\"bookingId\"
 expect "batch yoklama → 200" 200 "$(code "$R")"
 expect "Present işaretlendi" yes "$(has "$(body "$R")" '"status":"Present"')"
 expect "Present kredi vermez (GA bakiye 0)" 0 "$(bcredit "$GA")"
-expect "Absent kredi vermez (GB bakiye 0)" 0 "$(bcredit "$GB")"
+expect "Absent → sözleşme telafisi kazanır (GB bakiye 1, Sprint 19)" 1 "$(bcredit "$GB")"
 
 echo "--- Upsert: ikinci işaretleme update, duplicate yok ---"
 putj "/api/studio/class-sessions/$PS/attendance" "{\"items\":[{\"bookingId\":\"$BA\",\"status\":\"Excused\"}]}" "$ATOK" >/dev/null

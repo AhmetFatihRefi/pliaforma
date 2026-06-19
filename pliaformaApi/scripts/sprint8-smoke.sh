@@ -73,13 +73,11 @@ expect "makeup totalOutstandingBalance=1" 1 "$(echo "$SD" | jnum totalOutstandin
 echo "--- Month filter ayırıyor ---"
 expect "boş ay (2025-01) sessionsThisMonth=0" 0 "$(get "/api/studio/dashboard?month=2025-01" "$ATOK" | jnum sessionsThisMonth)"
 
-echo "--- Instructor dashboard (earning) ---"
+echo "--- Instructor dashboard (operasyonel, PARASIZ — Sprint 19) ---"
 I1D=$(get "/api/instructor/dashboard?month=2020-01" "$I1TOK")
 expect "i1 sessionsThisMonth=2" 2 "$(echo "$I1D" | jnum sessionsThisMonth)"
-expect "i1 PerSession earning=200" 200 "$(echo "$I1D" | jnum estimatedEarning)"
 expect "i1 totalStudentsTaught=2" 2 "$(echo "$I1D" | jnum totalStudentsTaught)"
-I2D=$(get "/api/instructor/dashboard?month=2020-01" "$I2TOK")
-expect "i2 PerStudentPerSession earning=100" 100 "$(echo "$I2D" | jnum estimatedEarning)"
+expect "dashboard PARASIZ (estimatedEarning alanı yok)" no "$(has "$I1D" 'estimatedEarning')"
 expect "i1 self dashboard → 200" 200 "$(gcode "/api/instructor/dashboard?month=2020-01" "$I1TOK")"
 
 echo "--- Student dashboard (GA) ---"
@@ -96,7 +94,8 @@ echo "--- Reports ---"
 expect "payments report → 200" 200 "$(gcode "/api/studio/reports/payments?month=2020-01" "$ATOK")"
 expect "payments report overdueAmount=500" 500 "$(get "/api/studio/reports/payments?month=2020-01" "$ATOK" | jnum overdueAmount)"
 IR=$(get "/api/studio/reports/instructors?month=2020-01" "$ATOK")
-expect "instructors report i1 earning 200 görünür" yes "$(has "$IR" '"estimatedEarning":200')"
+expect "instructors report PARASIZ (estimatedEarning yok)" no "$(has "$IR" 'estimatedEarning')"
+expect "instructors report operasyonel (distinctStudents var)" yes "$(has "$IR" 'distinctStudents')"
 
 echo "--- Yetki: Instructor staff student dashboard (finans gizli) ---"
 expect "I1 erişebildiği öğrenci dashboard → 200" 200 "$(gcode "/api/studio/students/$GA/dashboard?month=2020-01" "$I1TOK")"

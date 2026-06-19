@@ -6,7 +6,7 @@ BASE="${1:-http://localhost:5132}"
 DIR="$(dirname "$0")"
 SMOKES=(auth-smoke sprint1-smoke role-permission-smoke sprint2-smoke sprint3-smoke sprint4-smoke
         sprint5-smoke sprint6-smoke sprint7-smoke sprint8-smoke sprint9-smoke sprint10-smoke
-        sprint13-smoke sprint14-smoke sprint15-smoke sprint16-smoke sprint17-smoke sprint18a-smoke sprint18b-smoke security-audit-smoke)
+        sprint13-smoke sprint14-smoke sprint15-smoke sprint16-smoke sprint17-smoke sprint18a-smoke sprint18b-smoke sprint19-smoke security-audit-smoke)
 FAIL=0; PASSN=0
 echo "== Smoke koşusu (BASE=$BASE) =="
 for s in "${SMOKES[@]}"; do

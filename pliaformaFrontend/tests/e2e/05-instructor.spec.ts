@@ -6,9 +6,11 @@ test.describe("Instructor flow", () => {
     await login(page, users.instructor);
   });
 
-  test("instructor dashboard + schedule açılır", async ({ page }) => {
+  test("instructor dashboard + schedule açılır (dashboard PARASIZ — Sprint 19)", async ({ page }) => {
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByRole("heading", { name: /Merhaba/ })).toBeVisible();
+    // Sprint 19: hoca ücreti kapsam dışı → "Tahmini kazanç" kartı yok.
+    await expect(page.getByText("Tahmini kazanç")).toHaveCount(0);
     await page.goto("/dashboard/schedule");
     await expect(page.getByRole("heading", { name: "Ders Programı" })).toBeVisible();
   });

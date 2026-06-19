@@ -9,8 +9,6 @@ import {
   type InstructorAssignmentDto,
   type JoinRequestDto,
   type MemberDto,
-  type RateType,
-  rateTypeLabels,
 } from "@/lib/domain-types";
 import type { StudioRole } from "@/lib/types";
 import {
@@ -46,8 +44,6 @@ export default function InstructorsPage() {
     email: "",
     role: "Instructor" as StudioRole,
     displayName: "",
-    rate: 0,
-    rateType: "PerSession" as RateType,
   });
   const [inviteErr, setInviteErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -93,16 +89,13 @@ export default function InstructorsPage() {
     setSaving(true);
     setInviteErr(null);
     try {
-      const isInstructor = invite.role === "Instructor";
       await memberService.invite({
         email: invite.email,
         role: invite.role,
         displayName: invite.displayName || undefined,
-        rate: isInstructor ? Number(invite.rate) : undefined,
-        rateType: isInstructor ? invite.rateType : undefined,
       });
       setInviteOpen(false);
-      setInvite({ email: "", role: "Instructor", displayName: "", rate: 0, rateType: "PerSession" });
+      setInvite({ email: "", role: "Instructor", displayName: "" });
       await load();
     } catch (err) {
       setInviteErr(err instanceof ApiError ? err.message : "Davet gönderilemedi.");
@@ -117,18 +110,6 @@ export default function InstructorsPage() {
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Rol değiştirilemedi.");
-    }
-  };
-
-  const editRate = async (m: MemberDto) => {
-    if (!m.instructorProfileId) return;
-    const input = prompt(`${m.fullName} için yeni ücret:`, String(m.rate ?? 0));
-    if (input === null) return;
-    try {
-      await instructorService.updateRate(m.instructorProfileId, { rate: Number(input), rateType: m.rateType ?? "PerSession" });
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Ücret güncellenemedi.");
     }
   };
 
@@ -152,7 +133,7 @@ export default function InstructorsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Hocalar & Üyeler</h1>
-          <p className="mt-1 text-sm text-muted">Davet edin, rol/ücret belirleyin, gruplara atayın.</p>
+          <p className="mt-1 text-sm text-muted">Davet edin, rol belirleyin, gruplara atayın.</p>
         </div>
         {canManage && <Button onClick={() => setInviteOpen(true)}>+ Davet et</Button>}
       </div>
@@ -190,15 +171,14 @@ export default function InstructorsPage() {
             <TH>E-posta</TH>
             <TH>Rol</TH>
             <TH>Durum</TH>
-            <TH>Ücret</TH>
             {canManage && <TH className="text-right">İşlem</TH>}
           </TR>
         </THead>
         <tbody>
           {loading ? (
-            <TableEmpty colSpan={canManage ? 6 : 5}>Yükleniyor…</TableEmpty>
+            <TableEmpty colSpan={canManage ? 5 : 4}>Yükleniyor…</TableEmpty>
           ) : members.length === 0 ? (
-            <TableEmpty colSpan={canManage ? 6 : 5}>Henüz üye yok.</TableEmpty>
+            <TableEmpty colSpan={canManage ? 5 : 4}>Henüz üye yok.</TableEmpty>
           ) : (
             members.map((m) => (
               <TR key={m.membershipId}>
@@ -220,15 +200,11 @@ export default function InstructorsPage() {
                   )}
                 </TD>
                 <TD><Badge tone={statusTone(m.status)}>{m.status}</Badge></TD>
-                <TD>{m.instructorProfileId ? `${m.rate} · ${rateTypeLabels[m.rateType ?? "PerSession"]}` : "—"}</TD>
                 {canManage && (
                   <TD className="text-right">
                     <div className="flex justify-end gap-2">
                       {m.instructorProfileId && (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={() => editRate(m)}>Ücret</Button>
-                          <Button variant="ghost" size="sm" onClick={() => setAssignFor(m)}>Gruplar</Button>
-                        </>
+                        <Button variant="ghost" size="sm" onClick={() => setAssignFor(m)}>Gruplar</Button>
                       )}
                       {canRemove(m) ? (
                         <Button variant="danger" size="sm" onClick={() => remove(m)}>Çıkar</Button>
@@ -258,18 +234,6 @@ export default function InstructorsPage() {
           <FormField label="Görünen ad (opsiyonel)">
             <Input value={invite.displayName} onChange={(e) => setInvite((v) => ({ ...v, displayName: e.target.value }))} />
           </FormField>
-          {invite.role === "Instructor" && (
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Ücret">
-                <Input type="number" min={0} value={invite.rate} onChange={(e) => setInvite((v) => ({ ...v, rate: Number(e.target.value) }))} />
-              </FormField>
-              <FormField label="Ücret tipi">
-                <Select value={invite.rateType} onChange={(e) => setInvite((v) => ({ ...v, rateType: e.target.value as RateType }))}>
-                  {Object.entries(rateTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </Select>
-              </FormField>
-            </div>
-          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setInviteOpen(false)}>İptal</Button>
             <Button type="submit" loading={saving}>Davet gönder</Button>
@@ -286,7 +250,6 @@ function AssignModal({ member, onClose }: { member: MemberDto; onClose: () => vo
   const [assigned, setAssigned] = useState<InstructorAssignmentDto[]>([]);
   const [allTypes, setAllTypes] = useState<ClassTypeDto[]>([]);
   const [selected, setSelected] = useState("");
-  const [override, setOverride] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -313,36 +276,12 @@ function AssignModal({ member, onClose }: { member: MemberDto; onClose: () => vo
     setBusy(true);
     setErr(null);
     try {
-      const ov = override.trim() === "" ? null : Number(override);
-      if (ov !== null && ov < 0) throw new Error("Ücret override negatif olamaz.");
-      await instructorService.assign(profileId, { classTypeId: selected, rateOverride: ov });
+      // Sprint 19: ücret override kaldırıldı (dormant) → null geçilir.
+      await instructorService.assign(profileId, { classTypeId: selected, rateOverride: null });
       setSelected("");
-      setOverride("");
       await load();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Atanamadı.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const editOverride = async (a: InstructorAssignmentDto) => {
-    const input = prompt(
-      `"${a.classTypeName}" için ücret override (boş = hoca ana ücreti):`,
-      a.rateOverride != null ? String(a.rateOverride) : "",
-    );
-    if (input === null) return;
-    const ov = input.trim() === "" ? null : Number(input);
-    if (ov !== null && ov < 0) {
-      setErr("Ücret override negatif olamaz.");
-      return;
-    }
-    setBusy(true);
-    try {
-      await instructorService.updateAssignment(a.id, ov);
-      await load();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Güncellenemedi.");
     } finally {
       setBusy(false);
     }
@@ -371,32 +310,21 @@ function AssignModal({ member, onClose }: { member: MemberDto; onClose: () => vo
           ) : (
             assigned.map((a) => (
               <div key={a.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
-                <div>
-                  <span className="text-sm text-foreground">{a.classTypeName}</span>
-                  <span className="ml-2 text-xs text-muted">
-                    {a.rateOverride != null ? `override: ${a.rateOverride}` : `ana ücret: ${member.rate ?? "—"}`}
-                  </span>
-                </div>
-                <div className="flex gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => editOverride(a)} disabled={busy}>Ücret</Button>
-                  <Button variant="ghost" size="sm" onClick={() => drop(a.id)} disabled={busy}>Kaldır</Button>
-                </div>
+                <span className="text-sm text-foreground">{a.classTypeName}</span>
+                <Button variant="ghost" size="sm" onClick={() => drop(a.id)} disabled={busy}>Kaldır</Button>
               </div>
             ))
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 border-t border-border pt-4">
+        <div className="space-y-2 border-t border-border pt-4">
           <FormField label="Gruba ekle">
             <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
               <option value="">Grup seçin…</option>
               {available.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>
           </FormField>
-          <FormField label="Ücret override (ops.)" hint="Boş = hoca ana ücreti">
-            <Input type="number" min={0} value={override} onChange={(e) => setOverride(e.target.value)} placeholder="—" />
-          </FormField>
-          <div className="col-span-2 flex justify-end">
+          <div className="flex justify-end">
             <Button onClick={add} disabled={!selected || busy}>Ekle</Button>
           </div>
         </div>

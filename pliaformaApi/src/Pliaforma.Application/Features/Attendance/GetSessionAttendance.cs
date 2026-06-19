@@ -12,61 +12,32 @@ namespace Pliaforma.Application.Features.Attendance;
 internal static class AttendanceViews
 {
     public static async Task<SessionAttendanceDto> BuildSessionViewAsync(
-        IAppDbContext db, IDateTime clock, Guid studioId, ClassSession session, bool includePackages, CancellationToken ct)
+        IAppDbContext db, IDateTime clock, Guid studioId, ClassSession session, CancellationToken ct)
     {
         var classTypeName = await db.ClassTypes.Where(c => c.Id == session.ClassTypeId).Select(c => c.Name).FirstAsync(ct);
         var instructorName = await db.InstructorProfiles.Where(p => p.Id == session.InstructorProfileId).Select(p => p.DisplayName).FirstAsync(ct);
 
         var nowLocal = await SessionRules.StudioNowAsync(db, clock, studioId, ct);
+        // Sprint 19: başlamış + iptal değil → işaretlenebilir (Completed dâhil — yoklama düzeltmeye açık).
         var canMark = session.StartAt <= nowLocal && session.Status != ClassSessionStatus.Cancelled;
 
-        // Yalnızca aktif (Booked) rezervasyonlar yoklama listesine gelir.
-        var baseItems = await db.ClassBookings
+        // Yalnızca aktif (Booked) rezervasyonlar yoklama listesine gelir. Sprint 19: paket bilgisi yok.
+        var items = await db.ClassBookings
             .Where(b => b.StudioId == studioId && b.ClassSessionId == session.Id && b.Status == ClassBookingStatus.Booked)
             .OrderBy(b => b.StudentProfile!.FullName)
-            .Select(b => new
-            {
+            .Select(b => new AttendanceItemDto(
                 b.Id,
                 b.StudentProfileId,
-                Name = b.StudentProfile!.FullName,
-                Status = db.Attendances.Where(a => a.ClassBookingId == b.Id).Select(a => (AttendanceStatus?)a.Status).FirstOrDefault(),
-                Notes = db.Attendances.Where(a => a.ClassBookingId == b.Id).Select(a => a.Notes).FirstOrDefault(),
-                CreditGranted = db.Attendances.Any(a => a.ClassBookingId == b.Id && a.MakeupCreditTransactionId != null),
-                PackageConsumed = db.StudentPackageTransactions.Any(t => t.SourceClassBookingId == b.Id && t.Type == StudentPackageTransactionType.Used),
-                MarkedAt = db.Attendances.Where(a => a.ClassBookingId == b.Id).Select(a => (DateTime?)a.MarkedAt).FirstOrDefault(),
-            })
+                b.StudentProfile!.FullName,
+                db.Attendances.Where(a => a.ClassBookingId == b.Id).Select(a => (AttendanceStatus?)a.Status).FirstOrDefault(),
+                db.Attendances.Where(a => a.ClassBookingId == b.Id).Select(a => a.Notes).FirstOrDefault(),
+                db.Attendances.Any(a => a.ClassBookingId == b.Id && a.MakeupCreditTransactionId != null),
+                db.Attendances.Where(a => a.ClassBookingId == b.Id).Select(a => (DateTime?)a.MarkedAt).FirstOrDefault()))
             .ToListAsync(ct);
-
-        // Paket bilgisi YALNIZCA Owner/StudioAdmin'e (finans gizliliği — Instructor görmez).
-        // Yalnızca KULLANILABİLİR paketler (süresi geçmemiş) listelenir → modalda expired seçilemez.
-        var today = DateOnly.FromDateTime(nowLocal);
-        var pkgByStudent = new Dictionary<Guid, List<StudentPackageBriefDto>>();
-        if (includePackages && baseItems.Count > 0)
-        {
-            var studentIds = baseItems.Select(i => i.StudentProfileId).Distinct().ToList();
-            var pkgs = await db.StudentPackages
-                .Where(p => p.StudioId == studioId && studentIds.Contains(p.StudentProfileId)
-                            && p.Status == StudentPackageStatus.Active && p.CurrentCreditBalance > 0
-                            && (p.ValidUntil == null || p.ValidUntil >= today))
-                .OrderBy(p => p.ValidUntil == null).ThenBy(p => p.ValidUntil).ThenBy(p => p.CreatedAt)
-                .Select(p => new { p.StudentProfileId, Brief = new StudentPackageBriefDto(p.Id, p.Name, p.CurrentCreditBalance, p.ValidUntil) })
-                .ToListAsync(ct);
-            pkgByStudent = pkgs.GroupBy(x => x.StudentProfileId).ToDictionary(g => g.Key, g => g.Select(x => x.Brief).ToList());
-        }
-
-        var items = baseItems.Select(i => new AttendanceItemDto(
-            i.Id, i.StudentProfileId, i.Name, i.Status, i.Notes, i.CreditGranted, i.PackageConsumed, i.MarkedAt,
-            includePackages
-                ? (pkgByStudent.TryGetValue(i.StudentProfileId, out var list) ? list : new List<StudentPackageBriefDto>())
-                : null)).ToList();
 
         return new SessionAttendanceDto(session.Id, classTypeName, instructorName, session.StartAt, session.EndAt,
             session.Status, canMark, items);
     }
-
-    /// <summary>Owner/StudioAdmin paket bilgisini görür; Instructor görmez.</summary>
-    public static bool CanSeePackages(ICurrentUserService user) =>
-        user.StudioRole is StudioRole.Owner or StudioRole.StudioAdmin;
 }
 
 /// <summary>Bir seansın yoklama listesi. Owner/StudioAdmin tüm seanslar; Instructor yalnızca kendi seansı.</summary>
@@ -96,7 +67,6 @@ public sealed class GetSessionAttendanceHandler : IQueryHandler<GetSessionAttend
         // Instructor yalnızca kendi seansı (Owner/Admin tümü) → aksi 403.
         await SchedulingAccess.RequireManageableInstructorAsync(_db, _currentUser, studioId, session.InstructorProfileId, cancellationToken);
 
-        return await AttendanceViews.BuildSessionViewAsync(
-            _db, _clock, studioId, session, AttendanceViews.CanSeePackages(_currentUser), cancellationToken);
+        return await AttendanceViews.BuildSessionViewAsync(_db, _clock, studioId, session, cancellationToken);
     }
 }

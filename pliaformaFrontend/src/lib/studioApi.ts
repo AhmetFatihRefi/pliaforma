@@ -47,6 +47,7 @@ import type {
   ContractSchedulePreviewDto,
   GenerateContractScheduleResultDto,
   SessionAttendanceDto,
+  ConfirmTodayResultDto,
   RateType,
   StudentDto,
   StudentMakeupCreditsDto,
@@ -163,6 +164,13 @@ export const classSessionService = {
   reschedule: (id: string, input: { newStartAt: string; reason?: string; keepBookings: boolean; grantMakeupCredit?: boolean }) =>
     api<ClassSessionDto>(`/api/studio/class-sessions/${id}/reschedule`, { method: "POST", body: input }),
   remove: (id: string) => api<null>(`/api/studio/class-sessions/${id}`, { method: "DELETE" }),
+  // Sprint 19: ders onayı + fiilî hoca.
+  confirm: (id: string) =>
+    api<SessionAttendanceDto>(`/api/studio/class-sessions/${id}/confirm`, { method: "POST", body: {} }),
+  confirmToday: () =>
+    api<ConfirmTodayResultDto>("/api/studio/class-sessions/confirm-today", { method: "POST", body: {} }),
+  setActualInstructor: (id: string, actualInstructorProfileId: string | null) =>
+    api<null>(`/api/studio/class-sessions/${id}/actual-instructor`, { method: "POST", body: { actualInstructorProfileId } }),
 };
 
 // Kapalı günler / toplu işlemler (/api/studio/closures) — Owner/StudioAdmin
@@ -203,7 +211,7 @@ export const attendanceService = {
   forSession: (sessionId: string) => api<SessionAttendanceDto>(`/api/studio/class-sessions/${sessionId}/attendance`),
   markBatch: (sessionId: string, items: AttendanceMarkInput[]) =>
     api<SessionAttendanceDto>(`/api/studio/class-sessions/${sessionId}/attendance`, { method: "PUT", body: { items } }),
-  markSingle: (bookingId: string, input: { status: AttendanceStatus; notes?: string; grantMakeupCredit?: boolean; consumePackageCredit?: boolean; studentPackageId?: string | null }) =>
+  markSingle: (bookingId: string, input: { status: AttendanceStatus; notes?: string; grantMakeupCredit?: boolean }) =>
     api<null>(`/api/studio/bookings/${bookingId}/attendance`, { method: "PUT", body: input }),
   studentSummary: (studentId: string, month?: string) =>
     api<AttendanceSummaryDto>(`/api/studio/students/${studentId}/attendance/summary${month ? `?month=${month}` : ""}`),
@@ -286,7 +294,15 @@ export const reportService = {
     const qs = q.toString();
     return api<PaymentsReportDto>(`/api/studio/reports/payments${qs ? `?${qs}` : ""}`);
   },
-  instructors: (month?: string) => api<InstructorsReportDto>(`/api/studio/reports/instructors${monthQ(month)}`),
+  // Sprint 19: ay VEYA tarih aralığı (from/to).
+  instructors: (params?: { month?: string; from?: string; to?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.month) q.set("month", params.month);
+    if (params?.from) q.set("from", params.from);
+    if (params?.to) q.set("to", params.to);
+    const qs = q.toString();
+    return api<InstructorsReportDto>(`/api/studio/reports/instructors${qs ? `?${qs}` : ""}`);
+  },
 };
 
 // Bildirimler (/api/notifications kullanıcı self + /api/studio/notifications manager trigger)

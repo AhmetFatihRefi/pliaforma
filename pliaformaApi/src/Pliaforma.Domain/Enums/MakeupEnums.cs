@@ -72,6 +72,9 @@ public enum MakeupCreditReason
 
     /// <summary>Mazeretli devamsızlık yoklamasından manuel verilen kredi (Sprint 6 — Excused).</summary>
     ExcusedAbsence = 9,
+
+    /// <summary>Devamsızlık (Absent) yoklamasından otomatik kazanılan telafi (Sprint 19 — sözleşme MakeupAllowance limitli).</summary>
+    AbsentEarned = 10,
 }
 
 /// <summary>Toplu kapanış (StudioClosure) işleminin etkilenen seanslara uygulayacağı aksiyon.</summary>

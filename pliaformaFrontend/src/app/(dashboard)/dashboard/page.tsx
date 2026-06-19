@@ -139,11 +139,10 @@ function InstructorPanel({ month }: { month: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Bu ay ders" value={d.sessionsThisMonth} hint={`${d.cancelledSessions} iptal`} />
         <Stat label="Rezervasyon" value={d.bookingsCount} />
         <Stat label="Öğrenci sayısı" value={d.totalStudentsTaught} />
-        <Stat label="Tahmini kazanç" value={d.estimatedEarning != null ? money(d.estimatedEarning) : "—"} hint={d.earningCalculationNote} />
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Stat label="Geldi" value={d.presentCount} />

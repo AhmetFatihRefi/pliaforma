@@ -16,8 +16,13 @@ test.describe("Owner dashboard", () => {
     await expect(page.getByRole("link", { name: "Öğrenciler" })).toBeVisible();
   });
 
-  test("/dashboard/reports açılır", async ({ page }) => {
+  test("/dashboard/reports açılır + hoca raporu PARASIZ (Sprint 19)", async ({ page }) => {
     await gotoAndExpectHeading(page, "/dashboard/reports", "Raporlar");
+    await page.getByRole("button", { name: "Hoca iş hacmi" }).click();
+    // Sprint 19: parasal sütun yok; operasyonel sütunlar var.
+    await expect(page.getByRole("columnheader", { name: "Tahmini kazanç" })).toHaveCount(0);
+    await expect(page.getByRole("columnheader", { name: "Hoca değişikliği" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Grup" })).toBeVisible();
   });
 
   test("/dashboard/students açılır + seed öğrenci görünür", async ({ page }) => {
@@ -25,7 +30,8 @@ test.describe("Owner dashboard", () => {
     await expect(page.getByText("E2E Student").first()).toBeVisible();
   });
 
-  test("/dashboard/instructors açılır", async ({ page }) => {
+  test("/dashboard/instructors açılır + ücret sütunu YOK (Sprint 19)", async ({ page }) => {
     await gotoAndExpectHeading(page, "/dashboard/instructors", /Hocalar/);
+    await expect(page.getByRole("columnheader", { name: "Ücret" })).toHaveCount(0);
   });
 });

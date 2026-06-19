@@ -37,6 +37,7 @@ public sealed class DashboardController : ApiControllerBase
 
     [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpGet("reports/instructors")]
-    public Task<IActionResult> InstructorsReport([FromQuery] string? month, CancellationToken ct) =>
-        Send(new GetInstructorsReportQuery(month), ct: ct);
+    public Task<IActionResult> InstructorsReport(
+        [FromQuery] string? month, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct) =>
+        Send(new GetInstructorsReportQuery(month, from, to), ct: ct);
 }

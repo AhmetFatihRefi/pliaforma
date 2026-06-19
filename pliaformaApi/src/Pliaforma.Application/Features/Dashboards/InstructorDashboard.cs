@@ -15,7 +15,7 @@ internal static class InstructorDashboardBuilder
     {
         var profile = await db.InstructorProfiles.AsNoTracking()
             .Where(i => i.Id == instructorProfileId && i.StudioId == sid)
-            .Select(i => new { i.Id, i.DisplayName, i.Rate, i.RateType })
+            .Select(i => new { i.Id, i.DisplayName })
             .FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException("Hoca profili", instructorProfileId);
 
@@ -30,9 +30,6 @@ internal static class InstructorDashboardBuilder
 
         var sessionsThisMonth = sessions.Count;
         var cancelled = sessions.Count(s => s.Status == ClassSessionStatus.Cancelled);
-        var held = sessions.Where(s => s.Status != ClassSessionStatus.Cancelled && s.StartAt <= nowLocal).ToList();
-        var heldSessions = held.Count;
-        var heldHours = held.Sum(s => (s.EndAt - s.StartAt).TotalHours);
 
         var breakdown = sessions
             .GroupBy(s => new { s.ClassTypeId, s.ClassTypeName })
@@ -57,12 +54,10 @@ internal static class InstructorDashboardBuilder
                         && b.ClassSession.StartAt >= p.LocalStart && b.ClassSession.StartAt < p.LocalEnd)
             .Select(b => b.StudentProfileId).Distinct().CountAsync(ct);
 
-        var (earning, note) = DashboardCalc.EstimateEarning(profile.RateType, profile.Rate, heldSessions, heldHours, att.PresentCount);
-
         return new InstructorDashboardDto(
             p.Label, ip, profile.DisplayName, sessionsThisMonth, cancelled, bookingsCount,
             att.PresentCount, att.AbsentCount, att.ExcusedCount, totalStudentsTaught,
-            breakdown, earning, note);
+            breakdown);
     }
 }
 

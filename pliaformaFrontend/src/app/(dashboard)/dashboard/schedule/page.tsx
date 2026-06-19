@@ -49,6 +49,9 @@ export default function SchedulePage() {
   const [cancelFor, setCancelFor] = useState<ClassSessionDto | null>(null);
   const [rescheduleFor, setRescheduleFor] = useState<ClassSessionDto | null>(null);
   const [attendanceFor, setAttendanceFor] = useState<ClassSessionDto | null>(null);
+  const [actualFor, setActualFor] = useState<ClassSessionDto | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
 
   useEffect(() => {
     classTypeService.list(true).then(setClassTypes).catch(() => setClassTypes([]));
@@ -79,6 +82,27 @@ export default function SchedulePage() {
     return acc;
   }, {});
 
+  const confirmSession = async (s: ClassSessionDto) => {
+    if (!window.confirm("Bu ders onaylanacak ve tamamlandı işaretlenecek.\nİşaretlenmemiş öğrenciler Present (Geldi) kabul edilecek.")) return;
+    setBusyId(s.id);
+    setError(null);
+    try { await classSessionService.confirm(s.id); await load(); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Ders onaylanamadı."); }
+    finally { setBusyId(null); }
+  };
+
+  const confirmToday = async () => {
+    if (!window.confirm("Bugünün başlamış/geçmiş dersleri onaylanacak (gelecek saatli ve iptal dersler atlanır).\nİşaretlenmemiş öğrenciler Present (Geldi) kabul edilecek.")) return;
+    setBusyId("today");
+    setError(null);
+    try {
+      const r = await classSessionService.confirmToday();
+      setBanner(`${r.confirmedCount} ders onaylandı · ${r.presentMarkedCount} öğrenci Present · ${r.skippedFutureCount} gelecek ders atlandı.`);
+      await load();
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Dersler onaylanamadı."); }
+    finally { setBusyId(null); }
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex items-center justify-between gap-4">
@@ -87,6 +111,7 @@ export default function SchedulePage() {
           <p className="mt-1 text-sm text-muted">Ders seanslarını görüntüleyin ve oluşturun.</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="secondary" loading={busyId === "today"} onClick={confirmToday}>Bugünü onayla</Button>
           <Button variant="secondary" onClick={() => setBulkOpen(true)}>Toplu slot</Button>
           <Button onClick={() => setCreateOpen(true)}>+ Yeni seans</Button>
         </div>
@@ -114,6 +139,7 @@ export default function SchedulePage() {
       </Card>
 
       {error && <Alert kind="error">{error}</Alert>}
+      {banner && <Alert kind="success">{banner}</Alert>}
 
       {loading ? (
         <p className="text-sm text-muted">Yükleniyor…</p>
@@ -153,15 +179,21 @@ export default function SchedulePage() {
                         {sessionStatusLabels[s.status]}
                       </Badge>
                     </div>
-                    {s.status === "Scheduled" && (
+                    {s.status !== "Cancelled" && (
                       <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-                        <Button variant="secondary" size="sm" disabled={s.isFull} onClick={() => setBookFor(s)}>
-                          {s.isFull ? "Dolu" : "Öğrenci ekle"}
-                        </Button>
+                        {s.status === "Scheduled" && (
+                          <>
+                            <Button variant="secondary" size="sm" disabled={s.isFull} onClick={() => setBookFor(s)}>
+                              {s.isFull ? "Dolu" : "Öğrenci ekle"}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => setRescheduleFor(s)}>Ertele</Button>
+                            <Button variant="ghost" size="sm" onClick={() => setCancelFor(s)}>İptal et</Button>
+                            <Button size="sm" loading={busyId === s.id} onClick={() => confirmSession(s)}>Onayla</Button>
+                          </>
+                        )}
                         <Button variant="ghost" size="sm" onClick={() => setBookingsFor(s)}>Rezervasyonlar</Button>
                         <Button variant="ghost" size="sm" onClick={() => setAttendanceFor(s)}>Yoklama</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setRescheduleFor(s)}>Ertele</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setCancelFor(s)}>İptal et</Button>
+                        {isManager && <Button variant="ghost" size="sm" onClick={() => setActualFor(s)}>Fiilî hoca</Button>}
                       </div>
                     )}
                   </Card>
@@ -203,6 +235,14 @@ export default function SchedulePage() {
       {attendanceFor && (
         <AttendanceModal session={attendanceFor} onClose={() => setAttendanceFor(null)} />
       )}
+      {actualFor && (
+        <ActualInstructorModal
+          session={actualFor}
+          instructors={instructors}
+          onClose={() => setActualFor(null)}
+          onDone={() => { setActualFor(null); load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -214,7 +254,7 @@ const ATT_OPTIONS: { value: AttendanceStatus; label: string }[] = [
   { value: "LateCancel", label: "Geç İptal" },
 ];
 
-type AttDraft = { status: AttendanceStatus; notes: string; grant: boolean; consume: boolean; packageId: string };
+type AttDraft = { status: AttendanceStatus; notes: string; grant: boolean };
 
 function AttendanceModal({ session, onClose }: { session: ClassSessionDto; onClose: () => void }) {
   const [data, setData] = useState<SessionAttendanceDto | null>(null);
@@ -230,7 +270,7 @@ function AttendanceModal({ session, onClose }: { session: ClassSessionDto; onClo
       setData(d);
       const init: Record<string, AttDraft> = {};
       d.items.forEach((it) => {
-        init[it.bookingId] = { status: it.status ?? "Present", notes: it.notes ?? "", grant: false, consume: false, packageId: it.packages?.[0]?.id ?? "" };
+        init[it.bookingId] = { status: it.status ?? "Present", notes: it.notes ?? "", grant: false };
       });
       setDraft(init);
       setErr(null);
@@ -248,8 +288,6 @@ function AttendanceModal({ session, onClose }: { session: ClassSessionDto; onClo
   const setItem = (bookingId: string, patch: Partial<AttDraft>) =>
     setDraft((d) => ({ ...d, [bookingId]: { ...d[bookingId], ...patch } }));
 
-  const itemByBooking = (bookingId: string) => data?.items.find((i) => i.bookingId === bookingId);
-
   const save = async () => {
     if (!data) return;
     setBusy(true);
@@ -261,13 +299,11 @@ function AttendanceModal({ session, onClose }: { session: ClassSessionDto; onClo
         notes: draft[it.bookingId].notes || undefined,
         grantMakeupCredit:
           (draft[it.bookingId].status === "Excused" || draft[it.bookingId].status === "LateCancel") && draft[it.bookingId].grant,
-        consumePackageCredit: draft[it.bookingId].consume,
-        studentPackageId: draft[it.bookingId].consume ? (draft[it.bookingId].packageId || undefined) : undefined,
       }));
       const updated = await attendanceService.markBatch(session.id, items);
       setData(updated);
       const init: Record<string, AttDraft> = {};
-      updated.items.forEach((it) => { init[it.bookingId] = { status: it.status ?? "Present", notes: it.notes ?? "", grant: false, consume: false, packageId: it.packages?.[0]?.id ?? "" }; });
+      updated.items.forEach((it) => { init[it.bookingId] = { status: it.status ?? "Present", notes: it.notes ?? "", grant: false }; });
       setDraft(init);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Yoklama kaydedilemedi.");
@@ -299,7 +335,6 @@ function AttendanceModal({ session, onClose }: { session: ClassSessionDto; onClo
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-foreground">{it.studentName}</span>
                     <div className="flex items-center gap-2">
-                      {it.packageConsumed && <Badge tone="success">paket düştü</Badge>}
                       {it.creditGranted && <Badge tone="rose">+1 telafi</Badge>}
                       {it.status && <Badge tone="neutral">{attendanceStatusLabels[it.status]}</Badge>}
                     </div>
@@ -316,29 +351,6 @@ function AttendanceModal({ session, onClose }: { session: ClassSessionDto; onClo
                       Telafi kredisi ver
                     </label>
                   )}
-                  {/* Paket hakkı düşürme — yalnızca Owner/StudioAdmin (item.packages dolu gelir) */}
-                  {it.packages && !it.packageConsumed && (
-                    it.packages.length === 0 ? (
-                      <p className="mt-2 text-xs text-muted">Aktif paket yok — paket hakkı düşülemez.</p>
-                    ) : (
-                      <div className="mt-2 space-y-1">
-                        <label className="flex items-center gap-2 text-xs text-foreground">
-                          <input type="checkbox" checked={draft[it.bookingId]?.consume ?? false} onChange={(e) => setItem(it.bookingId, { consume: e.target.checked })} />
-                          Paket hakkı düş (kalan {it.packages.reduce((a, p) => a + p.currentCreditBalance, 0)})
-                        </label>
-                        {draft[it.bookingId]?.consume && (
-                          <>
-                            <Select value={draft[it.bookingId]?.packageId ?? ""} onChange={(e) => setItem(it.bookingId, { packageId: e.target.value })}>
-                              {itemByBooking(it.bookingId)?.packages?.map((p) => (
-                                <option key={p.id} value={p.id}>{p.name} · kalan {p.currentCreditBalance}</option>
-                              ))}
-                            </Select>
-                            <p className="text-[11px] text-muted">Yalnızca geçerli (süresi dolmamış) paketler listelenir.</p>
-                          </>
-                        )}
-                      </div>
-                    )
-                  )}
                 </div>
               ))}
             </div>
@@ -348,6 +360,49 @@ function AttendanceModal({ session, onClose }: { session: ClassSessionDto; onClo
             </div>
           </>
         )}
+      </div>
+    </Modal>
+  );
+}
+
+function ActualInstructorModal({ session, instructors, onClose, onDone }: {
+  session: ClassSessionDto; instructors: { id: string; name: string }[]; onClose: () => void; onDone: () => void;
+}) {
+  const [value, setValue] = useState(session.actualInstructorProfileId ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await classSessionService.setActualInstructor(session.id, value || null);
+      onDone();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Güncellenemedi.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`${session.classTypeName} — Fiilî hoca`}>
+      <div className="space-y-4">
+        {err && <Alert kind="error">{err}</Alert>}
+        <p className="text-sm text-muted">
+          Planlanan hoca: <strong>{session.instructorName}</strong>. Dersi fiilen başka bir hoca verdiyse seçin —
+          ders iptal olmaz, telafi doğmaz; yalnızca rapora ve "hoca değişti" rozetine yansır.
+        </p>
+        <FormField label="Fiilî hoca">
+          <Select value={value} onChange={(e) => setValue(e.target.value)}>
+            <option value="">Planlanan hoca verdi ({session.instructorName})</option>
+            {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </Select>
+        </FormField>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>Vazgeç</Button>
+          <Button loading={busy} onClick={submit}>Kaydet</Button>
+        </div>
       </div>
     </Modal>
   );

@@ -88,6 +88,19 @@ public sealed class MakeupCreditService
             createdByUserId, sourceSessionId: null, sourceBookingId: null, usedForBookingId: null, expiresAt: null, notes);
     }
 
+    /// <summary>
+    /// Devamsızlık (AbsentEarned) defter hareketi. Sign + Type çağıran tarafından verilir
+    /// (Granted/Restored +1, Revoked −1). <c>SourceClassSessionId</c> yazılmaz → (StudentProfileId,
+    /// SourceClassSessionId) Granted-unique index'inden bağımsızdır; booking başına <c>SourceBookingId</c>
+    /// ile izlenir. SaveChanges çağıranda.
+    /// </summary>
+    public MakeupCreditTransaction AddAbsenceLedger(
+        Guid studioId, Guid studentProfileId, int signedAmount, MakeupCreditTransactionType type,
+        Guid createdByUserId, Guid sourceBookingId, DateTime? expiresAt)
+        => Add(studioId, studentProfileId, signedAmount, type, MakeupCreditReason.AbsentEarned,
+            createdByUserId, sourceSessionId: null, sourceBookingId: sourceBookingId,
+            usedForBookingId: null, expiresAt, notes: null);
+
     private MakeupCreditTransaction Add(
         Guid studioId, Guid studentProfileId, int signedAmount, MakeupCreditTransactionType type,
         MakeupCreditReason reason, Guid createdByUserId, Guid? sourceSessionId, Guid? sourceBookingId,

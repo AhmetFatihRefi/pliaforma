@@ -428,13 +428,7 @@ export const attendanceStatusLabels: Record<AttendanceStatus, string> = {
   Present: "Geldi", Absent: "Gelmedi", Excused: "Mazeretli", LateCancel: "Geç İptal",
 };
 
-export interface StudentPackageBriefDto {
-  id: string;
-  name: string;
-  currentCreditBalance: number;
-  validUntil?: string | null;
-}
-
+// Sprint 19: yoklamadan paket tüketimi kaldırıldı (Regular = sözleşme).
 export interface AttendanceItemDto {
   bookingId: string;
   studentProfileId: string;
@@ -442,9 +436,7 @@ export interface AttendanceItemDto {
   status: AttendanceStatus | null;
   notes?: string | null;
   creditGranted: boolean;
-  packageConsumed: boolean;
   markedAt?: string | null;
-  packages?: StudentPackageBriefDto[] | null;
 }
 
 export interface SessionAttendanceDto {
@@ -463,8 +455,14 @@ export interface AttendanceMarkInput {
   status: AttendanceStatus;
   notes?: string;
   grantMakeupCredit?: boolean;
-  consumePackageCredit?: boolean;
-  studentPackageId?: string | null;
+}
+
+/** Sprint 19: "Bugünü onayla" sonucu. */
+export interface ConfirmTodayResultDto {
+  confirmedCount: number;
+  presentMarkedCount: number;
+  skippedFutureCount: number;
+  alreadyCompletedCount: number;
 }
 
 export interface MyAttendanceDto {
@@ -657,8 +655,6 @@ export interface InstructorDashboardDto {
   excusedCount: number;
   totalStudentsTaught: number;
   classTypeBreakdown: ClassTypeCountDto[];
-  estimatedEarning?: number | null;
-  earningCalculationNote: string;
 }
 
 export interface StudentMiniBookingDto { bookingId: string; classSessionId: string; classTypeName: string; instructorName: string; startAt: string; endAt: string }
@@ -680,13 +676,15 @@ export interface StudentDashboardDto {
   recentBookings: StudentMiniBookingDto[];
 }
 
+// Sprint 19: parasız & operasyonel; atıf fiilî hocaya.
 export interface InstructorReportRowDto {
   instructorProfileId: string;
   instructorName: string;
   sessions: number;
-  bookings: number;
-  presentCount: number;
-  estimatedEarning?: number | null;
+  groupSessions: number;
+  individualSessions: number;
+  distinctStudents: number;
+  substitutionSessions: number;
   classTypeBreakdown: ClassTypeCountDto[];
 }
 
@@ -696,7 +694,7 @@ export interface PaymentsReportDto {
   payments: PaymentDto[];
 }
 
-export interface InstructorsReportDto { month: string; instructors: InstructorReportRowDto[] }
+export interface InstructorsReportDto { period: string; instructors: InstructorReportRowDto[] }
 
 // ===== Sprint 9: Bildirimler =====
 export type NotificationType =

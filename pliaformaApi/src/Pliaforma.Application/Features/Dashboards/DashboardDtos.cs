@@ -33,6 +33,7 @@ public sealed record StudioDashboardDto(
 // ---- Instructor Dashboard ----
 public sealed record ClassTypeCountDto(Guid ClassTypeId, string ClassTypeName, int SessionCount);
 
+// Sprint 19: parasal alanlar (EstimatedEarning/EarningCalculationNote) kaldırıldı — hoca ücreti kapsam dışı.
 public sealed record InstructorDashboardDto(
     string Month,
     Guid InstructorProfileId,
@@ -40,9 +41,7 @@ public sealed record InstructorDashboardDto(
     int SessionsThisMonth, int CancelledSessions, int BookingsCount,
     int PresentCount, int AbsentCount, int ExcusedCount,
     int TotalStudentsTaught,
-    IReadOnlyList<ClassTypeCountDto> ClassTypeBreakdown,
-    decimal? EstimatedEarning,
-    string EarningCalculationNote);
+    IReadOnlyList<ClassTypeCountDto> ClassTypeBreakdown);
 
 // ---- Student / Staff-student Dashboard ----
 public sealed record StudentMiniBookingDto(Guid BookingId, Guid ClassSessionId, string ClassTypeName, string InstructorName, DateTime StartAt, DateTime EndAt);
@@ -67,7 +66,12 @@ public sealed record StudentDashboardDto(
     IReadOnlyList<StudentMiniBookingDto> RecentBookings);
 
 // ---- Reports ----
+// Sprint 19: parasız & operasyonel. Ders atfı FİİLÎ hocaya (ActualInstructorProfileId ?? InstructorProfileId).
 public sealed record InstructorReportRowDto(
     Guid InstructorProfileId, string InstructorName,
-    int Sessions, int Bookings, int PresentCount,
-    decimal? EstimatedEarning, IReadOnlyList<ClassTypeCountDto> ClassTypeBreakdown);
+    int Sessions,             // verilen (held) ders sayısı
+    int GroupSessions,        // grup dersleri
+    int IndividualSessions,   // bireysel dersler
+    int DistinctStudents,     // ders verilen farklı (Present) öğrenci sayısı
+    int SubstitutionSessions, // bu hocanın fiilen verdiği ama planlananın farklı olduğu dersler
+    IReadOnlyList<ClassTypeCountDto> ClassTypeBreakdown);

@@ -73,15 +73,13 @@ public sealed class MarkAttendanceHandler : ICommandHandler<MarkAttendanceComman
         await _marker.MarkAsync(studioId, session, userId, _currentUser.StudioRole, request.Items, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
 
-        return await AttendanceViews.BuildSessionViewAsync(
-            _db, _clock, studioId, session, AttendanceViews.CanSeePackages(_currentUser), cancellationToken);
+        return await AttendanceViews.BuildSessionViewAsync(_db, _clock, studioId, session, cancellationToken);
     }
 }
 
 // ---- Tek booking yoklaması ----
 public sealed record MarkBookingAttendanceCommand(
-    Guid BookingId, AttendanceStatus Status, string? Notes = null, bool GrantMakeupCredit = false,
-    bool ConsumePackageCredit = false, Guid? StudentPackageId = null)
+    Guid BookingId, AttendanceStatus Status, string? Notes = null, bool GrantMakeupCredit = false)
     : ICommand<Unit>, IStudioWriteRequest;
 
 public sealed class MarkBookingAttendanceValidator : AbstractValidator<MarkBookingAttendanceCommand>
@@ -126,8 +124,7 @@ public sealed class MarkBookingAttendanceHandler : ICommandHandler<MarkBookingAt
 
         var items = new[]
         {
-            new AttendanceMarkInput(booking.Id, request.Status, request.Notes, request.GrantMakeupCredit,
-                request.ConsumePackageCredit, request.StudentPackageId),
+            new AttendanceMarkInput(booking.Id, request.Status, request.Notes, request.GrantMakeupCredit),
         };
         await _marker.MarkAsync(studioId, session, userId, _currentUser.StudioRole, items, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);

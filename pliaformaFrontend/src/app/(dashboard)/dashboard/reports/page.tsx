@@ -94,27 +94,29 @@ function InstructorsReport({ month }: { month: string }) {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setD(await reportService.instructors(month)); setErr(null); }
+    try { setD(await reportService.instructors({ month })); setErr(null); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Rapor yüklenemedi."); }
     finally { setLoading(false); }
   }, [month]);
   useEffect(() => { load(); }, [load]);
 
+  // Sprint 19: parasız & operasyonel — ders sayısı, grup/bireysel, ders verilen öğrenci, hoca değişikliği.
   return (
     <div className="space-y-4">
       {err && <Alert kind="error">{err}</Alert>}
       <Table>
-        <THead><TR><TH>Hoca</TH><TH>Ders</TH><TH>Rezervasyon</TH><TH>Geldi</TH><TH>Tahmini kazanç</TH></TR></THead>
+        <THead><TR><TH>Hoca</TH><TH>Ders</TH><TH>Grup</TH><TH>Bireysel</TH><TH>Öğrenci</TH><TH>Hoca değişikliği</TH></TR></THead>
         <tbody>
-          {loading ? <TableEmpty colSpan={5}>Yükleniyor…</TableEmpty>
-            : !d || d.instructors.length === 0 ? <TableEmpty colSpan={5}>Hoca yok.</TableEmpty>
+          {loading ? <TableEmpty colSpan={6}>Yükleniyor…</TableEmpty>
+            : !d || d.instructors.length === 0 ? <TableEmpty colSpan={6}>Hoca yok.</TableEmpty>
             : d.instructors.map((i) => (
               <TR key={i.instructorProfileId}>
                 <TD className="font-medium">{i.instructorName}</TD>
                 <TD>{i.sessions}</TD>
-                <TD>{i.bookings}</TD>
-                <TD>{i.presentCount}</TD>
-                <TD>{i.estimatedEarning != null ? money(i.estimatedEarning) : "—"}</TD>
+                <TD>{i.groupSessions}</TD>
+                <TD>{i.individualSessions}</TD>
+                <TD>{i.distinctStudents}</TD>
+                <TD>{i.substitutionSessions > 0 ? <Badge tone="rose">{i.substitutionSessions}</Badge> : "—"}</TD>
               </TR>
             ))}
         </tbody>

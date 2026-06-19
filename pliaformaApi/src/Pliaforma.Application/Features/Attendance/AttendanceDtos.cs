@@ -2,10 +2,8 @@ using Pliaforma.Domain.Enums;
 
 namespace Pliaforma.Application.Features.Attendance;
 
-/// <summary>Öğrencinin aktif paketi özeti (yalnızca Owner/StudioAdmin görür — finans gizliliği).</summary>
-public sealed record StudentPackageBriefDto(Guid Id, string Name, int CurrentCreditBalance, DateOnly? ValidUntil);
-
-/// <summary>Bir seansın yoklama listesinde tek satır (booking + öğrenci + yoklama durumu + paket bilgisi).</summary>
+/// <summary>Bir seansın yoklama listesinde tek satır (booking + öğrenci + yoklama durumu).
+/// Sprint 19: paket tüketimi yoklamadan çıkarıldı — paket alanları yok (Regular = sözleşme).</summary>
 public sealed record AttendanceItemDto(
     Guid BookingId,
     Guid StudentProfileId,
@@ -13,9 +11,7 @@ public sealed record AttendanceItemDto(
     AttendanceStatus? Status,
     string? Notes,
     bool CreditGranted,
-    bool PackageConsumed,
-    DateTime? MarkedAt,
-    IReadOnlyList<StudentPackageBriefDto>? Packages);
+    DateTime? MarkedAt);
 
 /// <summary>Seans bazlı yoklama görünümü (seans bilgisi + aktif rezervasyonlar).</summary>
 public sealed record SessionAttendanceDto(
@@ -28,14 +24,12 @@ public sealed record SessionAttendanceDto(
     bool CanMark,
     IReadOnlyList<AttendanceItemDto> Items);
 
-/// <summary>Batch/single yoklama işaretleme girişi.</summary>
+/// <summary>Batch/single yoklama işaretleme girişi. Sprint 19: paket tüketimi alanları kaldırıldı.</summary>
 public sealed record AttendanceMarkInput(
     Guid BookingId,
     AttendanceStatus Status,
     string? Notes = null,
-    bool GrantMakeupCredit = false,
-    bool ConsumePackageCredit = false,
-    Guid? StudentPackageId = null);
+    bool GrantMakeupCredit = false);
 
 /// <summary>Öğrencinin kendi katılım geçmişinde tek kayıt.</summary>
 public sealed record MyAttendanceDto(
