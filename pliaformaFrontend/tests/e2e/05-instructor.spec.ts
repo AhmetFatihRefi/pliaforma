@@ -15,6 +15,15 @@ test.describe("Instructor flow", () => {
     await expect(page.getByRole("heading", { name: "Ders Programı" })).toBeVisible();
   });
 
+  test("Sprint 25: instructor schedule'da 'Bugünü onayla' görmez (manager-only)", async ({ page }) => {
+    await page.goto("/dashboard/schedule");
+    await expect(page.getByRole("heading", { name: "Ders Programı" })).toBeVisible();
+    // Stüdyo-geneli toplu onay yalnız Owner/StudioAdmin; instructor görmemeli.
+    await expect(page.getByRole("button", { name: "Bugünü onayla" })).toHaveCount(0);
+    // Grup düzeni / İşlenmedi / Fiilî hoca da manager-only → görünmez.
+    await expect(page.getByRole("button", { name: "Grup düzeni" })).toHaveCount(0);
+  });
+
   test("instructor finans uçlarını görmez", async ({ page }) => {
     // Finansal yönetim linkleri Instructor sidebar'ında olmamalı
     await expect(page.getByRole("link", { name: "Raporlar" })).toHaveCount(0);

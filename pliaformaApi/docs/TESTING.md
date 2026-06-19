@@ -29,13 +29,26 @@ doğrulaması için `http://localhost:3000` (Next proxy) verilebilir.
 | `sprint8-smoke.sh` | rol bazlı dashboard + rapor + finans gizliliği |
 | `sprint9-smoke.sh` | bildirim üretimi + idempotency + in-app okuma + yetki |
 | `sprint10-smoke.sh` | platform admin + suspend/reactivate + abonelik + health + tenant bypass yok |
+| `sprint13-smoke.sh` | abonelik yaşam döngüsü + plan kataloğu + gelir defteri + lisans |
+| `sprint16-smoke.sh` | e-posta doğrulama + şifre sıfırlama (log e-posta) |
+| `sprint17-smoke.sh` | davet akışı + stüdyosuz kullanıcı (invite-only onboarding) |
+| `sprint18a/18b-smoke.sh` | sözleşme-tabanlı program; Regular booking sözleşme zorunlu; self-booking 410 |
+| `sprint19-smoke.sh` | ders onayı + fiilî hoca + hoca raporu (parasız); Present tamamlar, Absent→telafi |
+| `sprint20-smoke.sh` | telafi akışı + closure + not-delivered telafisi; makeup add Owner/Admin |
+| `sprint21-smoke.sh` | reschedule + chain-shift (telafi YOK); zincir atomik |
+| `sprint22-smoke.sh` | grup düzeni değişikliği (telafisiz); preview=dry-run; atomik abort |
+| `sprint23-smoke.sh` | sözleşme amendment + borç (hesaplanır); immutable geçmiş; currency mismatch 400 |
+| `sprint24-smoke.sh` | öğrenci self-servis sözleşme/borç (salt-okunur); cross-student izolasyon; Instructor 403 |
+| `sprint25-smoke.sh` | confirm scope (Instructor kendi dersi; confirm-today manager-only); pilot-gate regresyon |
+| `security-audit-smoke.sh` | **release-gate**: yetki + tenant izolasyonu + platform bypass + suspend (konsolide) |
 
-Çalıştırma (tümü):
+> `sprint7-smoke` ve `sprint14-smoke` paket modeli dormant olduğundan **deprecate** (dormancy korunur);
+> `sprint15-smoke` self-apply JoinCode kaldırıldığından invite-only guard'a indirgendi.
+
+Çalıştırma (tüm suite — kanonik koşucu, **27 smoke**):
 ```bash
 cd pliaformaApi
-for s in auth sprint1 role-permission sprint2 sprint3 sprint4 sprint5 sprint6 sprint7 sprint8 sprint9 sprint10; do
-  bash scripts/${s/sprint/sprint}-smoke.sh || echo "FAIL: $s"
-done
+bash scripts/run-smokes.sh http://localhost:5132   # hepsini sırayla koşar, özet verir
 ```
 > **Not (Windows/Git Bash):** curl Türkçe karakterleri (ş/ı) geçersiz UTF-8 gönderebilir → smoke gövdelerinde
 > ASCII metin kullanılır (backend doğru; bu bir test-script kısıtıdır).
@@ -62,15 +75,23 @@ npm run test:e2e:headed     # görünür tarayıcı (debug)
 npm run test:e2e:report     # son HTML raporu
 ```
 
-### Kapsam (8 spec, 25 test)
-- **01-auth:** rol bazlı login yönlendirme (Owner/Student/Instructor→/dashboard, PlatformAdmin→/platform), logout, korumalı sayfa oturumsuz→/login.
-- **02-owner:** dashboard kartları + sidebar + /reports + /students (seed öğrenci) + /instructors.
-- **03-schedule:** ders kartı + rezervasyonlar modalı + yoklama modalı.
-- **04-student:** book-classes/my-bookings/my-packages/my-payments/my-attendance/notifications + finans linkleri yok + seed bildirimi.
-- **05-instructor:** dashboard + schedule + finans uçları yok.
-- **06-platform:** overview + studios + detay + **suspend/reactivate round-trip** + health + /dashboard bypass→/platform.
-- **07-notification-bell:** bell + dropdown + okundu işaretleme + unread düşer.
-- **08-responsive (mobil, Pixel 7):** /dashboard, /schedule, /platform/studios mobilde ana içerik + yatay taşma yok.
+### Kapsam (16 spec, 56 test)
+- **01-auth:** rol bazlı login yönlendirme, logout, korumalı sayfa oturumsuz→/login.
+- **02-owner:** dashboard kartları + sidebar + /reports (parasız) + /students + /instructors (rate yok).
+- **03-schedule:** ders kartı + onay/fiilî-hoca/işlenmedi + grup düzeni + reschedule mod A/B + rezervasyon/yoklama modalı.
+- **04-student:** salt-okunur ekranlar + self-booking 410 + sidebar paket/self-service yok.
+- **05-instructor:** dashboard + schedule + finans uçları yok + **'Bugünü onayla' görünmez (Sprint 25)**.
+- **06-platform:** overview + studios + detay + suspend/reactivate + health + bypass→/platform.
+- **07-notification-bell:** bell + dropdown + okundu + unread düşer.
+- **08-responsive (mobil, Pixel 7):** /dashboard, /schedule, /platform/studios mobilde taşma yok.
+- **09-subscription:** owner abonelik (auto-trial) + platform plan kataloğu + stüdyo gelir/abonelik.
+- **10-package-v2:** paket UI yok (sözleşme ana akış) — deprecation doğrulaması.
+- **11-self-service:** /register + check-email + öğrenci sözleşme/borç görünümü + JoinCode kartı yok.
+- **12-email-auth:** şifre sıfırlama + reset/verify token state.
+- **13-landing:** public landing hero + CTA'lar.
+- **14-invitations:** Davetlerim + invite-only onboarding + hoca daveti kabul.
+- **15-contracts:** 9999 sentinel gizli + sözleşme amendment + borç özeti.
+- **16-makeup:** owner telafi özeti + öğrenci telafi salt-okunur.
 
 ## 4. Full compose ile test
 ```bash

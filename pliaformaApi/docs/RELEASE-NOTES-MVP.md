@@ -20,9 +20,18 @@ yeterli; bazı kurumsal özellikler **bilinçli olarak** ertelenmiştir (aşağ�
   iptal/geri-açma.
 - **Erteleme & telafi:** reschedule, toplu kapanış, **telafi kredisi ledger**, makeup seans tüketimi.
 - **Yoklama:** Present/Absent/Excused/LateCancel, opsiyonel telafi kredisi, aylık özet.
-- **Paket & ödeme:** PackagePlan, StudentPackage (ledger), manuel Payment (dinamik Overdue), yoklama→paket düşüm
-  (atomik, idempotent). **Manuel takip** (online tahsilat yok).
-- **Dashboard & rapor:** rol bazlı read-only özetler, hoca tahmini kazancı, ödeme/hoca raporu (finans gizliliği).
+- **Sözleşme-tabanlı program (Sprint 18+):** StudentContract program/booking'in **tek yetki kaynağı**; sözleşmeden
+  çok-haftalık program üretimi (grup reuse + bireysel); Regular booking sözleşme zorunlu (paket gate kaldırıldı,
+  paket modeli **dormant**); öğrenci self-booking kapalı (410).
+- **Program operasyonları:** tek ders erteleme, **chain-shift** (zincirleme kaydırma, telafisiz), **grup düzeni
+  değişikliği** (öğrenci tek tek taşıma, telafisiz, preview=dry-run, atomik), **fiilî hoca** (substitution, rapora
+  fiilîye yazar), **not-delivered** (stüdyo-kaynaklı → telafi), ders onayı (Sprint 25: Instructor kendi dersi /
+  confirm-today manager-only).
+- **Sözleşme amendment & borç (Sprint 23–24):** ek ders/süre/ücret (append-only ledger, immutable); sözleşme-bazlı
+  borç (hesaplanır, stored balance yok); öğrenci self-servis sözleşme/borç görünümü (salt-okunur, per-currency).
+- **Ödeme:** manuel Payment (dinamik Overdue), opsiyonel sözleşmeye bağlama. PackagePlan/StudentPackage ledger
+  **dormant** (DB'de kalır, üründen çıktı). **Manuel takip** (online tahsilat yok).
+- **Dashboard & rapor:** rol bazlı read-only özetler, hoca raporu **parasız** (ders/öğrenci sayısı + hoca değişikliği).
 - **Bildirim:** ders/ödeme hatırlatma (idempotent worker + manuel trigger), in-app bildirim merkezi + zil.
   Kanallar **InApp/Log** (gerçek SMS/WhatsApp/e-posta YOK).
 - **Platform admin:** stüdyo listesi/detay, suspend/reactivate, abonelik iskeleti, overview/health.
@@ -42,7 +51,10 @@ distributed lock · CSP başlığı.
 - **Bildirim worker** tek-instance varsayar; çok-instance'ta nadir dedup yarışı (DB index korur).
 - **Bildirim teslimi** yalnız in-app/log; "gönderildi" gerçek bir dış teslim anlamına gelmez.
 - **Backend HTTP healthcheck yok** (aspnet imajında araç yok); resilience `restart` + nginx retry ile.
-- Otomatik birim/entegrasyon testi yok; doğrulama smoke (13) + Playwright E2E (25) ile.
+- **Staff borç özeti tek-currency MVP varsayımı** (stüdyo tek para birimiyle çalışır); öğrenci tarafı per-currency
+  güvenli. Çoklu-currency staff roll-up teknik borç ([TECH-DEBT.md](TECH-DEBT.md)).
+- **Dashboard/reports/package-plans `₺` sabit** (TRY varsayımı); pilot tek-currency için yeterli.
+- Otomatik birim/entegrasyon testi yok; doğrulama **smoke (27)** + Playwright **E2E (56)** ile.
 
 ## Pilotta test edilmesi gerekenler
 - Her rolün giriş/yönlendirme akışı + günlük kullanım (rezervasyon, yoklama, paket/ödeme kaydı).
@@ -58,7 +70,11 @@ distributed lock · CSP başlığı.
 3. **Güvenlik sertleştirme +**: CSP (nonce), 2FA, hesap kilitleme, bağımlılık tarama gate (CI).
 4. **Timezone tam modeli** + paket expiry job + recurring booking.
 
+## Sürüm geçmişi (etiketler)
+Sprint 0–24 tamamlandı; en güncel etiket **v0.13.0-pilot** (Sprint 24 — öğrenci self-servis sözleşme/borç).
+Sprint 25 pilot sertleştirme (UX/güvenlik polish + runbook + tech-debt) ayrı koşuda.
+
 ## Doğrulama durumu (bu sürüm)
-`dotnet build` 0/0 · `npm run build` temiz · **13 smoke** (12 sprint + security) ✅ · **Playwright E2E 25/25**
-(2x deterministic + prod compose build) ✅ · same-origin ✅ · full `docker compose up --build` ✅ · backup/restore
-döngüsü doğrulandı ✅. Detay: [TESTING.md](TESTING.md).
+`dotnet build` 0/0 · `next build` temiz · **migration yok / has-pending No changes** · **27 smoke** (sprint +
+security-audit release-gate) ✅ · **Playwright E2E 56** ✅ · same-origin ✅ · full `docker compose up --build` ✅ ·
+backup/restore döngüsü doğrulandı ✅. Detay: [TESTING.md](TESTING.md).

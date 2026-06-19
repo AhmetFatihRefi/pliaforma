@@ -1,9 +1,10 @@
 import { cn } from "@/lib/cn";
 
 export function Table({ children, className }: { children: React.ReactNode; className?: string }) {
+  // Sprint 25: geniş tablolar mobilde kırpılmasın; yatay kaydırılabilir olsun (overflow-x-auto).
   return (
-    <div className={cn("overflow-hidden rounded-2xl border border-border bg-surface", className)}>
-      <table className="w-full text-sm">{children}</table>
+    <div className={cn("overflow-x-auto rounded-2xl border border-border bg-surface", className)}>
+      <table className="w-full min-w-max text-sm sm:min-w-0">{children}</table>
     </div>
   );
 }

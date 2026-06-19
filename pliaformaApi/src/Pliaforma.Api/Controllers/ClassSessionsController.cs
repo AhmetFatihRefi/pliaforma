@@ -58,6 +58,8 @@ public sealed class ClassSessionsController : ApiControllerBase
     public Task<IActionResult> Confirm(Guid id, CancellationToken ct) =>
         Send(new ConfirmSessionCommand(id), "Ders onaylandı.", ct);
 
+    // Sprint 25: stüdyo-geneli toplu onay yalnız Owner/StudioAdmin (Instructor → 403).
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("confirm-today")]
     public Task<IActionResult> ConfirmToday(CancellationToken ct) =>
         Send(new ConfirmTodaySessionsCommand(), "Bugünün dersleri onaylandı.", ct);

@@ -67,7 +67,8 @@ public sealed class ConfirmSessionHandler : ICommandHandler<ConfirmSessionComman
             .FirstOrDefaultAsync(s => s.Id == request.SessionId && s.StudioId == studioId, cancellationToken)
             ?? throw new NotFoundException("Ders seansı", request.SessionId);
 
-        await SchedulingAccess.RequireManageableInstructorAsync(_db, _currentUser, studioId, session.InstructorProfileId, cancellationToken);
+        // Sprint 25: Owner/Admin her dersi; Instructor yalnız planlanan VEYA fiilî hocası kendisi olan dersi onaylar.
+        await SchedulingAccess.EnsureCanConfirmSessionAsync(_db, _currentUser, studioId, session, cancellationToken);
 
         if (session.Status == ClassSessionStatus.Cancelled)
             throw new ConflictException("İptal edilmiş ders onaylanamaz.");

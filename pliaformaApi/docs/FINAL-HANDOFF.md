@@ -78,37 +78,30 @@ verilmez).
 
 ---
 
-## 8. Infra Versioning (ÖNEMLİ — pilot öncesi blocker)
-Git durumu (doğrulandı 2026-06-17):
+## 8. Infra Versioning (ÇÖZÜLDÜ — Seçenek A uygulandı)
+Git durumu (güncel, Sprint 25):
 
-| Klasör/dosya | Git repo? | Takip eden |
-|---|---|---|
-| `pliaformaApi/` (src, scripts, docs) | ✅ repo (`main`, **0 commit**, remote `pliaforma-backend.git`) | pliaformaApi |
-| `pliaformaFrontend/` (src, tests) | ✅ repo (`main`, **0 commit**, remote `pliaforma-frontend.git`) | pliaformaFrontend |
-| **root `Pliaforma/`** | ❌ git repo DEĞİL | — |
-| `docker-compose.dev.yml` / `prod.yml` | kökte | **HİÇBİRİ** |
-| `deploy/` (nginx.conf, .env.example) | kökte | **HİÇBİRİ** |
-| `ops/` (backup/restore) | kökte | **HİÇBİRİ** |
-| root `.gitignore`, `README.md` | kökte | **HİÇBİRİ** |
+| Klasör/dosya | Git durumu |
+|---|---|
+| **root `Pliaforma/`** | ✅ **root monorepo** (tek git repo, `main`, commit'li + etiketli) |
+| `pliaformaApi/` (src, scripts, docs) | ✅ root repoda |
+| `pliaformaFrontend/` (src, tests) | ✅ root repoda |
+| `docker-compose.dev.yml` / `prod.yml` | ✅ tracked (root) |
+| `deploy/` (nginx.conf, .env.example) | ✅ tracked (root) |
+| `ops/` (backup/restore) | ✅ tracked (root) |
+| `README.md`, `.gitignore` | ✅ tracked (root) |
 
-> ⚠️ **BLOCKER:** Deploy/compose/ops katmanı **hiçbir git reposunda değil**. Ayrıca her iki uygulama reposunda da
-> **henüz hiç commit yok**. Pilot deploy'da VPS'e `git clone` ile yalnız backend+frontend gelir; **stack'i
-> ayağa kaldıran compose + nginx + ops dosyaları gelmez** → manuel kopyalama gerekir (kırılgan, sürümlenmez,
-> reviewlanmaz). Bu, ilk commit ÖNCESİNDE çözülmeli (0 commit olması bunu sıfır maliyetle yapmak için ideal an).
+> ✅ **ÇÖZÜLDÜ:** Eski "0 commit / infra versiyonlanmamış" blocker'ı artık geçerli değil. **Seçenek A (root
+> monorepo)** uygulandı: `pliaformaApi/`, `pliaformaFrontend/`, `deploy/`, `ops/`, compose **tek repoda**.
+> Tek `git clone` → compose relative build context'leri (`./pliaformaApi`, `./pliaformaFrontend`) olduğu gibi
+> çalışır; stack'i ayağa kaldıran tüm dosyalar sürümlenir/review'lanır.
+>
+> Sürüm: Sprint 0–24 commit'li; en güncel etiket **v0.13.0-pilot**. Sprint 25 (pilot sertleştirme) ayrı koşuda.
+> Pilot deploy: VPS'e tek `git clone` + `docker compose -f docker-compose.prod.yml up -d --build`
+> (bkz. [PILOT-DEPLOY-DRY-RUN.md](PILOT-DEPLOY-DRY-RUN.md)).
 
-### Öneri (kod taşımadım — yalnız öneri)
-**Seçenek A — root monorepo (PİLOT İÇİN ÖNERİLEN):** kökte tek repo; `pliaformaApi/`, `pliaformaFrontend/`,
-`deploy/`, `ops/`, compose hepsi birlikte. Tek `git clone` → compose `./pliaformaApi`/`./pliaformaFrontend` build
-context'leri olduğu gibi çalışır. Tek doğruluk kaynağı, en az hareketli parça. Maliyet: mevcut iki ayrı
-remote'un konsolidasyonu — **0 commit olduğu için kayıpsız ve şimdi yapmak en kolayı.**
-
-**Seçenek B — ayrı `pliaforma-infra` repo:** backend/frontend ayrı kalır (mevcut 2-repo tasarımına sadık);
-3. repo deploy/ops/compose'u tutar. Ama compose build context'leri (`./pliaformaApi`) üç reponun **kardeş
-dizin düzeninde** checkout'unu VEYA compose'un **registry'den hazır image** kullanmasını gerektirir (ek CI).
-Çoklu-takım/bağımsız ölçekleme istenirse daha uygun; pilot için fazladan karmaşa.
-
-**Neden A daha temiz:** pilot tek operatör + tek sunucu; compose relative build context'leri zaten monorepo
-varsayıyor; 0 commit = sıfır migrasyon maliyeti. B'yi ileride (CI + registry + çok-takım) tercih edebilirsin.
+**İleride (opsiyonel):** çok-takım/bağımsız ölçekleme gerekirse registry + CI ile image-tabanlı dağıtıma geçilebilir
+(Seçenek B); pilot tek operatör + tek sunucu için monorepo yeterli ve en az hareketli parçaya sahip.
 
 ---
 

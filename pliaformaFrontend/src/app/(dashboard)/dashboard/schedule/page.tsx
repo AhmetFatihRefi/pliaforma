@@ -40,6 +40,10 @@ const fmtDate = (iso: string) => iso.slice(0, 10);
 
 export default function SchedulePage() {
   const { instructors, isManager } = useInstructors();
+  // Sprint 25: Instructor için useInstructors yalnız kendi profilini döndürür → kendi dersini ayırt et.
+  const myInstructorId = isManager ? null : instructors[0]?.id ?? null;
+  const canConfirm = (s: ClassSessionDto) =>
+    isManager || (myInstructorId != null && (s.instructorProfileId === myInstructorId || s.actualInstructorProfileId === myInstructorId));
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
   const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(addDays(todayStr(), 7));
@@ -128,7 +132,7 @@ export default function SchedulePage() {
           <p className="mt-1 text-sm text-muted">Ders seanslarını görüntüleyin ve oluşturun.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" loading={busyId === "today"} onClick={confirmToday}>Bugünü onayla</Button>
+          {isManager && <Button variant="secondary" loading={busyId === "today"} onClick={confirmToday}>Bugünü onayla</Button>}
           {isManager && <Button variant="secondary" onClick={() => setGroupChangeOpen(true)}>Grup düzeni</Button>}
           <Button variant="secondary" onClick={() => setBulkOpen(true)}>Toplu slot</Button>
           <Button onClick={() => setCreateOpen(true)}>+ Yeni seans</Button>
@@ -207,7 +211,7 @@ export default function SchedulePage() {
                             <Button variant="ghost" size="sm" onClick={() => setRescheduleFor(s)}>Ertele</Button>
                             <Button variant="ghost" size="sm" onClick={() => setCancelFor(s)}>İptal et</Button>
                             {isManager && <Button variant="ghost" size="sm" onClick={() => markNotDelivered(s)}>İşlenmedi</Button>}
-                            <Button size="sm" loading={busyId === s.id} onClick={() => confirmSession(s)}>Onayla</Button>
+                            {canConfirm(s) && <Button size="sm" loading={busyId === s.id} onClick={() => confirmSession(s)}>Onayla</Button>}
                           </>
                         )}
                         <Button variant="ghost" size="sm" onClick={() => setBookingsFor(s)}>Rezervasyonlar</Button>

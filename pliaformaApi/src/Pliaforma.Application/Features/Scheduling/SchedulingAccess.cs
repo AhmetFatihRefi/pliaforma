@@ -45,4 +45,26 @@ internal static class SchedulingAccess
             .Select(p => (Guid?)p.Id)
             .FirstOrDefaultAsync(ct);
     }
+
+    /// <summary>
+    /// Ders onayı yetkisi (Sprint 25): Owner/StudioAdmin her dersi onaylayabilir; Instructor yalnızca
+    /// PLANLANAN veya FİİLÎ hocası KENDİSİ olan dersi. Başka hocanın dersi → 403.
+    /// </summary>
+    public static async Task EnsureCanConfirmSessionAsync(
+        IAppDbContext db, ICurrentUserService user, Guid studioId, ClassSession session, CancellationToken ct)
+    {
+        var role = user.StudioRole;
+        if (role is StudioRole.Owner or StudioRole.StudioAdmin)
+            return;
+
+        if (role == StudioRole.Instructor)
+        {
+            var myProfileId = await CurrentInstructorProfileIdAsync(db, user, studioId, ct);
+            if (myProfileId is { } mine
+                && (session.InstructorProfileId == mine || session.ActualInstructorProfileId == mine))
+                return;
+        }
+
+        throw new ForbiddenException("Bu dersi onaylama yetkiniz yok.");
+    }
 }

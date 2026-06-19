@@ -108,8 +108,12 @@ IST(){ TZ='Europe/Istanbul' date "$@" 2>/dev/null || date "$@"; }
 PASTS=$(mksess "$(IST -d '+2 days' +%Y-%m-%dT16:00:00)")
 PBOOK=$(body "$(post "/api/studio/class-sessions/$PASTS/bookings" "{\"studentProfileId\":\"$GS\"}" "$OTOK")" | jget id)
 psql "UPDATE \"ClassSessions\" SET \"StartAt\"='2020-01-06 10:00:00', \"EndAt\"='2020-01-06 11:00:00' WHERE \"Id\"='$PASTS';"
-post "/api/studio/bookings/$PBOOK/attendance" '{"status":"Present"}' "$OTOK" >/dev/null
-ok "Geçmiş seans + yoklama (Present); yaklaşan rezervasyonlar programdan"
+# Tekil yoklama ucu PUT'tur (POST → 405). Sessiz başarısızlığa karşı: HTTP kodu kontrol + Attendance kaydı doğrula.
+ATT_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE/api/studio/bookings/$PBOOK/attendance" -H 'Content-Type: application/json' -H "Authorization: Bearer $OTOK" -d '{"status":"Present"}')
+case "$ATT_CODE" in 2*) ;; *) echo "  HATA: geçmiş ders yoklaması başarısız (HTTP $ATT_CODE)"; exit 1;; esac
+ATT_OK=$(docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "SELECT count(*) FROM \"Attendances\" WHERE \"ClassBookingId\"='$PBOOK';" 2>/dev/null)
+[ "${ATT_OK:-0}" -ge 1 ] || { echo "  HATA: yoklama HTTP $ATT_CODE döndü ama Attendance kaydı oluşmadı"; exit 1; }
+ok "Geçmiş seans + yoklama (Present, HTTP $ATT_CODE, kayıt doğrulandı); yaklaşan rezervasyonlar programdan"
 
 echo "== 7) Ödemeler + telafi kredisi (Sprint 18b: paket satışı kaldırıldı — paket modeli dormant) =="
 DUESOON=$(IST -d '+1 day' +%Y-%m-%d)
