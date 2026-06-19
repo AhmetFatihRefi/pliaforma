@@ -52,6 +52,7 @@ import type {
   StudentDto,
   StudentMakeupCreditsDto,
   MakeupEligibleStudentDto,
+  ChainShiftPreviewDto,
   StudentSessionDto,
   StudioClosureActionType,
   StudioClosureDto,
@@ -175,6 +176,11 @@ export const classSessionService = {
   // Sprint 20: ders hoca nedeniyle işlenemedi → Cancelled + öğrencilere telafi.
   notDelivered: (id: string, reason?: string) =>
     api<null>(`/api/studio/class-sessions/${id}/not-delivered`, { method: "POST", body: { reason } }),
+  // Sprint 21: zincirleme kaydırma önizleme + uygula.
+  chainShiftPreview: (id: string, newStartAt: string) =>
+    api<ChainShiftPreviewDto>(`/api/studio/class-sessions/${id}/chain-shift/preview?newStartAt=${encodeURIComponent(newStartAt)}`),
+  chainShift: (id: string, input: { newStartAt: string; reason?: string }) =>
+    api<ChainShiftPreviewDto>(`/api/studio/class-sessions/${id}/chain-shift`, { method: "POST", body: input }),
 };
 
 // Kapalı günler / toplu işlemler (/api/studio/closures) — Owner/StudioAdmin

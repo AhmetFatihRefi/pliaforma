@@ -26,6 +26,16 @@ test.describe("Schedule / booking / attendance (Owner)", () => {
     await expect(page.getByRole("button", { name: "İşlenmedi" }).first()).toBeVisible();
   });
 
+  test("Sprint 21: taşıma modalında mod A/B (tek taşı + zincirleme kaydır)", async ({ page }) => {
+    await page.getByRole("button", { name: "Ertele" }).first().click();
+    await expect(page.getByRole("heading", { name: /Tarih\/Saat değiştir/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sadece bu dersi taşı" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Zincirleme kaydır" })).toBeVisible();
+    // Zincirleme moda geçince "Önizle" çıkar.
+    await page.getByRole("button", { name: "Zincirleme kaydır" }).click();
+    await expect(page.getByRole("button", { name: "Önizle" })).toBeVisible();
+  });
+
   test("rezervasyonlar modalı açılır", async ({ page }) => {
     await page.getByRole("button", { name: "Rezervasyonlar" }).first().click();
     // Modal başlığı: "<grup> — Rezervasyonlar"

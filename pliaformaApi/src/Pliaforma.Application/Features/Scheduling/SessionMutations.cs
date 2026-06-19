@@ -165,8 +165,14 @@ public sealed class RescheduleClassSessionHandler : ICommandHandler<RescheduleCl
         var newStart = DateTime.SpecifyKind(request.NewStartAt, DateTimeKind.Unspecified);
         var newEnd = newStart.AddMinutes(classType.DefaultDurationMinutes);
 
-        // Geçmiş zaman + hoca çakışması + müsaitlik penceresi (kendi kaydını hariç tutarak).
-        await SessionRules.EnsureValidAsync(_db, _currentUser, _clock, studioId, session.InstructorProfileId, newStart, newEnd, excludeId: session.Id, cancellationToken);
+        // Sprint 21: HARD = geçmiş + HOCA çakışması + ÖĞRENCİ çakışması (kendini hariç). Müsaitlik ADVISORY (engellemez).
+        // KeepBookings=true ise dersin booked öğrencileri yeni saatte başka derse giremez; false ise bookings iptal → öğrenci aranmaz.
+        var movingStudentIds = request.KeepBookings
+            ? await _db.ClassBookings
+                .Where(b => b.StudioId == studioId && b.ClassSessionId == session.Id && b.Status == ClassBookingStatus.Booked)
+                .Select(b => b.StudentProfileId).ToListAsync(cancellationToken)
+            : new List<Guid>();
+        await SessionRules.EnsureMovableAsync(_db, _clock, studioId, session.InstructorProfileId, movingStudentIds, newStart, newEnd, new[] { session.Id }, cancellationToken);
 
         if (!request.KeepBookings)
         {

@@ -42,6 +42,17 @@ public sealed class ClassSessionsController : ApiControllerBase
     public Task<IActionResult> Reschedule(Guid id, RescheduleClassSessionCommand command, CancellationToken ct) =>
         Send(command with { Id = id }, "Ders seansı ertelendi.", ct);
 
+    // Sprint 21: zincirleme kaydırma önizleme + uygula (Owner/StudioAdmin).
+    [Authorize(Roles = "Owner,StudioAdmin")]
+    [HttpGet("{id:guid}/chain-shift/preview")]
+    public Task<IActionResult> ChainShiftPreview(Guid id, [FromQuery] DateTime newStartAt, CancellationToken ct) =>
+        Send(new PreviewChainShiftQuery(id, newStartAt), ct: ct);
+
+    [Authorize(Roles = "Owner,StudioAdmin")]
+    [HttpPost("{id:guid}/chain-shift")]
+    public Task<IActionResult> ChainShift(Guid id, ChainShiftSessionCommand command, CancellationToken ct) =>
+        Send(command with { SessionId = id }, "Dersler zincirleme kaydırıldı.", ct);
+
     // ---- Sprint 19: ders onayı + fiilî hoca ----
     [HttpPost("{id:guid}/confirm")]
     public Task<IActionResult> Confirm(Guid id, CancellationToken ct) =>

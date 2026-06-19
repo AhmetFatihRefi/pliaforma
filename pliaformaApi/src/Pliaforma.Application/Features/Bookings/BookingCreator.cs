@@ -69,12 +69,8 @@ public sealed class BookingCreator
                 throw new ConflictException("Bu ders bireysel; başka öğrenci eklenemez (önce bireyselliği kaldırın).");
         }
 
-        // Sprint 18a: öğrenci çakışması — aynı öğrenci örtüşen iki Booked derse giremez.
-        var studentBusy = await _db.ClassBookings.AnyAsync(
-            b => b.StudioId == studioId && b.StudentProfileId == student.Id && b.Status == ClassBookingStatus.Booked
-                 && b.ClassSession!.Status == ClassSessionStatus.Scheduled
-                 && b.ClassSession.StartAt < session.EndAt && session.StartAt < b.ClassSession.EndAt, ct);
-        if (studentBusy)
+        // Sprint 18a: öğrenci çakışması — aynı öğrenci örtüşen iki Booked derse giremez. (Sprint 21: ortak helper.)
+        if (await SessionRules.StudentConflictAsync(_db, studioId, new[] { student.Id }, session.StartAt, session.EndAt, System.Array.Empty<Guid>(), ct))
             throw new ConflictException("Öğrencinin bu zaman aralığında başka bir dersi var.");
 
         // Kullanılabilir-hak hesabı + makeup kredisi tüketimi için öğrenci satırını kilitle (serileştirme).

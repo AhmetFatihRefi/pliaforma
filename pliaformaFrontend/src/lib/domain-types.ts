@@ -393,6 +393,22 @@ export interface MakeupEligibleStudentDto {
   availableCredits: number;
 }
 
+// Sprint 21: zincirleme kaydırma önizleme/sonuç.
+export interface ChainShiftItemDto {
+  sessionId: string;
+  classTypeName: string;
+  oldStartAt: string;
+  oldEndAt: string;
+  newStartAt: string;
+  newEndAt: string;
+  conflictReason?: string | null; // "past" | "instructor" | "student"
+  outsideAvailability: boolean;
+}
+export interface ChainShiftPreviewDto {
+  affected: ChainShiftItemDto[];
+  canApply: boolean;
+}
+
 export interface MakeupPolicyDto {
   monthlyManualCreditLimit: number;
   defaultCreditValidityDays: number;

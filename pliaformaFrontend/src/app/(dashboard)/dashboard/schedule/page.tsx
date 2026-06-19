@@ -11,6 +11,7 @@ import {
   type ClassBookingDto,
   type ClassSessionDto,
   type ClassSessionKind,
+  type ChainShiftPreviewDto,
   type ClassTypeDto,
   type MakeupEligibleStudentDto,
   type SessionAttendanceDto,
@@ -241,7 +242,7 @@ export default function SchedulePage() {
         <CancelSessionModal session={cancelFor} onClose={() => setCancelFor(null)} onDone={() => { setCancelFor(null); load(); }} />
       )}
       {rescheduleFor && (
-        <RescheduleModal session={rescheduleFor} onClose={() => setRescheduleFor(null)} onDone={() => { setRescheduleFor(null); load(); }} />
+        <RescheduleModal session={rescheduleFor} isManager={isManager} onClose={() => setRescheduleFor(null)} onDone={() => { setRescheduleFor(null); load(); }} />
       )}
       {attendanceFor && (
         <AttendanceModal session={attendanceFor} onClose={() => setAttendanceFor(null)} />
@@ -462,58 +463,116 @@ function CancelSessionModal({ session, onClose, onDone }: { session: ClassSessio
   );
 }
 
-function RescheduleModal({ session, onClose, onDone }: { session: ClassSessionDto; onClose: () => void; onDone: () => void }) {
+const conflictLabel = (r?: string | null) =>
+  r === "past" ? "geçmiş zaman" : r === "instructor" ? "hoca çakışması" : r === "student" ? "öğrenci çakışması" : null;
+
+// Sprint 21: tek ders taşıma — mod A (sadece bu ders) / mod B (zincirleme kaydır + önizleme).
+function RescheduleModal({ session, onClose, onDone, isManager }: {
+  session: ClassSessionDto; onClose: () => void; onDone: () => void; isManager: boolean;
+}) {
+  const [mode, setMode] = useState<"single" | "chain">("single");
   const [newStartAt, setNewStartAt] = useState(session.startAt.slice(0, 16));
   const [reason, setReason] = useState("");
   const [keepBookings, setKeepBookings] = useState(true);
   const [grant, setGrant] = useState(false);
+  const [preview, setPreview] = useState<ChainShiftPreviewDto | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
+  const setStart = (v: string) => { setNewStartAt(v); setPreview(null); };
+
+  const submitSingle = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
-    setErr(null);
+    setBusy(true); setErr(null);
     try {
       await classSessionService.reschedule(session.id, {
-        newStartAt,
-        reason: reason || undefined,
-        keepBookings,
-        grantMakeupCredit: !keepBookings && grant,
+        newStartAt, reason: reason || undefined, keepBookings, grantMakeupCredit: !keepBookings && grant,
       });
       onDone();
-    } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : "Ertelenemedi.");
-    } finally {
-      setBusy(false);
-    }
+    } catch (e2) { setErr(e2 instanceof ApiError ? e2.message : "Taşınamadı."); }
+    finally { setBusy(false); }
+  };
+
+  const doPreview = async () => {
+    setBusy(true); setErr(null);
+    try { setPreview(await classSessionService.chainShiftPreview(session.id, newStartAt)); }
+    catch (e2) { setErr(e2 instanceof ApiError ? e2.message : "Önizleme alınamadı."); }
+    finally { setBusy(false); }
+  };
+
+  const applyChain = async () => {
+    setBusy(true); setErr(null);
+    try { await classSessionService.chainShift(session.id, { newStartAt, reason: reason || undefined }); onDone(); }
+    catch (e2) { setErr(e2 instanceof ApiError ? e2.message : "Uygulanamadı."); }
+    finally { setBusy(false); }
   };
 
   return (
-    <Modal open onClose={onClose} title={`${session.classTypeName} — Ertele`}>
-      <form onSubmit={submit} className="space-y-4">
+    <Modal open onClose={onClose} title={`${session.classTypeName} — Tarih/Saat değiştir`}>
+      <div className="space-y-4">
         {err && <Alert kind="error">{err}</Alert>}
+
+        {isManager && (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant={mode === "single" ? "primary" : "secondary"} onClick={() => setMode("single")}>Sadece bu dersi taşı</Button>
+            <Button size="sm" variant={mode === "chain" ? "primary" : "secondary"} onClick={() => { setMode("chain"); setPreview(null); }}>Zincirleme kaydır</Button>
+          </div>
+        )}
+
         <FormField label="Yeni başlangıç" hint="Bitiş, grup süresinden otomatik hesaplanır">
-          <Input type="datetime-local" value={newStartAt} onChange={(e) => setNewStartAt(e.target.value)} required />
+          <Input type="datetime-local" value={newStartAt} onChange={(e) => setStart(e.target.value)} required />
         </FormField>
         <FormField label="Gerekçe (ops.)">
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
         </FormField>
-        <label className="flex items-center gap-2 text-sm text-foreground">
-          <input type="checkbox" checked={keepBookings} onChange={(e) => setKeepBookings(e.target.checked)} />
-          Mevcut rezervasyonlar korunsun (seansla taşınır)
-        </label>
-        {!keepBookings && (
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input type="checkbox" checked={grant} onChange={(e) => setGrant(e.target.checked)} />
-            Rezervasyonlar iptal edilince telafi kredisi ver
-          </label>
+
+        {mode === "single" ? (
+          <form onSubmit={submitSingle} className="space-y-3">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <input type="checkbox" checked={keepBookings} onChange={(e) => setKeepBookings(e.target.checked)} />
+              Mevcut rezervasyonlar korunsun (seansla taşınır — telafi üretmez)
+            </label>
+            {!keepBookings && (
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" checked={grant} onChange={(e) => setGrant(e.target.checked)} />
+                Rezervasyonlar iptal edilince telafi kredisi ver
+              </label>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
+              <Button type="submit" loading={busy}>Taşı</Button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-muted">Zincirleme kaydırma telafi üretmez. Sonraki dersler aynı miktarda kayar; boşlukta zincir durur. Çakışma varsa hiçbir ders kaymaz.</p>
+            {preview && (
+              <div className="max-h-60 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
+                <p className="text-xs font-semibold text-muted">{preview.affected.length} ders kayacak:</p>
+                {preview.affected.map((it) => (
+                  <div key={it.sessionId} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-foreground">{it.classTypeName}</span>
+                    <span className="text-muted">{fmtDate(it.oldStartAt)} {fmtTime(it.oldStartAt)} → {fmtDate(it.newStartAt)} {fmtTime(it.newStartAt)}</span>
+                    <span className="flex gap-1">
+                      {conflictLabel(it.conflictReason) && <Badge tone="danger">{conflictLabel(it.conflictReason)}</Badge>}
+                      {it.outsideAvailability && <Badge tone="warning">müsaitlik dışı</Badge>}
+                    </span>
+                  </div>
+                ))}
+                {!preview.canApply && <p className="text-xs text-danger">Çakışma var — zincir uygulanamaz. Saati değiştirin veya tek ders taşıyın.</p>}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
+              {!preview ? (
+                <Button loading={busy} onClick={doPreview}>Önizle</Button>
+              ) : (
+                <Button loading={busy} disabled={!preview.canApply} onClick={applyChain}>Uygula ({preview.affected.length})</Button>
+              )}
+            </div>
+          </div>
         )}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
-          <Button type="submit" loading={busy}>Ertele</Button>
-        </div>
-      </form>
+      </div>
     </Modal>
   );
 }
