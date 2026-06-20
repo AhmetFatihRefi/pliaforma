@@ -35,6 +35,9 @@ services:
       Seed__AdminEmail: ${SEED_ADMIN_EMAIL:-admin@pliaforma.local}
       Seed__AdminPassword: ${SEED_ADMIN_PASSWORD:-Admin!2345}
       Cors__Origins__0: http://localhost:3000
+      # Test/doğrulama ortamı e-posta doğrulamayı PROD gibi ZORLAR (smoke/E2E verification akışları yeşil kalsın).
+      # Kullanıcının interaktif LOKAL dev'i (appsettings.Development.json) bunu false bırakır (onay beklemez).
+      Auth__RequireEmailVerification: "true"
     depends_on:
       postgres:
         condition: service_healthy

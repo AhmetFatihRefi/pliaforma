@@ -1,7 +1,9 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Common.Settings;
 using Pliaforma.Application.Common.Text;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
@@ -40,15 +42,19 @@ public sealed class RegisterHandler : ICommandHandler<RegisterCommand, AuthResul
     private readonly AuthSessionService _session;
     private readonly EmailTokenIssuer _tokens;
     private readonly IEmailSender _email;
+    private readonly IDateTime _clock;
+    private readonly AuthSettings _auth;
 
     public RegisterHandler(IAppDbContext db, IPasswordHasher hasher, AuthSessionService session,
-        EmailTokenIssuer tokens, IEmailSender email)
+        EmailTokenIssuer tokens, IEmailSender email, IDateTime clock, IOptions<AuthSettings> auth)
     {
         _db = db;
         _hasher = hasher;
         _session = session;
         _tokens = tokens;
         _email = email;
+        _clock = clock;
+        _auth = auth.Value;
     }
 
     public async Task<AuthResult> Handle(RegisterCommand request, CancellationToken cancellationToken)
@@ -71,11 +77,20 @@ public sealed class RegisterHandler : ICommandHandler<RegisterCommand, AuthResul
         };
         _db.Users.Add(user);
 
-        // E-posta doğrulama token'ı + gönderim (dev → loglanır; Disabled → no-op).
-        var rawToken = await _tokens.IssueAsync(
-            user.Id, AuthTokenPurpose.EmailVerification, AuthTokenRules.EmailVerificationTtl, request.Ip, null, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
-        await _email.SendEmailVerificationAsync(user.Email, user.FullName, rawToken, cancellationToken);
+        if (_auth.RequireEmailVerification)
+        {
+            // E-posta doğrulama token'ı + gönderim (dev → loglanır; Disabled → no-op).
+            var rawToken = await _tokens.IssueAsync(
+                user.Id, AuthTokenPurpose.EmailVerification, AuthTokenRules.EmailVerificationTtl, request.Ip, null, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+            await _email.SendEmailVerificationAsync(user.Email, user.FullName, rawToken, cancellationToken);
+        }
+        else
+        {
+            // Auth.RequireEmailVerification=false (dev): otomatik doğrulanmış say, e-posta gönderme.
+            user.EmailVerifiedAt = _clock.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         return await _session.IssueAsync(user, activeMembership: null, request.Ip, cancellationToken);
     }

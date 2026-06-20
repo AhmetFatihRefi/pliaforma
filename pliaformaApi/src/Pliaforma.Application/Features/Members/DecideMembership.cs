@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Common.Settings;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -18,12 +20,14 @@ public sealed class AcceptMembershipHandler : ICommandHandler<AcceptMembershipCo
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
+    private readonly AuthSettings _auth;
 
-    public AcceptMembershipHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
+    public AcceptMembershipHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, IOptions<AuthSettings> auth)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _auth = auth.Value;
     }
 
     public async Task<Unit> Handle(AcceptMembershipCommand request, CancellationToken cancellationToken)
@@ -40,12 +44,16 @@ public sealed class AcceptMembershipHandler : ICommandHandler<AcceptMembershipCo
         // Sprint 17 Rev2: üyelik AKTİFLEŞİRKEN, üye olacak kullanıcının e-postası doğrulanmış olmalı.
         // HER İKİ YÖN için geçerli: InvitedByStudio (hoca daveti kabulü) + RequestedByUser (öğrenci başvuru
         // onayı). Doğrulanmamışsa active yapılmaz. Reddetmede bu şart yoktur.
-        var verified = await _db.Users
-            .Where(u => u.Id == membership.UserId)
-            .Select(u => u.EmailVerifiedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (verified is null)
-            throw new ForbiddenException("Üyeliğin aktifleşmesi için önce e-posta adresi doğrulanmalıdır.");
+        // Auth.RequireEmailVerification=false (dev) → bu kapı uygulanmaz (prod'da açılır).
+        if (_auth.RequireEmailVerification)
+        {
+            var verified = await _db.Users
+                .Where(u => u.Id == membership.UserId)
+                .Select(u => u.EmailVerifiedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (verified is null)
+                throw new ForbiddenException("Üyeliğin aktifleşmesi için önce e-posta adresi doğrulanmalıdır.");
+        }
 
         membership.Status = MembershipStatus.Active;
         membership.AcceptedAt = _clock.UtcNow;

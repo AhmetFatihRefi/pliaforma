@@ -78,6 +78,10 @@ builder.Services
     .AddPersistence(connectionString)
     .AddInfrastructure(builder.Configuration, builder.Environment.IsProduction());
 
+// Kimlik/doğrulama ayarları (e-posta doğrulama zorunluluğu vb.). Varsayılan PROD-güvenli (zorunlu).
+builder.Services.Configure<Pliaforma.Application.Common.Settings.AuthSettings>(
+    builder.Configuration.GetSection(Pliaforma.Application.Common.Settings.AuthSettings.SectionName));
+
 // Hatırlatma worker'ı (idempotent; Notifications:WorkerEnabled ile kapatılabilir).
 builder.Services.AddHostedService<Pliaforma.Api.Workers.ReminderBackgroundService>();
 

@@ -1,8 +1,10 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Common.Settings;
 using Pliaforma.Application.Common.Text;
 using Pliaforma.Application.Features.Platform;
 using Pliaforma.Domain.Entities;
@@ -44,9 +46,11 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
     private readonly ILogger<RegisterStudioHandler> _logger;
     private readonly EmailTokenIssuer _tokens;
     private readonly IEmailSender _email;
+    private readonly AuthSettings _auth;
 
     public RegisterStudioHandler(IAppDbContext db, IPasswordHasher hasher, AuthSessionService session,
-        IDateTime clock, ILogger<RegisterStudioHandler> logger, EmailTokenIssuer tokens, IEmailSender email)
+        IDateTime clock, ILogger<RegisterStudioHandler> logger, EmailTokenIssuer tokens, IEmailSender email,
+        IOptions<AuthSettings> auth)
     {
         _db = db;
         _hasher = hasher;
@@ -55,6 +59,7 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
         _logger = logger;
         _tokens = tokens;
         _email = email;
+        _auth = auth.Value;
     }
 
     public async Task<AuthResult> Handle(RegisterStudioCommand request, CancellationToken cancellationToken)
@@ -128,10 +133,19 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
 
         // Sprint 16 (Seçenek A): stüdyo akışı bozulmaz; owner EmailVerifiedAt=null kalır + doğrulama maili
         // gönderilir. Dashboard'da uyarı gösterilir; doğrulama bu sprintte ZORUNLU değil.
-        var rawToken = await _tokens.IssueAsync(
-            user.Id, AuthTokenPurpose.EmailVerification, AuthTokenRules.EmailVerificationTtl, request.Ip, null, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
-        await _email.SendEmailVerificationAsync(user.Email, user.FullName, rawToken, cancellationToken);
+        // Auth.RequireEmailVerification=false (dev) → owner otomatik doğrulanmış say, e-posta gönderme.
+        if (_auth.RequireEmailVerification)
+        {
+            var rawToken = await _tokens.IssueAsync(
+                user.Id, AuthTokenPurpose.EmailVerification, AuthTokenRules.EmailVerificationTtl, request.Ip, null, cancellationToken);
+            await _db.SaveChangesAsync(cancellationToken);
+            await _email.SendEmailVerificationAsync(user.Email, user.FullName, rawToken, cancellationToken);
+        }
+        else
+        {
+            user.EmailVerifiedAt = _clock.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
 
         return await _session.IssueAsync(user, membership, request.Ip, cancellationToken);
     }
