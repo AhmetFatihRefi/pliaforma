@@ -121,7 +121,8 @@ post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"$DUESOON
 PJ=$(post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-02-01\"}" "$OTOK"); PP=$(body "$PJ" | jget id)
 post "/api/studio/payments/$PP/mark-paid" '{}' "$OTOK" >/dev/null                                                  # paid
 post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-01-01\"}" "$OTOK" >/dev/null          # overdue
-post "/api/studio/students/$GS/makeup-credits/grant" '{"amount":1,"notes":"E2E demo"}' "$OTOK" >/dev/null
+# Sprint 27: 2 kredi → telafi TALEBİ akışı (rezerve + approve consume + retry başlığı) için headroom.
+post "/api/studio/students/$GS/makeup-credits/grant" '{"amount":2,"notes":"E2E demo"}' "$OTOK" >/dev/null
 ok "due-soon/paid/overdue ödeme + telafi kredisi"
 
 echo "== 8) Bildirim üretimi (reminder trigger) =="

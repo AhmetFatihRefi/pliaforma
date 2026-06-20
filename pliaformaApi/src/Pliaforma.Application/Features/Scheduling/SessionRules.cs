@@ -51,8 +51,38 @@ internal static class SessionRules
             ct);
 
     /// <summary>
+    /// Sprint 27 (çift yönlü blok): aynı HOCA için verilen aralıkta onay bekleyen (Pending) bir telafi talebi var mı?
+    /// (yalnız Pending bloklar; Rejected/Withdrawn/Approved DAHİL DEĞİL — Approved zaten gerçek seans olarak ayrıca
+    /// taranır). <paramref name="excludeRequestId"/> approve sırasında onaylanan talebin kendini bloklamaması için.
+    /// </summary>
+    public static Task<bool> PendingInstructorConflictAsync(
+        IAppDbContext db, Guid studioId, Guid instructorProfileId, DateTime startAt, DateTime endAt,
+        Guid? excludeRequestId, CancellationToken ct) =>
+        db.MakeupRequests.AnyAsync(
+            r => r.StudioId == studioId
+                 && r.RequestedInstructorProfileId == instructorProfileId
+                 && r.Status == MakeupRequestStatus.Pending
+                 && (excludeRequestId == null || r.Id != excludeRequestId)
+                 && r.StartAt < endAt && startAt < r.EndAt, ct);
+
+    /// <summary>
+    /// Sprint 27 (çift yönlü blok): verilen ÖĞRENCİLERDEN biri için verilen aralıkta onay bekleyen (Pending) bir telafi
+    /// talebi var mı? (yalnız Pending bloklar). <paramref name="excludeRequestId"/> approve self-block önler.
+    /// </summary>
+    public static Task<bool> PendingStudentConflictAsync(
+        IAppDbContext db, Guid studioId, IReadOnlyCollection<Guid> studentProfileIds, DateTime startAt, DateTime endAt,
+        Guid? excludeRequestId, CancellationToken ct) =>
+        db.MakeupRequests.AnyAsync(
+            r => r.StudioId == studioId
+                 && studentProfileIds.Contains(r.StudentProfileId)
+                 && r.Status == MakeupRequestStatus.Pending
+                 && (excludeRequestId == null || r.Id != excludeRequestId)
+                 && r.StartAt < endAt && startAt < r.EndAt, ct);
+
+    /// <summary>
     /// Taşıma (reschedule / chain-shift) HARD kuralları (ihlalde fırlatır): geçmiş zaman, HOCA çakışması
     /// ve ÖĞRENCİ çakışması (ikisi de <paramref name="excludeSessionIds"/> dışındaki Scheduled seanslara karşı).
+    /// Sprint 27: ayrıca PENDING telafi talebi blokları (hoca + öğrenci) da zorlanır → pending gerçekten saati bloklar.
     /// Hoca MÜSAİTLİĞİ burada ZORLANMAZ (Sprint 21 kararı: availability ADVISORY) — çağıran uyarı olarak gösterir.
     /// Bireysellik/kapasite taşımada değişmez (öğrenci sayısı aynı kalır) → kontrol edilmez.
     /// </summary>
@@ -76,6 +106,13 @@ internal static class SessionRules
         if (studentProfileIds.Count > 0
             && await StudentConflictAsync(db, studioId, studentProfileIds, startAt, endAt, excludeSessionIds, ct))
             throw new ConflictException("Öğrencinin bu zaman aralığında başka bir dersi var.");
+
+        if (await PendingInstructorConflictAsync(db, studioId, instructorProfileId, startAt, endAt, null, ct))
+            throw new ConflictException("Hoca bu zaman aralığında onay bekleyen bir telafi talebine atanmış.");
+
+        if (studentProfileIds.Count > 0
+            && await PendingStudentConflictAsync(db, studioId, studentProfileIds, startAt, endAt, null, ct))
+            throw new ConflictException("Öğrencinin bu zaman aralığında onay bekleyen bir telafi talebi var.");
     }
 
     /// <summary>
@@ -93,5 +130,9 @@ internal static class SessionRules
 
         if (await HasConflictAsync(db, studioId, instructorProfileId, startAt, endAt, excludeId, ct))
             throw new BusinessRuleException("Hoca bu zaman aralığında başka bir derse atanmış.");
+
+        // Sprint 27 (çift yönlü blok): pending bir telafi talebinin saatine gerçek ders oluşturulamaz (hoca tarafı).
+        if (await PendingInstructorConflictAsync(db, studioId, instructorProfileId, startAt, endAt, null, ct))
+            throw new BusinessRuleException("Hoca bu zaman aralığında onay bekleyen bir telafi talebine atanmış.");
     }
 }

@@ -613,6 +613,77 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("MakeupCreditTransactions", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.MakeupRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClassTypeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DecisionByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("EndAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("RequestedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RequestedInstructorProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ResultingBookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ResultingClassSessionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("StudentProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudioId", "Status");
+
+                    b.HasIndex("StudioId", "RequestedInstructorProfileId", "Status");
+
+                    b.HasIndex("StudioId", "StudentProfileId", "Status");
+
+                    b.ToTable("MakeupRequests", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2022,6 +2093,17 @@ namespace Pliaforma.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("StudentProfile");
+
+                    b.Navigation("Studio");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.MakeupRequest", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Studio");
                 });

@@ -80,6 +80,27 @@ public enum MakeupCreditReason
     InstructorNotDelivered = 11,
 }
 
+/// <summary>
+/// Telafi dersi talebinin durumu (Sprint 27 — Instructor Makeup Request). Pending talep gerçek ders DEĞİLDİR;
+/// programda "Onay bekliyor" görünür, hoca+öğrenci saatini bloklar, krediyi REZERVE eder (ledger'a yazılmaz).
+/// Approve → gerçek Makeup ClassSession+ClassBooking materyalize edilir, kredi Use(−1) ile gerçekten tüketilir.
+/// Rejected/Withdrawn kayıtlar AUDIT için saklanır (soft-delete edilmez) ve çakışmaya DAHİL EDİLMEZ.
+/// </summary>
+public enum MakeupRequestStatus
+{
+    /// <summary>Onay bekliyor (aktif): saati bloklar + krediyi rezerve eder.</summary>
+    Pending = 0,
+
+    /// <summary>Owner/StudioAdmin onayladı → gerçek telafi dersine dönüştü (kredi tüketildi).</summary>
+    Approved = 1,
+
+    /// <summary>Owner/StudioAdmin reddetti → slot boşaldı, rezerve serbest (ledger değişmez).</summary>
+    Rejected = 2,
+
+    /// <summary>Talebi açan (veya manager) geri çekti → slot boşaldı, rezerve serbest.</summary>
+    Withdrawn = 3,
+}
+
 /// <summary>Toplu kapanış (StudioClosure) işleminin etkilenen seanslara uygulayacağı aksiyon.</summary>
 public enum StudioClosureActionType
 {

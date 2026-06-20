@@ -73,6 +73,11 @@ public sealed class BookingCreator
         if (await SessionRules.StudentConflictAsync(_db, studioId, new[] { student.Id }, session.StartAt, session.EndAt, System.Array.Empty<Guid>(), ct))
             throw new ConflictException("Öğrencinin bu zaman aralığında başka bir dersi var.");
 
+        // Sprint 27 (çift yönlü blok): öğrencinin bu aralıkta onay bekleyen telafi talebi varsa booking eklenemez.
+        // (Approve yolu talebi önce Approved'a çevirdiğinden onaylanan talep burada Pending değildir → self-block yok.)
+        if (await SessionRules.PendingStudentConflictAsync(_db, studioId, new[] { student.Id }, session.StartAt, session.EndAt, null, ct))
+            throw new ConflictException("Öğrencinin bu zaman aralığında onay bekleyen bir telafi talebi var.");
+
         // Kullanılabilir-hak hesabı + makeup kredisi tüketimi için öğrenci satırını kilitle (serileştirme).
         await _creditLock.LockStudentAsync(studioId, student.Id, ct);
 
@@ -149,7 +154,9 @@ public sealed class BookingCreator
         // Sprint 20: STRICT — telafi hakkı yoksa kimse (Owner/Admin dâhil) telafi dersine ekleyemez.
         // `AllowMakeupBookingWithoutCreditByAdmin` politikası DORMANT (yeni akışta kullanılmaz). Öğrenci satırı
         // kilitli olduğundan (row-lock) son kredi iki eşzamanlı rezervasyonda iki kez harcanamaz.
-        var balance = await _credits.GetBalanceAsync(studioId, studentProfileId, ct);
+        // Sprint 27: KULLANILABİLİR bakiye (ledger − aktif Pending talep) — rezerve edilmiş kredi tekrar harcanamaz.
+        // (Approve yolu talebi önce Approved'a çevirir → flip-first; bu yüzden onaylanan talep kendini bloklamaz.)
+        var balance = await _credits.GetAvailableBalanceAsync(studioId, studentProfileId, ct);
         if (balance <= 0)
             throw new ConflictException("Telafi hakkı olmayan öğrenci telafi (makeup) dersine eklenemez.");
         _credits.Use(studioId, studentProfileId, 1, bookingId, bookedByUserId);

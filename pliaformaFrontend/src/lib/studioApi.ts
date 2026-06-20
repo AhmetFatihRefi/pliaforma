@@ -30,6 +30,8 @@ import type {
   InstructorSelfDto,
   InstructorsReportDto,
   MakeupPolicyDto,
+  MakeupRequestDto,
+  MakeupRequestStatus,
   NotificationDto,
   PaymentsReportDto,
   ReminderRunResultDto,
@@ -238,6 +240,28 @@ export const makeupCreditService = {
 // Telafi kredileri — öğrenci self (/api/student)
 export const studentMakeupCreditService = {
   mine: () => api<MyMakeupCreditsDto>("/api/student/makeup-credits"),
+};
+
+// Sprint 27: telafi dersi talepleri — personel tarafı (/api/studio). Instructor → kendi; Owner/StudioAdmin → tümü.
+export const makeupRequestService = {
+  list: (status?: MakeupRequestStatus) =>
+    api<MakeupRequestDto[]>(`/api/studio/makeup-requests${status ? `?status=${status}` : ""}`),
+  // Sprint 27: talep açılabilecek öğrenciler (Instructor → kendi sözleşmeli + kredili; manager → tümü).
+  eligibleStudents: () => api<MakeupEligibleStudentDto[]>("/api/studio/makeup-requests/eligible-students"),
+  get: (id: string) => api<MakeupRequestDto>(`/api/studio/makeup-requests/${id}`),
+  create: (input: { studentProfileId: string; classTypeId: string; startAt: string; description?: string; requestedInstructorProfileId?: string }) =>
+    api<MakeupRequestDto>("/api/studio/makeup-requests", { method: "POST", body: input }),
+  withdraw: (id: string) =>
+    api<MakeupRequestDto>(`/api/studio/makeup-requests/${id}/withdraw`, { method: "POST", body: {} }),
+  approve: (id: string, input: { startAt?: string; requestedInstructorProfileId?: string; classTypeId?: string } = {}) =>
+    api<MakeupRequestDto>(`/api/studio/makeup-requests/${id}/approve`, { method: "POST", body: input }),
+  reject: (id: string, input: { decisionNote?: string } = {}) =>
+    api<MakeupRequestDto>(`/api/studio/makeup-requests/${id}/reject`, { method: "POST", body: input }),
+};
+
+// Sprint 27: telafi talepleri — öğrenci self (/api/student) salt-okunur.
+export const studentMakeupRequestService = {
+  mine: () => api<MakeupRequestDto[]>("/api/student/makeup-requests"),
 };
 
 // Yoklama — personel tarafı (/api/studio)

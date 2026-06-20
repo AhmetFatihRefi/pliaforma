@@ -135,16 +135,20 @@ public sealed class GetMakeupEligibleStudentsHandler : IQueryHandler<GetMakeupEl
     {
         var studioId = _currentUser.RequireStudioId();
 
-        // Pasif olmayan + kullanılabilir telafi hakkı (bakiye) > 0 öğrenciler. Tek toplu sorgu.
+        // Pasif olmayan + KULLANILABİLİR telafi hakkı > 0 öğrenciler (Sprint 27: ledger − aktif Pending talep
+        // rezervesi). Pending bir talebin rezerve ettiği kredi burada "kullanılabilir" sayılmaz. Tek toplu sorgu.
         var rows = await (
             from sp in _db.StudentProfiles
             where sp.StudioId == studioId && sp.Status != StudentStatus.Inactive
             let bal = _db.MakeupCreditTransactions
                 .Where(t => t.StudioId == studioId && t.StudentProfileId == sp.Id)
                 .Sum(t => (int?)t.Amount) ?? 0
-            where bal > 0
+            let pending = _db.MakeupRequests
+                .Count(r => r.StudioId == studioId && r.StudentProfileId == sp.Id
+                            && r.Status == MakeupRequestStatus.Pending)
+            where bal - pending > 0
             orderby sp.FullName
-            select new MakeupEligibleStudentDto(sp.Id, sp.FullName, bal))
+            select new MakeupEligibleStudentDto(sp.Id, sp.FullName, bal - pending))
             .ToListAsync(cancellationToken);
 
         return rows;

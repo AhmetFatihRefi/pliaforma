@@ -463,6 +463,37 @@ export interface MakeupEligibleStudentDto {
   availableCredits: number;
 }
 
+// Sprint 27: telafi dersi talebi (Instructor Makeup Request & Pending Schedule Blocks).
+export type MakeupRequestStatus = "Pending" | "Approved" | "Rejected" | "Withdrawn";
+
+export const makeupRequestStatusLabels: Record<MakeupRequestStatus, string> = {
+  Pending: "Onay bekliyor", Approved: "Onaylandı", Rejected: "Reddedildi", Withdrawn: "Geri çekildi",
+};
+
+export interface MakeupRequestDto {
+  id: string;
+  studentProfileId: string;
+  studentName: string;
+  requestedInstructorProfileId: string;
+  instructorName: string;
+  classTypeId: string;
+  classTypeName: string;
+  startAt: string; // ISO (studio-yerel duvar saati)
+  endAt: string;
+  status: MakeupRequestStatus;
+  description?: string | null;
+  requestedByUserId: string;
+  decisionByUserId?: string | null;
+  decidedAt?: string | null;
+  decisionNote?: string | null;
+  resultingClassSessionId?: string | null;
+  resultingBookingId?: string | null;
+  createdAt: string;
+  /** Yalnız Pending kayıtlarda hesaplanır (owner ekranı çakışma durumu). */
+  hasConflict: boolean;
+  conflictReason?: string | null;
+}
+
 // Sprint 21: zincirleme kaydırma önizleme/sonuç.
 export interface ChainShiftItemDto {
   sessionId: string;

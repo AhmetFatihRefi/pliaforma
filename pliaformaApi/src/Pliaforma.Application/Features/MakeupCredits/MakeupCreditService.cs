@@ -29,6 +29,29 @@ public sealed class MakeupCreditService
             .Where(t => t.StudioId == studioId && t.StudentProfileId == studentProfileId)
             .SumAsync(t => (int?)t.Amount, ct) ?? 0;
 
+    /// <summary>
+    /// Aktif (Pending) telafi talebi sayısı = ÖRTÜK rezerve (Sprint 27). Her Pending talep 1 krediyi rezerve eder;
+    /// ledger'a reserve hareketi YAZILMAZ. <paramref name="excludeRequestId"/> approve sırasında onaylanan talebi
+    /// dışlamak için (kendini bloklamasın → flip-first sonrası gerek kalmaz ama defansif).
+    /// </summary>
+    public Task<int> ActivePendingRequestCountAsync(
+        Guid studioId, Guid studentProfileId, Guid? excludeRequestId, CancellationToken ct)
+        => _db.MakeupRequests.CountAsync(
+            r => r.StudioId == studioId && r.StudentProfileId == studentProfileId
+                 && r.Status == Domain.Enums.MakeupRequestStatus.Pending
+                 && (excludeRequestId == null || r.Id != excludeRequestId), ct);
+
+    /// <summary>
+    /// KULLANILABİLİR bakiye (Sprint 27 — TEK NOKTA): ledgerBalance − aktif Pending talep sayısı. Pending talepler
+    /// krediyi rezerve sayar; bu yüzden talep-create, öğrenci/hoca telafi görünümü, owner approval ekranı ve mevcut
+    /// makeup-booking uygunluk kontrolleri AYNI bu değeri kullanmalı (tutarlılık). Reserve ledger'a yazılmaz; approve'da
+    /// gerçek Use(−1) çalışır, reject/withdraw ledger'a dokunmaz.
+    /// </summary>
+    public async Task<int> GetAvailableBalanceAsync(
+        Guid studioId, Guid studentProfileId, CancellationToken ct, Guid? excludeRequestId = null)
+        => await GetBalanceAsync(studioId, studentProfileId, ct)
+           - await ActivePendingRequestCountAsync(studioId, studentProfileId, excludeRequestId, ct);
+
     /// <summary>Stüdyo politikası (yoksa bellek-içi varsayılan; persist edilmez).</summary>
     public async Task<StudioMakeupPolicy> GetPolicyAsync(Guid studioId, CancellationToken ct)
         => await _db.StudioMakeupPolicies.FirstOrDefaultAsync(p => p.StudioId == studioId, ct)

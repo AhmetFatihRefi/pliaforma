@@ -26,6 +26,8 @@ const nav: NavItem[] = [
   // Sprint 26 ek (v1.1.1): global yönetim ekranları yalnız stüdyo yetkilisine; Instructor kendi programını görür.
   { href: "/dashboard/students", label: "Öğrenciler", icon: "☺", roles: MANAGER },
   { href: "/dashboard/makeup-credits", label: "Telafi Kredileri", icon: "♺", roles: MANAGER },
+  // Sprint 27: hocaların telafi dersi taleplerini onaylama ekranı (yalnız stüdyo yetkilisi).
+  { href: "/dashboard/makeup-requests", label: "Telafi Talepleri", icon: "⏳", roles: MANAGER },
   { href: "/dashboard/reports", label: "Raporlar", icon: "▣", roles: MANAGER },
   // Sprint 18b: Paket Planları ana akıştan kaldırıldı (paket modeli dormant; onboarding sözleşme tabanlı).
   { href: "/dashboard/payments", label: "Ödemeler", icon: "₺", roles: MANAGER },

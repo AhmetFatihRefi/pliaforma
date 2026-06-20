@@ -1,22 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { studentBookingService } from "@/lib/studioApi";
+import { studentBookingService, studentMakeupRequestService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
-import type { MyBookingDto } from "@/lib/domain-types";
+import type { MakeupRequestDto, MyBookingDto } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card } from "@/components/ui";
 
 const fmt = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 
 export default function MyBookingsPage() {
   const [items, setItems] = useState<MyBookingDto[]>([]);
+  const [makeupReqs, setMakeupReqs] = useState<MakeupRequestDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await studentBookingService.myBookings());
+      const [b, reqs] = await Promise.all([
+        studentBookingService.myBookings(),
+        // Sprint 27: kendi telafi talepleri (salt-okuma). Hata olursa programı bozma.
+        studentMakeupRequestService.mine().catch(() => [] as MakeupRequestDto[]),
+      ]);
+      setItems(b);
+      setMakeupReqs(reqs);
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Rezervasyonlar yüklenemedi.");
@@ -64,6 +71,24 @@ export default function MyBookingsPage() {
                 <Badge tone="success">Rezerve</Badge>
                 <Button variant="ghost" size="sm" onClick={() => cancel(b)}>İptal</Button>
               </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Sprint 27: telafi dersi talepleri (salt-okuma). Onay bekleyen / onaylanmış telafi dersleri. */}
+      {makeupReqs.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-foreground">Telafi Dersleri</h2>
+          {makeupReqs.map((r) => (
+            <Card key={r.id} className={`flex items-center justify-between ${r.status === "Pending" ? "border-dashed opacity-80" : ""}`}>
+              <div>
+                <p className="font-medium text-foreground">{r.classTypeName}</p>
+                <p className="text-sm text-muted">{r.instructorName} · {fmt(r.startAt)}</p>
+              </div>
+              <Badge tone={r.status === "Approved" ? "success" : "warning"}>
+                {r.status === "Approved" ? "Onaylı telafi" : "Onay bekleyen telafi talebi"}
+              </Badge>
             </Card>
           ))}
         </div>

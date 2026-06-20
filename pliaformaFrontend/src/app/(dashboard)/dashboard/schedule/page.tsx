@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, studentService } from "@/lib/studioApi";
+import { attendanceService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService, studentService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceItemDto,
@@ -17,6 +17,7 @@ import {
   type GroupChangeCandidateDto,
   type GroupChangePreviewDto,
   type MakeupEligibleStudentDto,
+  type MakeupRequestDto,
   type SessionAttendanceDto,
   type StudentDto,
   attendanceStatusLabels,
@@ -50,11 +51,14 @@ export default function SchedulePage() {
   const [instructorFilter, setInstructorFilter] = useState("");
   const [classTypeFilter, setClassTypeFilter] = useState("");
   const [sessions, setSessions] = useState<ClassSessionDto[]>([]);
+  // Sprint 27: onay bekleyen telafi talepleri (Instructor → kendi; Owner/StudioAdmin → tümü) — programda gösterilir.
+  const [pendingReqs, setPendingReqs] = useState<MakeupRequestDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
   const [groupChangeOpen, setGroupChangeOpen] = useState(false);
   const [bookFor, setBookFor] = useState<ClassSessionDto | null>(null);
   const [bookingsFor, setBookingsFor] = useState<ClassSessionDto | null>(null);
@@ -74,11 +78,17 @@ export default function SchedulePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setSessions(await classSessionService.list({
-        from, to,
-        instructorProfileId: instructorFilter || undefined,
-        classTypeId: classTypeFilter || undefined,
-      }));
+      const [s, reqs] = await Promise.all([
+        classSessionService.list({
+          from, to,
+          instructorProfileId: instructorFilter || undefined,
+          classTypeId: classTypeFilter || undefined,
+        }),
+        // Sprint 27: onay bekleyen telafi talepleri (rol-scope backend'de). Hata olursa programı bozma.
+        makeupRequestService.list("Pending").catch(() => [] as MakeupRequestDto[]),
+      ]);
+      setSessions(s);
+      setPendingReqs(reqs);
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Program yüklenemedi.");
@@ -91,10 +101,35 @@ export default function SchedulePage() {
     load();
   }, [load]);
 
+  // Sprint 27: telafi talepleri seçili tarih aralığında + (varsa) hoca/ders tipi filtresine göre süzülür.
+  const fromD = from, toD = to;
+  const visibleReqs = pendingReqs.filter((r) => {
+    const d = fmtDate(r.startAt);
+    if (d < fromD || d > toD) return false;
+    if (instructorFilter && r.requestedInstructorProfileId !== instructorFilter) return false;
+    if (classTypeFilter && r.classTypeId !== classTypeFilter) return false;
+    return true;
+  });
+
   const grouped = sessions.reduce<Record<string, ClassSessionDto[]>>((acc, s) => {
     (acc[fmtDate(s.startAt)] ??= []).push(s);
     return acc;
   }, {});
+  const reqsByDate = visibleReqs.reduce<Record<string, MakeupRequestDto[]>>((acc, r) => {
+    (acc[fmtDate(r.startAt)] ??= []).push(r);
+    return acc;
+  }, {});
+  // Sprint 27: gerçek ders + pending talep tarihlerinin birleşimi (tek zaman çizelgesi).
+  const allDates = Array.from(new Set([...Object.keys(grouped), ...Object.keys(reqsByDate)])).sort();
+
+  const withdrawRequest = async (r: MakeupRequestDto) => {
+    if (!window.confirm("Bu telafi talebini geri çekmek istiyor musunuz? Saat boşalır, rezerve kredi serbest kalır.")) return;
+    setBusyId(r.id);
+    setError(null);
+    try { await makeupRequestService.withdraw(r.id); await load(); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Geri çekilemedi."); }
+    finally { setBusyId(null); }
+  };
 
   const confirmSession = async (s: ClassSessionDto) => {
     if (!window.confirm("Bu ders onaylanacak ve tamamlandı işaretlenecek.\nİşaretlenmemiş öğrenciler Present (Geldi) kabul edilecek.")) return;
@@ -134,6 +169,8 @@ export default function SchedulePage() {
           <p className="mt-1 text-sm text-muted">Ders seanslarını görüntüleyin ve oluşturun.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {/* Sprint 27: telafi dersi talebi — hoca (kendi sözleşmeli öğrencisi) + stüdyo yetkilisi oluşturabilir. */}
+          <Button variant="secondary" onClick={() => setRequestOpen(true)}>+ Telafi talebi</Button>
           {isManager && <Button variant="secondary" loading={busyId === "today"} onClick={confirmToday}>Bugünü onayla</Button>}
           {isManager && <Button variant="secondary" onClick={() => setGroupChangeOpen(true)}>Grup düzeni</Button>}
           {/* Sprint 26: ders atama yalnız stüdyo yetkilisi (Owner/StudioAdmin). */}
@@ -175,15 +212,39 @@ export default function SchedulePage() {
 
       {loading ? (
         <p className="text-sm text-muted">Yükleniyor…</p>
-      ) : sessions.length === 0 ? (
+      ) : sessions.length === 0 && visibleReqs.length === 0 ? (
         <Card><p className="text-sm text-muted">{selectedInstructorName ? `${selectedInstructorName} hocanın seçili tarihte dersi yok.` : "Bu aralıkta ders seansı yok."}</p></Card>
       ) : (
         <div className="space-y-4">
-          {Object.entries(grouped).map(([date, list]) => (
+          {allDates.map((date) => (
             <div key={date}>
               <h3 className="mb-2 text-sm font-semibold text-muted">{date}</h3>
               <div className="grid gap-3 sm:grid-cols-2">
-                {list.map((s) => (
+                {/* Sprint 27: onay bekleyen telafi talepleri — soluk/dashed, "Onay bekliyor"; yoklama/onay/booking YOK. */}
+                {(reqsByDate[date] ?? []).map((r) => (
+                  <Card key={r.id} className="border-dashed opacity-80">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="flex items-center gap-2 font-medium text-foreground">
+                          {r.classTypeName}
+                          <Badge tone="rose">{sessionKindLabels.Makeup}</Badge>
+                          <Badge tone="warning">Onay bekliyor</Badge>
+                        </p>
+                        <p className="text-sm text-muted">{r.instructorName} · {fmtTime(r.startAt)}–{fmtTime(r.endAt)}</p>
+                        <p className="mt-1 text-xs text-muted">Öğrenci: {r.studentName}{r.description ? ` · ${r.description}` : ""}</p>
+                      </div>
+                      <Badge tone="warning">Talep</Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                      {/* Instructor kendi pending talebini geri çekebilir; manager onay ekranından yönetir. */}
+                      {!isManager && (
+                        <Button variant="ghost" size="sm" loading={busyId === r.id} onClick={() => withdrawRequest(r)}>Geri çek</Button>
+                      )}
+                      {isManager && <span className="text-xs text-muted">Onaylamak için “Telafi Talepleri” ekranını kullanın.</span>}
+                    </div>
+                  </Card>
+                ))}
+                {(grouped[date] ?? []).map((s) => (
                   <Card key={s.id}>
                     <div className="flex items-start justify-between">
                       <div>
@@ -287,7 +348,97 @@ export default function SchedulePage() {
           onDone={() => { setGroupChangeOpen(false); load(); }}
         />
       )}
+      {requestOpen && (
+        <MakeupRequestModal
+          instructors={instructors}
+          classTypes={classTypes}
+          isManager={isManager}
+          myInstructorId={myInstructorId}
+          onClose={() => setRequestOpen(false)}
+          onDone={() => { setRequestOpen(false); load(); }}
+        />
+      )}
     </div>
+  );
+}
+
+// Sprint 27: telafi dersi talebi oluştur. Yalnız kullanılabilir telafi hakkı olan öğrenciler listelenir. Instructor →
+// hoca KENDİSİ (backend zorlar; kendi aktif sözleşmeli öğrencisi olmalı). Manager → hoca seçer.
+function MakeupRequestModal({ instructors, classTypes, isManager, myInstructorId, onClose, onDone }: {
+  instructors: { id: string; name: string }[]; classTypes: ClassTypeDto[];
+  isManager: boolean; myInstructorId: string | null; onClose: () => void; onDone: () => void;
+}) {
+  const [eligible, setEligible] = useState<MakeupEligibleStudentDto[]>([]);
+  const [studentProfileId, setStudentProfileId] = useState("");
+  const [classTypeId, setClassTypeId] = useState(classTypes[0]?.id ?? "");
+  const [instructorId, setInstructorId] = useState(isManager ? instructors[0]?.id ?? "" : myInstructorId ?? "");
+  const [startAt, setStartAt] = useState("");
+  const [description, setDescription] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // Sprint 27: Instructor → kendi sözleşmeli + kredili öğrencileri; manager → tümü (talep akışına özel uç).
+    makeupRequestService.eligibleStudents().then(setEligible).catch(() => setEligible([]));
+  }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentProfileId) { setErr("Öğrenci seçin."); return; }
+    setBusy(true);
+    setErr(null);
+    try {
+      await makeupRequestService.create({
+        studentProfileId,
+        classTypeId,
+        startAt,
+        description: description || undefined,
+        // Instructor → backend token'dan zorlar; manager → seçili hoca.
+        requestedInstructorProfileId: isManager ? instructorId : undefined,
+      });
+      onDone();
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : "Talep oluşturulamadı.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Telafi dersi talebi">
+      <form onSubmit={submit} className="space-y-4">
+        {err && <Alert kind="error">{err}</Alert>}
+        <Alert kind="info">Talep onaya gider; onaylanana kadar saat bloklanır ve telafi hakkı rezerve edilir. Yalnızca kullanılabilir telafi hakkı olan öğrenciler listelenir.</Alert>
+        <FormField label="Öğrenci">
+          <Select value={studentProfileId} onChange={(e) => setStudentProfileId(e.target.value)} required>
+            <option value="">Seçin…</option>
+            {eligible.map((s) => <option key={s.studentProfileId} value={s.studentProfileId}>{s.studentName} · {s.availableCredits} telafi</option>)}
+          </Select>
+        </FormField>
+        {isManager && (
+          <FormField label="Hoca">
+            <Select value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
+              {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </Select>
+          </FormField>
+        )}
+        <FormField label="Ders Tipi" hint="Süre buradan gelir">
+          <Select value={classTypeId} onChange={(e) => setClassTypeId(e.target.value)}>
+            {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk</option>)}
+          </Select>
+        </FormField>
+        <FormField label="Başlangıç" hint="Gelecek bir zaman olmalı">
+          <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} required />
+        </FormField>
+        <FormField label="Açıklama (ops.)">
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="örn. 12 Mart dersinin telafisi" />
+        </FormField>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
+          <Button type="submit" loading={busy} disabled={eligible.length === 0}>Talep oluştur</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
