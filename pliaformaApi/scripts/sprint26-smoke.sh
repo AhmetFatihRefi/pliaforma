@@ -84,14 +84,22 @@ expect "Instructor telafi kredisi GRANT → 403 (kredi veremez)" 403 "$(pcode "/
 expect "Instructor telafi kredisi REVOKE → 403" 403 "$(pcode "/api/studio/students/$S1/makeup-credits/revoke" '{"amount":1,"notes":"x"}' "$I1TOK")"
 expect "Instructor misafir öğrenci oluştur → 403 (öğrenci yönetimi)" 403 "$(pcode /api/studio/students/guest '{"fullName":"Y","source":"Phone"}' "$I1TOK")"
 expect "Instructor öğrenci pasifleştir → 403" 403 "$(pcode "/api/studio/students/$S1/deactivate" '{}' "$I1TOK")"
+echo "--- 7b) v1.1.2: Instructor global öğrenci listesi/okuma + booking ekleme erişemez ---"
+expect "Instructor öğrenci listesi (GET) → 403 (PII; akış muhtaç değil)" 403 "$(gcode /api/studio/students "$I1TOK")"
+expect "Instructor öğrenci arama (GET) → 403" 403 "$(gcode "/api/studio/students/search?query=x" "$I1TOK")"
+expect "Instructor öğrenci by-id (GET) → 403" 403 "$(gcode "/api/studio/students/$S1" "$I1TOK")"
+SADD=$(body "$(mksess "$I1P" "${D3}T07:00:00")" | jget id)
+expect "Instructor seansa öğrenci EKLE (booking) → 403" 403 "$(pcode "/api/studio/class-sessions/$SADD/bookings" "{\"studentProfileId\":\"$S1\"}" "$I1TOK")"
+expect "Instructor booking iptal → 403" 403 "$(pcode "/api/studio/bookings/00000000-0000-0000-0000-000000000000/cancel" '{}' "$I1TOK")"
 # Owner bu işlemleri yapmaya devam eder.
 expect "Owner ders tipi create → 200 (regresyon)" 200 "$(pcode /api/class-types "$CTBODY" "$ATOK")"
 expect "Owner telafi kredisi GRANT → 200 (regresyon)" 200 "$(pcode "/api/studio/students/$S1/makeup-credits/grant" '{"amount":1,"notes":"x"}' "$ATOK")"
-# Instructor öğrenci LİSTESİ okuyabilir (kendi seansına booking için) — bozulmamalı.
-expect "Instructor öğrenci listesi (GET) → 200 (booking modalı için açık)" 200 "$(gcode /api/studio/students "$I1TOK")"
+expect "Owner öğrenci listesi (GET) → 200 (regresyon)" 200 "$(gcode /api/studio/students "$ATOK")"
 
 echo "--- 8) Ek karar: Instructor KENDİ dersinde yoklama/onay akışı BOZULMAZ ---"
-CONF=$(body "$(mksess "$I1P" "${D3}T08:00:00")" | jget id); backdate "$CONF" "2024-03-04 08:00:00"
+CONF=$(body "$(mksess "$I1P" "${D3}T08:00:00")" | jget id); BC=$(body "$(post "/api/studio/class-sessions/$CONF/bookings" "{\"studentProfileId\":\"$S1\"}" "$ATOK")" | jget id); backdate "$CONF" "2024-03-04 08:00:00"
+expect "Instructor kendi seansının bookings (GET) → 200 (yoklama bağlamı)" 200 "$(gcode "/api/studio/class-sessions/$CONF/bookings" "$I1TOK")"
+expect "Instructor kendi seansında yoklama (Present) → 200" 200 "$(putcode "/api/studio/bookings/$BC/attendance" '{"status":"Present"}' "$I1TOK")"
 expect "Instructor kendi (başlamış) dersini onayla → 200" 200 "$(pcode "/api/studio/class-sessions/$CONF/confirm" '{}' "$I1TOK")"
 
 echo

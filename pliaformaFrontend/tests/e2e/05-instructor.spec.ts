@@ -22,6 +22,8 @@ test.describe("Instructor flow", () => {
     await expect(page.getByRole("button", { name: "Bugünü onayla" })).toHaveCount(0);
     // Grup düzeni / İşlenmedi / Fiilî hoca da manager-only → görünmez.
     await expect(page.getByRole("button", { name: "Grup düzeni" })).toHaveCount(0);
+    // v1.1.2: öğrenci ekleme (booking) yalnız stüdyo yetkilisi → instructor "Öğrenci ekle" görmez.
+    await expect(page.getByRole("button", { name: "Öğrenci ekle" })).toHaveCount(0);
   });
 
   test("instructor finans + ders tipi yönetim uçlarını görmez", async ({ page }) => {

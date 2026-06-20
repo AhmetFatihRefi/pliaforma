@@ -55,10 +55,12 @@ expect "C get A student → 404" 404 "$(gcode "/api/studio/students/$G1" "$CTOK"
 expect "C update A student → 404" 404 "$(put "/api/studio/students/$G1" "{\"fullName\":\"hack\",\"source\":\"Phone\"}" "$CTOK")"
 expect "C deactivate A student → 404" 404 "$(code "$(post "/api/studio/students/$G1/deactivate" '{}' "$CTOK")")"
 
-# Sprint 26 ek (v1.1.1): öğrenci YÖNETİMİ yalnız Owner/StudioAdmin. Instructor okuyabilir (booking) ama yazamaz.
-echo "--- Instructor öğrenci yönetimi yapamaz (yalnız okuma) ---"
+# v1.1.2 (privacy/role hardening): öğrenci yönetimi VE global öğrenci listesi/okuma yalnız Owner/StudioAdmin.
+echo "--- Instructor öğrenci yönetimi + global liste/okuma erişemez ---"
 expect "Instructor misafir oluştur → 403" 403 "$(code "$(post /api/studio/students/guest "{\"fullName\":\"I1 Guest\",\"source\":\"WalkIn\"}" "$I1TOK")")"
-expect "Instructor öğrenci listesi (GET) → 200 (kendi seansına booking için açık)" 200 "$(gcode /api/studio/students "$I1TOK")"
+expect "Instructor öğrenci listesi (GET) → 403 (PII/HealthNotes; akış buna muhtaç değil)" 403 "$(gcode /api/studio/students "$I1TOK")"
+expect "Instructor öğrenci arama (GET) → 403" 403 "$(gcode "/api/studio/students/search?query=x" "$I1TOK")"
+expect "Instructor öğrenci by-id (GET) → 403" 403 "$(gcode "/api/studio/students/$G1" "$I1TOK")"
 
 echo "--- Student erişim engeli + kendi profili ---"
 STOK=$(login "g1new+$TS@pf.local")

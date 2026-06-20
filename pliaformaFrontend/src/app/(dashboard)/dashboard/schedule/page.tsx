@@ -215,9 +215,12 @@ export default function SchedulePage() {
                       <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
                         {s.status === "Scheduled" && (
                           <>
-                            <Button variant="secondary" size="sm" disabled={s.isFull} onClick={() => setBookFor(s)}>
-                              {s.isFull ? "Dolu" : "Öğrenci ekle"}
-                            </Button>
+                            {/* v1.1.2: öğrenci ekleme (booking) yalnız stüdyo yetkilisi (Instructor görmez). */}
+                            {isManager && (
+                              <Button variant="secondary" size="sm" disabled={s.isFull} onClick={() => setBookFor(s)}>
+                                {s.isFull ? "Dolu" : "Öğrenci ekle"}
+                              </Button>
+                            )}
                             <Button variant="ghost" size="sm" onClick={() => setRescheduleFor(s)}>Ertele</Button>
                             <Button variant="ghost" size="sm" onClick={() => setCancelFor(s)}>İptal et</Button>
                             {isManager && <Button variant="ghost" size="sm" onClick={() => markNotDelivered(s)}>İşlenmedi</Button>}
