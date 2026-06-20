@@ -24,11 +24,15 @@ test.describe("Instructor flow", () => {
     await expect(page.getByRole("button", { name: "Grup düzeni" })).toHaveCount(0);
   });
 
-  test("instructor finans uçlarını görmez", async ({ page }) => {
+  test("instructor finans + ders tipi yönetim uçlarını görmez", async ({ page }) => {
     // Finansal yönetim linkleri Instructor sidebar'ında olmamalı
     await expect(page.getByRole("link", { name: "Raporlar" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Ödemeler", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Paket Planları" })).toHaveCount(0);
+    // Sprint 26 ek (v1.1.1): global yönetim ekranları stüdyo yetkilisine → Instructor görmez.
+    await expect(page.getByRole("link", { name: "Gruplar" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Öğrenciler" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Telafi Kredileri", exact: true })).toHaveCount(0);
     // Doğrudan finans sayfasına gitmeye çalışınca yönetim verisi görünmez (sayfa kendi guard'ıyla davranır)
     await expect(page.getByRole("link", { name: "Ders Programı" })).toBeVisible();
   });

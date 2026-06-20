@@ -25,10 +25,13 @@ public sealed class MakeupCreditsController : ApiControllerBase
     public Task<IActionResult> EligibleStudents(CancellationToken ct) =>
         Send(new GetMakeupEligibleStudentsQuery(), ct: ct);
 
+    // Sprint 26 ek (v1.1.1): telafi kredisi verme/geri alma yalnız Owner/StudioAdmin (Instructor kredi veremez).
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("students/{studentId:guid}/makeup-credits/grant")]
     public Task<IActionResult> Grant(Guid studentId, GrantMakeupCreditCommand command, CancellationToken ct) =>
         Send(command with { StudentProfileId = studentId }, "Telafi kredisi verildi.", ct);
 
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("students/{studentId:guid}/makeup-credits/revoke")]
     public Task<IActionResult> Revoke(Guid studentId, RevokeMakeupCreditCommand command, CancellationToken ct) =>
         Send(command with { StudentProfileId = studentId }, "Telafi kredisi geri alındı.", ct);

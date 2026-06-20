@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { attendanceService, classTypeService, contractService, memberService, paymentService, studentService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
+import { useRole } from "@/lib/useRole";
 import {
   type AttendanceSummaryDto,
   type ClassTypeDto,
@@ -30,6 +31,7 @@ import {
   Alert,
   Badge,
   Button,
+  Card,
   FormField,
   Input,
   Modal,
@@ -51,6 +53,7 @@ const emptyGuest: GuestInput = {
 const statusTone = (s: StudentDto["status"]) => (s === "Active" ? "success" : s === "Guest" ? "warning" : "neutral");
 
 export default function StudentsPage() {
+  const { canManage } = useRole();
   const [items, setItems] = useState<StudentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +101,10 @@ export default function StudentsPage() {
       setError(e instanceof ApiError ? e.message : "İşlem başarısız.");
     }
   };
+
+  // Sprint 26 ek (v1.1.1): öğrenci yönetimi yalnız stüdyo yetkilisi (Instructor doğrudan URL ile giremez).
+  if (!canManage)
+    return <div className="mx-auto max-w-5xl"><Card><p className="text-sm text-muted">Bu sayfa yalnızca stüdyo yöneticileri içindir.</p></Card></div>;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">

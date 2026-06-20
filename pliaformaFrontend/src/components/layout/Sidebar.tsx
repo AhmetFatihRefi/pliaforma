@@ -23,14 +23,16 @@ const nav: NavItem[] = [
   { href: "/dashboard/notifications", label: "Bildirimler", icon: "🔔" },
   { href: "/dashboard/schedule", label: "Ders Programı", icon: "◷", roles: STAFF },
   // Sprint 26: Hoca müsaitlik modülü ana üründen çıkarıldı (hoca boş/dolu = ders programından).
-  { href: "/dashboard/students", label: "Öğrenciler", icon: "☺", roles: STAFF },
-  { href: "/dashboard/makeup-credits", label: "Telafi Kredileri", icon: "♺", roles: STAFF },
+  // Sprint 26 ek (v1.1.1): global yönetim ekranları yalnız stüdyo yetkilisine; Instructor kendi programını görür.
+  { href: "/dashboard/students", label: "Öğrenciler", icon: "☺", roles: MANAGER },
+  { href: "/dashboard/makeup-credits", label: "Telafi Kredileri", icon: "♺", roles: MANAGER },
   { href: "/dashboard/reports", label: "Raporlar", icon: "▣", roles: MANAGER },
   // Sprint 18b: Paket Planları ana akıştan kaldırıldı (paket modeli dormant; onboarding sözleşme tabanlı).
   { href: "/dashboard/payments", label: "Ödemeler", icon: "₺", roles: MANAGER },
   { href: "/dashboard/closures", label: "Kapalı Günler", icon: "⊘", roles: MANAGER },
   { href: "/dashboard/instructors", label: "Hocalar", icon: "✦", roles: MANAGER },
-  { href: "/dashboard/class-types", label: "Gruplar", icon: "❀", roles: STAFF },
+  // Sprint 26 ek: ders tipi/grup tanımı stüdyo yetkilisinin işi (Instructor görmez).
+  { href: "/dashboard/class-types", label: "Gruplar", icon: "❀", roles: MANAGER },
   { href: "/dashboard/subscription", label: "Abonelik", icon: "◈", roles: ["Owner"] },
   { href: "/dashboard/settings", label: "Ayarlar", icon: "⚙", roles: MANAGER },
   // Sprint 18b: öğrenci self-booking kaldırıldı ("Ders Bul" yok); öğrenci yalnız programını görür.

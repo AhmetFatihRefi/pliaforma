@@ -5,7 +5,11 @@ using Pliaforma.Application.Features.Students;
 
 namespace Pliaforma.Api.Controllers;
 
-/// <summary>Stüdyo öğrenci yönetimi. Student rolü erişemez (Owner/StudioAdmin/Instructor).</summary>
+/// <summary>
+/// Stüdyo öğrenci yönetimi. GET (liste/arama) Instructor'a açık (kendi seansına öğrenci ekleme/booking modalı
+/// kullanır); ancak öğrenci YÖNETİMİ (oluştur/güncelle/dönüştür/pasifleştir) Sprint 26 ek (v1.1.1) kararıyla yalnız
+/// Owner/StudioAdmin. Student rolü hiç erişemez.
+/// </summary>
 [Authorize(Roles = "Owner,StudioAdmin,Instructor")]
 [Route("api/studio/students")]
 public sealed class StudentsController : ApiControllerBase
@@ -24,22 +28,27 @@ public sealed class StudentsController : ApiControllerBase
     public Task<IActionResult> Get(Guid id, CancellationToken ct) =>
         Send(new GetStudentQuery(id), ct: ct);
 
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("guest")]
     public Task<IActionResult> CreateGuest(CreateGuestStudentCommand command, CancellationToken ct) =>
         Send(command, "Misafir öğrenci oluşturuldu.", ct);
 
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPut("{id:guid}")]
     public Task<IActionResult> Update(Guid id, UpdateStudentCommand command, CancellationToken ct) =>
         Send(command with { Id = id }, "Öğrenci güncellendi.", ct);
 
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("{id:guid}/convert-to-user")]
     public Task<IActionResult> Convert(Guid id, ConvertStudentToUserCommand command, CancellationToken ct) =>
         Send(command with { Id = id }, "Öğrenci kullanıcıya bağlandı.", ct);
 
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("{id:guid}/deactivate")]
     public Task<IActionResult> Deactivate(Guid id, CancellationToken ct) =>
         Send(new DeactivateStudentCommand(id), "Öğrenci pasifleştirildi.", ct);
 
+    [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("{id:guid}/reactivate")]
     public Task<IActionResult> Reactivate(Guid id, CancellationToken ct) =>
         Send(new ReactivateStudentCommand(id), "Öğrenci yeniden aktifleştirildi.", ct);

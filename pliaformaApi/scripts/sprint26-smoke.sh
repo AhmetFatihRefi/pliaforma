@@ -4,6 +4,8 @@
 #  - HARD block'lar korunur: hoca çakışma 409, öğrenci çakışma 409, geçmiş 409.
 #  - Ders atama staff-only (Sprint 26): Instructor session create → 403.
 #  - Program üretimi / chain-shift / group-change / bulk-generate availability'ye TAKILMAZ.
+#  - EK KARAR: ders tipi/grup/program tanımı staff-only (Instructor create/update/delete/bulk/group-change → 403);
+#    Instructor kendi dersinde yoklama/onay akışı bozulmaz.
 # Postgres container gerekli. Kullanım: scripts/sprint26-smoke.sh [BASE]
 set -u
 BASE="${1:-http://localhost:5132}"
@@ -16,6 +18,9 @@ jget(){ grep -o "\"$1\":\"[^\"]*\"" | head -1 | sed "s/\"$1\":\"\\([^\"]*\\)\"/\
 post(){ curl -s -w "\n%{http_code}" -X POST "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
 pcode(){ curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
 gcode(){ curl -s -o /dev/null -w "%{http_code}" "$BASE$1" ${2:+-H "Authorization: Bearer $2"}; }
+putcode(){ curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
+delcode(){ curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE$1" ${2:+-H "Authorization: Bearer $2"}; }
+backdate(){ sql "UPDATE \"ClassSessions\" SET \"StartAt\"='$2', \"EndAt\"='$2'::timestamp + interval '1 hour' WHERE \"Id\"='$1';" >/dev/null; }
 code(){ echo "$1" | tail -1; }; body(){ echo "$1" | sed '$d'; }
 login(){ body "$(post /api/auth/login "{\"email\":\"$1\",\"password\":\"$PW\"}")" | jget accessToken; }
 PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|pliaforma-dev-postgres' | head -1)
@@ -67,6 +72,27 @@ expect "skipped'ta 'outside-availability' YOK" no "$(has "$(body "$BG")" 'outsid
 
 echo "--- 6) Group-change candidates availability'siz çalışır ---"
 expect "group-change candidates → 200" 200 "$(gcode "/api/studio/group-schedule-change/candidates?instructorProfileId=$I1P&classTypeId=$CT&effectiveDate=$(date +%F)" "$ATOK")"
+
+echo "--- 7) Ek karar: ders tipi/grup/program tanımı staff-only (Instructor → 403) ---"
+CTBODY='{"name":"X","equipment":"Reformer","capacityType":"Group","maxCapacity":6,"level":"AllLevels","purpose":"General","defaultDurationMinutes":60}'
+expect "Instructor ders tipi create → 403" 403 "$(pcode /api/class-types "$CTBODY" "$I1TOK")"
+expect "Instructor ders tipi update → 403" 403 "$(putcode "/api/class-types/$CT" "$CTBODY" "$I1TOK")"
+expect "Instructor ders tipi delete → 403" 403 "$(delcode "/api/class-types/$CT" "$I1TOK")"
+expect "Instructor bulk-generate → 403" 403 "$(pcode /api/studio/class-sessions/bulk-generate "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"date\":\"$D3\",\"rangeStart\":\"09:00:00\",\"rangeEnd\":\"12:00:00\"}" "$I1TOK")"
+expect "Instructor group-change preview → 403" 403 "$(pcode /api/studio/group-schedule-change/preview "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$(date +%F)\",\"contractIds\":[],\"newSlots\":[]}" "$I1TOK")"
+expect "Instructor telafi kredisi GRANT → 403 (kredi veremez)" 403 "$(pcode "/api/studio/students/$S1/makeup-credits/grant" '{"amount":1,"notes":"x"}' "$I1TOK")"
+expect "Instructor telafi kredisi REVOKE → 403" 403 "$(pcode "/api/studio/students/$S1/makeup-credits/revoke" '{"amount":1,"notes":"x"}' "$I1TOK")"
+expect "Instructor misafir öğrenci oluştur → 403 (öğrenci yönetimi)" 403 "$(pcode /api/studio/students/guest '{"fullName":"Y","source":"Phone"}' "$I1TOK")"
+expect "Instructor öğrenci pasifleştir → 403" 403 "$(pcode "/api/studio/students/$S1/deactivate" '{}' "$I1TOK")"
+# Owner bu işlemleri yapmaya devam eder.
+expect "Owner ders tipi create → 200 (regresyon)" 200 "$(pcode /api/class-types "$CTBODY" "$ATOK")"
+expect "Owner telafi kredisi GRANT → 200 (regresyon)" 200 "$(pcode "/api/studio/students/$S1/makeup-credits/grant" '{"amount":1,"notes":"x"}' "$ATOK")"
+# Instructor öğrenci LİSTESİ okuyabilir (kendi seansına booking için) — bozulmamalı.
+expect "Instructor öğrenci listesi (GET) → 200 (booking modalı için açık)" 200 "$(gcode /api/studio/students "$I1TOK")"
+
+echo "--- 8) Ek karar: Instructor KENDİ dersinde yoklama/onay akışı BOZULMAZ ---"
+CONF=$(body "$(mksess "$I1P" "${D3}T08:00:00")" | jget id); backdate "$CONF" "2024-03-04 08:00:00"
+expect "Instructor kendi (başlamış) dersini onayla → 200" 200 "$(pcode "/api/studio/class-sessions/$CONF/confirm" '{}' "$I1TOK")"
 
 echo
 [ "$FAILED" = "0" ] && { printf "\033[36mSPRINT 26 SMOKE: TÜM AKIŞLAR GEÇTİ ✅\033[0m\n"; exit 0; } || { printf "\033[36mSPRINT 26 SMOKE: BAŞARISIZ ❌\033[0m\n"; exit 1; }

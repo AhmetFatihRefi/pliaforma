@@ -51,6 +51,10 @@ export default function MakeupCreditsPage() {
     loadCredits(s.id);
   };
 
+  // Sprint 26 ek (v1.1.1): global telafi kredi yönetimi yalnız stüdyo yetkilisi (Instructor giremez).
+  if (!canManage)
+    return <div className="mx-auto max-w-5xl"><Card><p className="text-sm text-muted">Bu sayfa yalnızca stüdyo yöneticileri içindir.</p></Card></div>;
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div>

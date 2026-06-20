@@ -55,12 +55,10 @@ expect "C get A student → 404" 404 "$(gcode "/api/studio/students/$G1" "$CTOK"
 expect "C update A student → 404" 404 "$(put "/api/studio/students/$G1" "{\"fullName\":\"hack\",\"source\":\"Phone\"}" "$CTOK")"
 expect "C deactivate A student → 404" 404 "$(code "$(post "/api/studio/students/$G1/deactivate" '{}' "$CTOK")")"
 
-echo "--- Instructor scope (kendi oluşturduğu dışına erişemez) ---"
-R=$(post /api/studio/students/guest "{\"fullName\":\"I1 Guest\",\"source\":\"WalkIn\"}" "$I1TOK")
-expect "Instructor1 create guest" 200 "$(code "$R")"; GI1=$(body "$R" | jget id)
-expect "Instructor1 kendi misafirini görür" 200 "$(gcode "/api/studio/students/$GI1" "$I1TOK")"
-expect "Instructor2 başkasının misafirini göremez → 403" 403 "$(gcode "/api/studio/students/$GI1" "$I2TOK")"
-expect "Instructor2 başkasının misafirini güncelleyemez → 403" 403 "$(put "/api/studio/students/$GI1" "{\"fullName\":\"x\",\"source\":\"WalkIn\"}" "$I2TOK")"
+# Sprint 26 ek (v1.1.1): öğrenci YÖNETİMİ yalnız Owner/StudioAdmin. Instructor okuyabilir (booking) ama yazamaz.
+echo "--- Instructor öğrenci yönetimi yapamaz (yalnız okuma) ---"
+expect "Instructor misafir oluştur → 403" 403 "$(code "$(post /api/studio/students/guest "{\"fullName\":\"I1 Guest\",\"source\":\"WalkIn\"}" "$I1TOK")")"
+expect "Instructor öğrenci listesi (GET) → 200 (kendi seansına booking için açık)" 200 "$(gcode /api/studio/students "$I1TOK")"
 
 echo "--- Student erişim engeli + kendi profili ---"
 STOK=$(login "g1new+$TS@pf.local")
@@ -73,10 +71,11 @@ expect "convert (existing user)" 200 "$(code "$(post "/api/studio/students/$G2/c
 G3=$(body "$(post /api/studio/students/guest "{\"fullName\":\"G3\",\"source\":\"Other\"}" "$ATOK")" | jget id)
 expect "aynı user'a 2. aktif profil → 409" 409 "$(code "$(post "/api/studio/students/$G3/convert-to-user" "{\"email\":\"$EXIST\"}" "$ATOK")")"
 
-echo "--- Pasifleştir / yeniden aktifleştir + pasif dönüştürülemez ---"
-expect "deactivate guest" 200 "$(code "$(post "/api/studio/students/$GI1/deactivate" '{}' "$I1TOK")")"
-expect "pasif misafir convert → 409/400" 409 "$(code "$(post "/api/studio/students/$GI1/convert-to-user" "{\"email\":\"z+$TS@pf.local\",\"initialPassword\":\"$PW\"}" "$I1TOK")")"
-expect "reactivate guest" 200 "$(code "$(post "/api/studio/students/$GI1/reactivate" '{}' "$I1TOK")")"
+echo "--- Pasifleştir / yeniden aktifleştir + pasif dönüştürülemez (Owner — öğrenci yönetimi) ---"
+GD=$(body "$(post /api/studio/students/guest "{\"fullName\":\"GD\",\"source\":\"WalkIn\"}" "$ATOK")" | jget id)
+expect "deactivate guest" 200 "$(code "$(post "/api/studio/students/$GD/deactivate" '{}' "$ATOK")")"
+expect "pasif misafir convert → 409/400" 409 "$(code "$(post "/api/studio/students/$GD/convert-to-user" "{\"email\":\"z+$TS@pf.local\",\"initialPassword\":\"$PW\"}" "$ATOK")")"
+expect "reactivate guest" 200 "$(code "$(post "/api/studio/students/$GD/reactivate" '{}' "$ATOK")")"
 
 echo
 [ "$FAILED" = "0" ] && { printf "\033[36mSPRINT 2 SMOKE: TÜM AKIŞLAR GEÇTİ ✅\033[0m\n"; exit 0; } || { printf "\033[36mSPRINT 2 SMOKE: BAŞARISIZ ❌\033[0m\n"; exit 1; }

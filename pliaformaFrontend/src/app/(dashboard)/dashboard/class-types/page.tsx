@@ -16,6 +16,7 @@ import {
   Alert,
   Badge,
   Button,
+  Card,
   FormField,
   Input,
   Modal,
@@ -112,12 +113,17 @@ export default function ClassTypesPage() {
   const num = (k: "maxCapacity" | "defaultDurationMinutes") => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: Number(e.target.value) }));
 
+  // Sprint 26 ek (v1.1.1): ders tipi/grup yönetimi yalnız stüdyo yetkilisi (Instructor doğrudan URL ile giremez).
+  if (!canManage)
+    return <div className="mx-auto max-w-5xl"><Card><p className="text-sm text-muted">Bu sayfa yalnızca stüdyo yöneticileri içindir.</p></Card></div>;
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Pilates Grupları</h1>
-          <p className="mt-1 text-sm text-muted">Stüdyonuzun ders tiplerini tanımlayın.</p>
+          {/* Sprint 26 ek: ders tipi tanımı yalnız stüdyo yetkilisinin işi → "tanımlayın" yönlendirmesi yalnız yöneticilere. */}
+          {canManage && <p className="mt-1 text-sm text-muted">Stüdyonuzun ders tiplerini tanımlayın.</p>}
         </div>
         {canManage && <Button onClick={openCreate}>+ Yeni grup</Button>}
       </div>
