@@ -67,27 +67,9 @@ public sealed record ContractAmendmentDto(
     string CreatedByName,
     DateTime CreatedAt);
 
-/// <summary>Tek sözleşmenin borç dökümü (hesaplanır; stored balance yoktur).</summary>
-public sealed record ContractDebtDto(
-    Guid ContractId,
-    string ClassTypeName,
-    StudentContractStatus Status,
-    string Currency,
-    decimal BasePrice,
-    decimal AdditionalCharges,
-    decimal TotalCharges,
-    decimal Paid,
-    decimal Outstanding);
-
-/// <summary>Öğrenci borç özeti — sözleşme bazlı kalemler + roll-up + etiketsiz ödemeler (bilgi amaçlı).</summary>
-public sealed record StudentDebtSummaryDto(
-    Guid StudentProfileId,
-    string Currency,
-    decimal TotalCharges,
-    decimal TotalPaid,
-    decimal TotalOutstanding,
-    decimal UntaggedPaid,
-    IReadOnlyList<ContractDebtDto> Contracts);
+// Sprint 28B: borç artık LINE-bazlı (stored balance yok). Kalemler line read-model'inden (StudentContractLineDto);
+// özet currency bazında; cross-currency tek toplam YOK. ContractAmendment debt'e KATILMAZ (28A backfill line.TotalPrice'a
+// yedirdi). "Unassigned" = hiçbir line'a sayılmayan Paid ödemeler (line'sız + çok-line header contractId'li), bilgi amaçlı.
 
 // ---------------------------------------------------------------------------------------------------
 // Sprint 24 — Öğrenci self-servis (salt-okunur) trimmed DTO'ları. Staff-internal alanlar (CreatedByName,
@@ -118,18 +100,29 @@ public sealed record StudentContractViewDto(
     StudentContractStatus Status,
     IReadOnlyList<StudentAmendmentDto> Amendments);
 
-/// <summary>Para birimi bazlı borç bloğu — cross-currency toplam ÜRETİLMEZ.</summary>
+/// <summary>Para birimi bazlı borç bloğu (line toplamları) — cross-currency toplam ÜRETİLMEZ.</summary>
 public sealed record CurrencyDebtDto(
     string Currency,
-    decimal TotalCharges,
-    decimal TotalPaid,
-    decimal TotalOutstanding);
+    decimal Total,
+    decimal Paid,
+    decimal Remaining);
 
-/// <summary>Para birimi bazlı etiketsiz ödeme bloğu (bilgi amaçlı).</summary>
+/// <summary>Para birimi bazlı atanmamış (hiçbir line'a sayılmayan) ödeme bloğu (bilgi amaçlı).</summary>
 public sealed record CurrencyPaidDto(string Currency, decimal Paid);
 
-/// <summary>Öğrenci self-servis borç özeti — para birimine göre AYRI; tek cross-currency toplam yoktur.</summary>
+/// <summary>Borç özeti (Sprint 28B line-bazlı): currency özet + line kalemleri + atanmamış ödemeler. Staff + student ortak.</summary>
+public sealed record LineDebtSummaryDto(
+    IReadOnlyList<CurrencyDebtDto> ByCurrency,
+    IReadOnlyList<StudentContractLineDto> Lines,
+    IReadOnlyList<CurrencyPaidDto> UnassignedByCurrency);
+
+// Staff + student aynı şekli kullanır (mevcut URL'ler korunur; tip adı geriye uyum için alias).
+public sealed record StudentDebtSummaryDto(
+    IReadOnlyList<CurrencyDebtDto> ByCurrency,
+    IReadOnlyList<StudentContractLineDto> Lines,
+    IReadOnlyList<CurrencyPaidDto> UnassignedByCurrency);
+
 public sealed record MyDebtSummaryDto(
     IReadOnlyList<CurrencyDebtDto> ByCurrency,
-    IReadOnlyList<CurrencyPaidDto> UntaggedByCurrency,
-    IReadOnlyList<ContractDebtDto> Contracts);
+    IReadOnlyList<StudentContractLineDto> Lines,
+    IReadOnlyList<CurrencyPaidDto> UnassignedByCurrency);

@@ -7,8 +7,6 @@ import { useRole } from "@/lib/useRole";
 import {
   type AttendanceSummaryDto,
   type ClassTypeDto,
-  type ContractAmendmentDto,
-  type ContractAmendmentKind,
   type ContractScheduleSlotInput,
   type DayOfWeek,
   type GuestInput,
@@ -20,8 +18,6 @@ import {
   type StudentDto,
   type StudentLevel,
   type StudentSource,
-  contractAmendmentKindLabels,
-  contractAmendmentKinds,
   daysOfWeek,
   dayLabels,
   paymentStatusLabels,
@@ -188,6 +184,8 @@ export default function StudentsPage() {
 }
 
 // ===== Sprint 18a: Öğrenci sözleşmeleri + sözleşmeden program =====
+// Sprint 28B: sözleşme = header + line'lar. Birincil görünüm LINE kartları (+ Yeni line ekle / edit / cancel).
+// Header'lar yalnız "Programı oluştur" (schedule gen 28C'ye kadar header-bazlı). Amendment akışı kaldırıldı.
 function ContractsModal({ student, onClose }: { student: StudentDto; onClose: () => void }) {
   const [contracts, setContracts] = useState<StudentContractDto[]>([]);
   const [lines, setLines] = useState<StudentContractLineDto[]>([]);
@@ -198,10 +196,9 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
 
   const today = new Date().toISOString().slice(0, 10);
   const plus = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
-  const [form, setForm] = useState({
-    classTypeId: "", instructorProfileId: "", startDate: today, endDate: plus(60),
-    totalLessonCount: 16, makeupAllowance: 2, price: 0, isIndividualDefault: false,
-  });
+  const emptyLine = { headerId: "", classTypeId: "", instructorProfileId: "", startDate: today, endDate: plus(60),
+    lessonCount: 10, pricePerLesson: 0, makeupAllowance: 2, dueDate: "", isIndividual: false, currency: "TRY" };
+  const [form, setForm] = useState(emptyLine);
 
   const load = useCallback(async () => {
     try {
@@ -223,40 +220,58 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
 
   useEffect(() => { load(); }, [load]);
 
-  const create = async (e: React.FormEvent) => {
+  const activeHeaders = contracts.filter((c) => c.status === "Active");
+
+  const addLine = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null); setBusy(true);
     try {
-      await contractService.create(student.id, {
+      await contractService.addLine(student.id, {
+        headerId: form.headerId || null,
         classTypeId: form.classTypeId,
         instructorProfileId: form.instructorProfileId,
         startDate: form.startDate,
         endDate: form.endDate,
-        totalLessonCount: Number(form.totalLessonCount),
+        lessonCount: Number(form.lessonCount),
+        pricePerLesson: Number(form.pricePerLesson),
         makeupAllowance: Number(form.makeupAllowance),
-        price: Number(form.price),
-        isIndividualDefault: form.isIndividualDefault,
+        dueDate: form.dueDate || null,
+        isIndividual: form.isIndividual,
+        currency: form.currency || "TRY",
       });
+      setForm(emptyLine);
       await load();
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : "Sözleşme oluşturulamadı.");
+      setErr(e2 instanceof ApiError ? e2.message : "Satır eklenemedi.");
     } finally {
       setBusy(false);
     }
   };
 
-  const cancel = async (id: string) => {
-    if (!confirm("Sözleşme iptal edilsin mi?")) return;
+  const cancelHeader = async (id: string) => {
+    if (!confirm("Sözleşme (header) iptal edilsin mi?")) return;
     try { await contractService.cancel(id); await load(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "İptal edilemedi."); }
   };
+
+  const computedTotal = (Number(form.lessonCount) || 0) * (Number(form.pricePerLesson) || 0);
 
   return (
     <Modal open onClose={onClose} title={`Sözleşmeler — ${student.fullName}`}>
       <div className="space-y-5">
         {err && <Alert kind="error">{err}</Alert>}
 
-        <form onSubmit={create} className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface p-3">
+        {/* Yeni line (ek alım). Header verilmezse aktif header'a; yoksa yeni header otomatik. */}
+        <form onSubmit={addLine} className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface p-3">
+          <p className="col-span-2 text-xs font-semibold text-muted">Yeni satır (alım) ekle</p>
+          {activeHeaders.length > 1 && (
+            <FormField label="Sözleşme (header)" hint="Boş = en güncel aktif / yeni">
+              <Select value={form.headerId} onChange={(e) => setForm((f) => ({ ...f, headerId: e.target.value }))}>
+                <option value="">Otomatik (en güncel aktif / yeni)</option>
+                {activeHeaders.map((c) => <option key={c.id} value={c.id}>{c.classTypeName} · {c.startDate}</option>)}
+              </Select>
+            </FormField>
+          )}
           <FormField label="Ders grubu">
             <Select value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))} required>
               <option value="">Seçin…</option>
@@ -271,53 +286,40 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
           </FormField>
           <FormField label="Başlangıç"><Input type="date" value={form.startDate} onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))} required /></FormField>
           <FormField label="Bitiş"><Input type="date" value={form.endDate} onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))} required /></FormField>
-          <FormField label="Ders hakkı"><Input type="number" min={1} value={form.totalLessonCount} onChange={(e) => setForm((f) => ({ ...f, totalLessonCount: Number(e.target.value) }))} /></FormField>
+          <FormField label="Ders sayısı"><Input type="number" min={1} value={form.lessonCount} onChange={(e) => setForm((f) => ({ ...f, lessonCount: Number(e.target.value) }))} /></FormField>
+          <FormField label="Ders başı ücret"><Input type="number" min={0} step="0.01" value={form.pricePerLesson} onChange={(e) => setForm((f) => ({ ...f, pricePerLesson: Number(e.target.value) }))} /></FormField>
+          <FormField label="Toplam ücret" hint="ders sayısı × ders başı (otomatik)">
+            <Input value={`${computedTotal.toLocaleString("tr-TR")} ${form.currency}`} readOnly disabled />
+          </FormField>
+          <FormField label="Para birimi"><Input value={form.currency} onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value.toUpperCase() }))} maxLength={8} /></FormField>
           <FormField label="Telafi hakkı"><Input type="number" min={0} value={form.makeupAllowance} onChange={(e) => setForm((f) => ({ ...f, makeupAllowance: Number(e.target.value) }))} /></FormField>
-          <FormField label="Ücret"><Input type="number" min={0} value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: Number(e.target.value) }))} /></FormField>
+          <FormField label="Son ödeme tarihi (ops.)"><Input type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} /></FormField>
           <FormField label="Bireysel mi?">
             <label className="flex h-9 items-center gap-2 text-sm text-muted">
-              <input type="checkbox" checked={form.isIndividualDefault} onChange={(e) => setForm((f) => ({ ...f, isIndividualDefault: e.target.checked }))} />
+              <input type="checkbox" checked={form.isIndividual} onChange={(e) => setForm((f) => ({ ...f, isIndividual: e.target.checked }))} />
               Bireysel dersler
             </label>
           </FormField>
           <div className="col-span-2 flex justify-end">
-            <Button type="submit" loading={busy}>Sözleşme oluştur</Button>
+            <Button type="submit" loading={busy}>Satır ekle</Button>
           </div>
         </form>
 
-        <div className="space-y-3">
-          {contracts.length === 0 ? (
-            <p className="text-sm text-muted">Henüz sözleşme yok.</p>
+        {/* Line kartları (birincil) — ödeme/borç + edit/cancel. */}
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted">Sözleşme satırları</p>
+          {lines.length === 0 ? (
+            <p className="text-sm text-muted">Henüz satır yok.</p>
           ) : (
-            contracts.map((c) => <ContractRow key={c.id} contract={c} onChanged={load} onCancel={() => cancel(c.id)} />)
+            lines.map((l) => <LineCard key={l.id} line={l} onChanged={load} onError={setErr} />)
           )}
         </div>
 
-        {/* Sprint 28A: sözleşme satırları (line) — SALT OKUNUR. Line editör/ekleme + line ödeme/borç 28B. */}
-        {lines.length > 0 && (
-          <div className="space-y-2 border-t border-border pt-3">
-            <p className="text-xs font-semibold text-muted">Sözleşme satırları (line) — salt okunur</p>
-            {lines.map((l) => (
-              <div key={l.id} className="rounded-xl border border-border bg-surface p-3 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                    {l.classTypeName} · {l.instructorName}
-                    {l.isIndividual && <Badge tone="warning">Bireysel</Badge>}
-                  </span>
-                  <Badge tone={l.status === "Active" ? "success" : "neutral"}>{studentContractStatusLabels[l.status]}</Badge>
-                </div>
-                <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-muted sm:grid-cols-3">
-                  <span>Tarih: {l.startDate} → {l.endDate}</span>
-                  <span>Ders: {l.scheduledLessonCount}/{l.lessonCount} (kalan {l.availableLessonCount})</span>
-                  <span>Telafi hakkı: {l.makeupAllowance}</span>
-                  <span>Ders başı: {l.pricePerLesson.toLocaleString("tr-TR")} {l.currency}</span>
-                  <span>Toplam: {l.totalPrice.toLocaleString("tr-TR")} {l.currency}</span>
-                  <span>Son ödeme: {l.dueDate ?? "—"}</span>
-                  <span>Ödenen: {l.paid.toLocaleString("tr-TR")} {l.currency}</span>
-                  <span className={l.remaining > 0 ? "text-danger" : "text-success"}>Kalan: {l.remaining.toLocaleString("tr-TR")} {l.currency}</span>
-                </div>
-              </div>
-            ))}
+        {/* Header'lar — yalnız "Programı oluştur" (schedule gen 28C'ye kadar header-bazlı). */}
+        {contracts.length > 0 && (
+          <div className="space-y-3 border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted">Program (header bazlı — geçiş; line-bazlı program 28C)</p>
+            {contracts.map((c) => <ContractRow key={c.id} contract={c} onChanged={load} onCancel={() => cancelHeader(c.id)} />)}
           </div>
         )}
       </div>
@@ -325,6 +327,62 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
   );
 }
 
+// Sprint 28B: line kartı — tam alanlar + ödenen/kalan + edit (DueDate/Notes) + güvenli cancel.
+function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDto; onChanged: () => void; onError: (m: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [due, setDue] = useState(l.dueDate ?? "");
+  const [busy, setBusy] = useState(false);
+
+  const saveEdit = async () => {
+    setBusy(true);
+    try { await contractService.updateLine(l.id, { dueDate: due || null, notes: null }); setEditing(false); onChanged(); }
+    catch (e) { onError(e instanceof ApiError ? e.message : "Güncellenemedi."); }
+    finally { setBusy(false); }
+  };
+  const cancelLine = async () => {
+    if (!confirm("Bu satır iptal edilsin mi? (bağlı ödeme/ders/telafi varsa engellenir)")) return;
+    setBusy(true);
+    try { await contractService.cancelLine(l.id); onChanged(); }
+    catch (e) { onError(e instanceof ApiError ? e.message : "İptal edilemedi."); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3 text-xs">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+          {l.classTypeName} · {l.instructorName}
+          {l.isIndividual && <Badge tone="warning">Bireysel</Badge>}
+        </span>
+        <div className="flex items-center gap-2">
+          <Badge tone={l.status === "Active" ? "success" : "neutral"}>{studentContractStatusLabels[l.status]}</Badge>
+          {l.status === "Active" && <Button variant="ghost" size="sm" onClick={() => { setDue(l.dueDate ?? ""); setEditing((v) => !v); }}>Düzenle</Button>}
+          {l.status === "Active" && <Button variant="ghost" size="sm" disabled={busy} onClick={cancelLine}>İptal</Button>}
+        </div>
+      </div>
+      <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-muted sm:grid-cols-3">
+        <span>Tarih: {l.startDate} → {l.endDate}</span>
+        <span>Ders: {l.scheduledLessonCount}/{l.lessonCount} (kalan {l.availableLessonCount})</span>
+        <span>Telafi hakkı: {l.makeupAllowance}</span>
+        <span>Ders başı: {l.pricePerLesson.toLocaleString("tr-TR")} {l.currency}</span>
+        <span>Toplam: {l.totalPrice.toLocaleString("tr-TR")} {l.currency}</span>
+        <span>Son ödeme: {l.dueDate ?? "Belirlenmedi"}</span>
+        <span>Ödenen: {l.paid.toLocaleString("tr-TR")} {l.currency}</span>
+        <span className={l.remaining > 0 ? "text-danger" : "text-success"}>Kalan: {l.remaining.toLocaleString("tr-TR")} {l.currency}</span>
+      </div>
+      {editing && (
+        <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
+          <span className="text-muted">Son ödeme tarihi:</span>
+          <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="w-40" />
+          <Button size="sm" loading={busy} onClick={saveEdit}>Kaydet</Button>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Vazgeç</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Sprint 28B: amendment akışı kaldırıldı (yeni alım = yeni line). Header yalnız "Programı oluştur" (schedule gen 28C'ye kadar header-bazlı).
 function ContractRow({ contract, onChanged, onCancel }: { contract: StudentContractDto; onChanged: () => void; onCancel: () => void }) {
   const [genOpen, setGenOpen] = useState(false);
   const [days, setDays] = useState<DayOfWeek[]>([]);
@@ -332,46 +390,6 @@ function ContractRow({ contract, onChanged, onCancel }: { contract: StudentContr
   const [reuse, setReuse] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  // Sprint 23: ek işlem (amendment).
-  const [amendOpen, setAmendOpen] = useState(false);
-  const [amendments, setAmendments] = useState<ContractAmendmentDto[]>([]);
-  const [amendForm, setAmendForm] = useState<{ kind: ContractAmendmentKind; lessons: number; newEnd: string; price: number; description: string }>(
-    { kind: "ExtraLessons", lessons: 0, newEnd: "", price: 0, description: "" });
-  const [amendMsg, setAmendMsg] = useState<string | null>(null);
-  const [amendBusy, setAmendBusy] = useState(false);
-
-  const loadAmendments = useCallback(async () => {
-    try { setAmendments(await contractService.amendments(contract.id)); }
-    catch (e) { setAmendMsg(e instanceof ApiError ? e.message : "Geçmiş yüklenemedi."); }
-  }, [contract.id]);
-
-  const toggleAmend = () => {
-    setAmendOpen((v) => {
-      if (!v) { setAmendMsg(null); loadAmendments(); }
-      return !v;
-    });
-  };
-
-  const addAmendment = async () => {
-    setAmendBusy(true); setAmendMsg(null);
-    try {
-      await contractService.addAmendment(contract.id, {
-        kind: amendForm.kind,
-        additionalLessonCount: Number(amendForm.lessons),
-        newEndDate: amendForm.newEnd || null,
-        additionalPrice: Number(amendForm.price),
-        description: amendForm.description || null,
-      });
-      setAmendForm({ kind: "ExtraLessons", lessons: 0, newEnd: "", price: 0, description: "" });
-      await loadAmendments();
-      onChanged();
-    } catch (e) {
-      setAmendMsg(e instanceof ApiError ? e.message : "Ek işlem kaydedilemedi.");
-    } finally {
-      setAmendBusy(false);
-    }
-  };
 
   const slots = (): ContractScheduleSlotInput[] => days.map((d) => ({ dayOfWeek: d, startTime: `${time}:00` }));
 
@@ -405,53 +423,12 @@ function ContractRow({ contract, onChanged, onCancel }: { contract: StudentContr
           <Badge tone={contract.status === "Active" ? "success" : "neutral"}>{studentContractStatusLabels[contract.status]}</Badge>
           {contract.status === "Active" && (
             <>
-              <Button variant="ghost" size="sm" onClick={toggleAmend}>Ek işlem</Button>
               <Button variant="ghost" size="sm" onClick={() => setGenOpen((v) => !v)}>Programı oluştur</Button>
               <Button variant="ghost" size="sm" onClick={onCancel}>İptal</Button>
             </>
           )}
         </div>
       </div>
-
-      {amendOpen && contract.status === "Active" && (
-        <div className="mt-3 space-y-3 border-t border-border pt-3">
-          {amendMsg && <Alert kind="error">{amendMsg}</Alert>}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <FormField label="Tür">
-              <Select value={amendForm.kind} onChange={(e) => setAmendForm((f) => ({ ...f, kind: e.target.value as ContractAmendmentKind }))}>
-                {contractAmendmentKinds.map((k) => <option key={k} value={k}>{contractAmendmentKindLabels[k]}</option>)}
-              </Select>
-            </FormField>
-            <FormField label="Ek ders (±)"><Input type="number" value={amendForm.lessons} onChange={(e) => setAmendForm((f) => ({ ...f, lessons: Number(e.target.value) }))} /></FormField>
-            <FormField label={`Ek ücret (${contract.currency}, ±)`}><Input type="number" step="0.01" value={amendForm.price} onChange={(e) => setAmendForm((f) => ({ ...f, price: Number(e.target.value) }))} /></FormField>
-            <FormField label="Yeni bitiş (ileri)"><Input type="date" min={contract.endDate} value={amendForm.newEnd} onChange={(e) => setAmendForm((f) => ({ ...f, newEnd: e.target.value }))} /></FormField>
-            <FormField label="Açıklama"><Input value={amendForm.description} onChange={(e) => setAmendForm((f) => ({ ...f, description: e.target.value }))} placeholder="Ek paket / uzatma / özel anlaşma" /></FormField>
-            <div className="flex items-end">
-              <Button size="sm" loading={amendBusy} onClick={addAmendment}>Ek işlem kaydet</Button>
-            </div>
-          </div>
-
-          {amendments.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-semibold text-muted">Ek işlem geçmişi</p>
-              {amendments.map((a) => (
-                <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-2 py-1 text-xs">
-                  <span className="flex items-center gap-2">
-                    <Badge tone="neutral">{contractAmendmentKindLabels[a.kind]}</Badge>
-                    <span className="text-foreground">
-                      {a.additionalLessonCount !== 0 && `${a.additionalLessonCount > 0 ? "+" : ""}${a.additionalLessonCount} ders `}
-                      {a.previousEndDate !== a.newEndDate && `· bitiş ${a.newEndDate} `}
-                      {a.additionalPrice !== 0 && `· ${a.additionalPrice > 0 ? "+" : ""}${a.additionalPrice.toLocaleString("tr-TR")} ${a.currency}`}
-                    </span>
-                    {a.description && <span className="text-muted">— {a.description}</span>}
-                  </span>
-                  <span className="shrink-0 text-muted">{a.createdByName} · {a.createdAt.slice(0, 10)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {genOpen && contract.status === "Active" && (
         <div className="mt-3 space-y-2 border-t border-border pt-3">
@@ -478,25 +455,25 @@ function ContractRow({ contract, onChanged, onCancel }: { contract: StudentContr
   );
 }
 
+// Sprint 28B: borç LINE-bazlı (currency özet + line kalemleri + atanmamış); ödeme LINE'a bağlanır ("Diğer ödeme" = line yok).
 function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClose: () => void }) {
-  // Sprint 18b: paket bölümü kaldırıldı (paket modeli dormant). Sprint 23: sözleşme-bazlı borç + ödeme eşleme.
   const [payments, setPayments] = useState<PaymentDto[]>([]);
   const [debt, setDebt] = useState<StudentDebtSummaryDto | null>(null);
-  const [contracts, setContracts] = useState<StudentContractDto[]>([]);
+  const [lines, setLines] = useState<StudentContractLineDto[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
   const [payDue, setPayDue] = useState(new Date().toISOString().slice(0, 10));
-  const [payContractId, setPayContractId] = useState("");
+  const [payLineId, setPayLineId] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [ps, d, cs] = await Promise.all([
+      const [ps, d, ls] = await Promise.all([
         paymentService.forStudent(student.id),
         contractService.debt(student.id),
-        contractService.forStudent(student.id),
+        contractService.lines(student.id),
       ]);
-      setPayments(ps); setDebt(d); setContracts(cs);
+      setPayments(ps); setDebt(d); setLines(ls);
       setErr(null);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Yüklenemedi.");
@@ -515,44 +492,49 @@ function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClos
   const createPayment = () => {
     if (!payAmount) { setErr("Tutar girin."); return; }
     wrap(() => paymentService.create(student.id, {
-      amount: Number(payAmount), dueDate: payDue, studentContractId: payContractId || null,
+      amount: Number(payAmount), dueDate: payDue, studentContractLineId: payLineId || null,
     })).then(() => setPayAmount(""));
   };
 
-  const contractLabel = (id?: string | null) => {
-    if (!id) return null;
-    const c = contracts.find((x) => x.id === id);
-    return c ? `${c.classTypeName}` : "sözleşme";
-  };
   const money = (n: number, cur: string) => `${n.toLocaleString("tr-TR")} ${cur}`;
+  const activeLines = lines.filter((l) => l.status === "Active");
 
   return (
     <Modal open onClose={onClose} title={`${student.fullName} — Finans`}>
       <div className="space-y-4">
         {err && <Alert kind="error">{err}</Alert>}
 
-        {/* Sprint 23: borç özeti */}
+        {/* Borç özeti — para birimi bazında (cross-currency tek toplam YOK) + line kalemleri. */}
         {debt && (
           <div className="rounded-xl border border-border bg-surface p-3">
             <h3 className="mb-2 text-sm font-semibold text-foreground">Borç özeti</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm sm:grid-cols-4">
-              <div><span className="text-muted">Sözleşme ücreti</span><div className="font-medium text-foreground">{money(debt.contracts.reduce((s, c) => s + c.basePrice, 0), debt.currency)}</div></div>
-              <div><span className="text-muted">Ek ücretler</span><div className="font-medium text-foreground">{money(debt.contracts.reduce((s, c) => s + c.additionalCharges, 0), debt.currency)}</div></div>
-              <div><span className="text-muted">Ödenen</span><div className="font-medium text-foreground">{money(debt.totalPaid, debt.currency)}</div></div>
-              <div><span className="text-muted">Kalan borç</span><div className={`font-semibold ${debt.totalOutstanding > 0 ? "text-danger" : "text-success"}`}>{money(debt.totalOutstanding, debt.currency)}</div></div>
-            </div>
-            {debt.contracts.length > 0 && (
-              <div className="mt-2 space-y-1 border-t border-border pt-2 text-xs">
-                {debt.contracts.map((c) => (
-                  <div key={c.contractId} className="flex items-center justify-between gap-2">
-                    <span className="text-muted">{c.classTypeName}</span>
-                    <span className="text-foreground">borç {money(c.outstanding, c.currency)} <span className="text-muted">(ücret {money(c.totalCharges, c.currency)} − ödenen {money(c.paid, c.currency)})</span></span>
+            {debt.byCurrency.length === 0 ? (
+              <p className="text-xs text-muted">Henüz satır/borç yok.</p>
+            ) : (
+              <div className="space-y-1 text-sm">
+                {debt.byCurrency.map((c) => (
+                  <div key={c.currency} className="flex items-center justify-between gap-2">
+                    <span className="text-muted">{c.currency}</span>
+                    <span className="text-foreground">
+                      ödenen {money(c.paid, c.currency)} / {money(c.total, c.currency)} ·
+                      <span className={`ml-1 font-semibold ${c.remaining > 0 ? "text-danger" : "text-success"}`}>kalan {money(c.remaining, c.currency)}</span>
+                    </span>
                   </div>
                 ))}
               </div>
             )}
-            {debt.untaggedPaid > 0 && (
-              <p className="mt-2 text-xs text-muted">Etiketsiz ödemeler: {money(debt.untaggedPaid, debt.currency)} (sözleşme borcuna sayılmaz)</p>
+            {debt.lines.length > 0 && (
+              <div className="mt-2 space-y-1 border-t border-border pt-2 text-xs">
+                {debt.lines.map((l) => (
+                  <div key={l.id} className="flex items-center justify-between gap-2">
+                    <span className="text-muted">{l.classTypeName}{l.status !== "Active" && <span> ({studentContractStatusLabels[l.status]})</span>}</span>
+                    <span className="text-foreground">borç {money(l.remaining, l.currency)} <span className="text-muted">(toplam {money(l.totalPrice, l.currency)} − ödenen {money(l.paid, l.currency)})</span></span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {debt.unassignedByCurrency.length > 0 && (
+              <p className="mt-2 text-xs text-muted">Atanmamış ödemeler: {debt.unassignedByCurrency.map((u) => money(u.paid, u.currency)).join(" · ")} (hiçbir satıra sayılmaz)</p>
             )}
           </div>
         )}
@@ -562,7 +544,7 @@ function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClos
           <div className="space-y-2">
             {payments.length === 0 ? <p className="text-sm text-muted">Ödeme yok.</p> : payments.map((p) => (
               <div key={p.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm">
-                <span>{p.amount.toLocaleString("tr-TR")} {p.currency} · <span className="text-muted">vade {p.dueDate}</span>{contractLabel(p.studentContractId) && <span className="text-muted"> · {contractLabel(p.studentContractId)}</span>}</span>
+                <span>{p.amount.toLocaleString("tr-TR")} {p.currency} · <span className="text-muted">vade {p.dueDate}</span> · <span className="text-muted">{p.lineLabel ?? "Diğer ödeme"}</span></span>
                 <div className="flex items-center gap-2">
                   <Badge tone={p.status === "Paid" ? "success" : p.status === "Overdue" ? "danger" : "warning"}>{paymentStatusLabels[p.status]}</Badge>
                   {(p.status === "Pending" || p.status === "Overdue") && (
@@ -578,9 +560,9 @@ function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClos
           <div className="mt-2 flex flex-wrap gap-2">
             <Input type="number" min={0} step="0.01" placeholder="Tutar" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28" />
             <Input type="date" value={payDue} onChange={(e) => setPayDue(e.target.value)} className="w-40" />
-            <Select value={payContractId} onChange={(e) => setPayContractId(e.target.value)} className="w-44">
-              <option value="">Sözleşmesiz</option>
-              {contracts.map((c) => <option key={c.id} value={c.id}>{c.classTypeName} ({c.currency})</option>)}
+            <Select value={payLineId} onChange={(e) => setPayLineId(e.target.value)} className="w-56">
+              <option value="">Diğer ödeme (borca sayılmaz)</option>
+              {activeLines.map((l) => <option key={l.id} value={l.id}>{l.classTypeName} · {l.startDate} ({l.currency})</option>)}
             </Select>
             <Button size="sm" disabled={busy} onClick={createPayment}>Ödeme ekle</Button>
           </div>

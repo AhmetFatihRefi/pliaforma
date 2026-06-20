@@ -30,19 +30,19 @@ test.describe("Sözleşme ek işlemi & borç (Sprint 23)", () => {
   const row = (page: import("@playwright/test").Page) =>
     page.locator("tr", { hasText: "E2E Guest Misafir" }).first();
 
-  test("Finans modalında 'Borç özeti' (sözleşme ücreti/ek/ödenen/kalan) görünür", async ({ page }) => {
+  test("Finans modalında 'Borç özeti' (line-bazlı) + ödemede line seçici görünür (Sprint 28B)", async ({ page }) => {
     await row(page).getByRole("button", { name: "Ödemeler" }).click();
     await expect(page.getByRole("heading", { name: /— Finans/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Borç özeti" })).toBeVisible();
-    await expect(page.getByText("Kalan borç")).toBeVisible();
-    // Ödeme eklerken sözleşme eşleme seçimi (Sözleşmesiz seçeneği) bulunur.
-    await expect(page.getByRole("option", { name: "Sözleşmesiz" })).toBeAttached();
+    // Sprint 28B: ödeme line'a bağlanır; line seçilmezse "Diğer ödeme" (borca sayılmaz).
+    await expect(page.getByRole("option", { name: /Diğer ödeme/ })).toBeAttached();
   });
 
-  test("Sözleşmeler modalında aktif sözleşmede 'Ek işlem' butonu var", async ({ page }) => {
+  test("Sözleşmeler modalında 'Satır ekle' (line) akışı var; amendment yok (Sprint 28B)", async ({ page }) => {
     await row(page).getByRole("button", { name: "Sözleşmeler" }).click();
     await expect(page.getByRole("heading", { name: /Sözleşmeler —/ })).toBeVisible();
-    // Seed aktif sözleşme üretir → ek işlem akışı görünür.
-    await expect(page.getByRole("button", { name: "Ek işlem" }).first()).toBeVisible();
+    // Sprint 28B: yeni alım = yeni line ("Satır ekle"); amendment ("Ek işlem") kaldırıldı.
+    await expect(page.getByRole("button", { name: "Satır ekle" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ek işlem" })).toHaveCount(0);
   });
 });

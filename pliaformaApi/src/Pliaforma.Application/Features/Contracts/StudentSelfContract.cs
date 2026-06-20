@@ -101,25 +101,8 @@ public sealed class GetMyDebtHandler : IQueryHandler<GetMyDebtQuery, MyDebtSumma
         if (profileId is null)
             return new MyDebtSummaryDto([], [], []);
 
-        var items = await ContractDebtService.ComputeContractDebtsAsync(_db, studioId, profileId.Value, ct);
-
-        // Para birimine göre AYRI gruplama — tek cross-currency toplam ÜRETİLMEZ.
-        var byCurrency = items
-            .GroupBy(i => i.Currency)
-            .Select(g => new CurrencyDebtDto(g.Key, g.Sum(x => x.TotalCharges), g.Sum(x => x.Paid), g.Sum(x => x.Outstanding)))
-            .OrderBy(g => g.Currency)
-            .ToList();
-
-        // Etiketsiz ödenmiş ödemeler — para birimine göre (bilgi amaçlı; borçtan düşmez).
-        var untaggedByCurrency = (await _db.Payments.AsNoTracking()
-                .Where(p => p.StudioId == studioId && p.StudentProfileId == profileId
-                    && p.StudentContractId == null && p.Status == PaymentStatus.Paid)
-                .GroupBy(p => p.Currency)
-                .Select(g => new CurrencyPaidDto(g.Key, g.Sum(x => x.Amount)))
-                .ToListAsync(ct))
-            .OrderBy(g => g.Currency)
-            .ToList();
-
-        return new MyDebtSummaryDto(byCurrency, untaggedByCurrency, items);
+        // Sprint 28B: LINE-bazlı borç (amendment KATILMAZ; currency bazında ayrı; cross-currency tek toplam yok).
+        var d = await ContractLineQuery.ComputeDebtAsync(_db, studioId, profileId.Value, ct);
+        return new MyDebtSummaryDto(d.ByCurrency, d.Lines, d.UnassignedByCurrency);
     }
 }

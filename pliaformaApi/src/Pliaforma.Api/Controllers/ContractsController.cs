@@ -52,8 +52,23 @@ public sealed class ContractsController : ApiControllerBase
     public Task<IActionResult> StudentDebt(Guid studentId, CancellationToken ct) =>
         Send(new GetStudentDebtQuery(studentId), ct: ct);
 
-    // Sprint 28A: öğrencinin sözleşme satırları (read-only; line editör/ekleme 28B).
+    // Sprint 28A: öğrencinin sözleşme satırları (read-only).
     [HttpGet("students/{studentId:guid}/contract-lines")]
     public Task<IActionResult> ContractLines(Guid studentId, CancellationToken ct) =>
         Send(new GetStudentContractLinesQuery(studentId), ct: ct);
+
+    // Sprint 28B: yeni line (ek alım). HeaderId verilmezse aktif header'a; yoksa yeni header (otomatik).
+    [HttpPost("students/{studentId:guid}/contract-lines")]
+    public Task<IActionResult> AddContractLine(Guid studentId, CreateStudentContractLineCommand command, CancellationToken ct) =>
+        Send(command with { StudentProfileId = studentId }, "Sözleşme satırı eklendi.", ct);
+
+    // Sprint 28B: line edit — yalnız son ödeme tarihi + not.
+    [HttpPut("contract-lines/{lineId:guid}")]
+    public Task<IActionResult> UpdateContractLine(Guid lineId, UpdateContractLineCommand command, CancellationToken ct) =>
+        Send(command with { LineId = lineId }, "Sözleşme satırı güncellendi.", ct);
+
+    // Sprint 28B: güvenli line iptal (bağlı ödeme/ders/telafi varsa 409).
+    [HttpPost("contract-lines/{lineId:guid}/cancel")]
+    public Task<IActionResult> CancelContractLine(Guid lineId, CancellationToken ct) =>
+        Send(new CancelContractLineCommand(lineId), "Sözleşme satırı iptal edildi.", ct);
 }

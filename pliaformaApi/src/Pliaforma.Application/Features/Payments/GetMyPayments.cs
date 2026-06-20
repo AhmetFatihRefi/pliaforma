@@ -31,7 +31,15 @@ public sealed class GetMyPaymentsHandler : IQueryHandler<GetMyPaymentsQuery, IRe
         var rows = await _db.Payments
             .Where(p => p.StudioId == studioId && p.StudentProfileId == profile.Id)
             .OrderByDescending(p => p.DueDate)
+            .Select(p => new
+            {
+                p,
+                LineCt = p.StudentContractLine!.ClassType!.Name,
+                LineStart = (DateOnly?)p.StudentContractLine!.StartDate,
+                LineEnd = (DateOnly?)p.StudentContractLine!.EndDate,
+            })
             .ToListAsync(ct);
-        return rows.Select(p => PaymentMapping.ToDto(p, profile.FullName, today)).ToList();
+        return rows.Select(r => PaymentMapping.ToDto(r.p, profile.FullName, today,
+            PaymentMapping.LineLabel(r.LineCt, r.LineStart, r.LineEnd))).ToList();
     }
 }

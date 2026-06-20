@@ -18,6 +18,9 @@ nexp(){ awk -v a="$2" -v b="$3" 'BEGIN{exit !(a+0==b+0)}' && ok "$1 ($3)" || bad
 has(){ echo "$1" | grep -q "$2" && echo yes || echo no; }
 jget(){ grep -o "\"$1\":\"[^\"]*\"" | head -1 | sed "s/\"$1\":\"\\([^\"]*\\)\"/\\1/"; }
 jnum(){ echo "$1" | grep -o "\"$2\":[0-9.]*" | head -1 | sed "s/\"$2\"://"; }
+# Sprint 28B: borç LINE-bazlı → byCurrency[cur].field / unassignedByCurrency[cur].paid (envelope .data).
+dval(){ echo "$1" | node -e "try{const e=JSON.parse(require('fs').readFileSync(0,'utf8'));const d=e.data||e;const c=(d.byCurrency||[]).find(x=>x.currency==='$2');console.log(c?c['$3']:'')}catch(_){console.log('')}"; }
+unasg(){ echo "$1" | node -e "try{const e=JSON.parse(require('fs').readFileSync(0,'utf8'));const d=e.data||e;const c=(d.unassignedByCurrency||[]).find(x=>x.currency==='$2');console.log(c?c.paid:'')}catch(_){console.log('')}"; }
 post(){ curl -s -w "\n%{http_code}" -X POST "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
 pcode(){ curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
 gcode(){ curl -s -o /dev/null -w "%{http_code}" "$BASE$1" ${2:+-H "Authorization: Bearer $2"}; }
@@ -45,26 +48,27 @@ mkc(){ body "$(post "/api/studio/students/$1/contracts" "{\"classTypeId\":\"$CT\
 
 St=$(guest St23); C=$(mkc "$St")
 
-echo "--- 1) İlk borç (5000 ücret, 0 ödenen) ---"
+# Sprint 28B: borç LINE-bazlı (line.TotalPrice = 5000). Amendment debt'i ETKİLEMEZ (28A backfill line'a yedirdi).
+echo "--- 1) İlk borç (line 5000, 0 ödenen) ---"
 D=$(debt "$St")
-nexp "totalCharges 5000" 5000 "$(jnum "$D" totalCharges)"
-nexp "totalOutstanding 5000" 5000 "$(jnum "$D" totalOutstanding)"
-nexp "totalPaid 0" 0 "$(jnum "$D" totalPaid)"
+nexp "TRY total 5000 (line)" 5000 "$(dval "$D" TRY total)"
+nexp "TRY remaining 5000" 5000 "$(dval "$D" TRY remaining)"
+nexp "TRY paid 0" 0 "$(dval "$D" TRY paid)"
 
-echo "--- 2) Amendment +4 ders +2000 TL → Total 12, borç 7000 ---"
+echo "--- 2) Amendment +4 ders +2000 → contract.Total 12 ama BORÇ DEĞİŞMEZ (line 5000; amendment hariç) ---"
 A1=$(amnd "$C" "{\"kind\":\"ExtraLessons\",\"additionalLessonCount\":4,\"additionalPrice\":2000,\"description\":\"Ek paket\"}")
 expect "amendment → 200" 200 "$(code "$A1")"
-nexp "TotalLessonCount 12" 12 "$(ctot "$C")"
+nexp "contract TotalLessonCount 12 (header mutasyonu sürer)" 12 "$(ctot "$C")"
 D=$(debt "$St")
-nexp "totalCharges 7000" 7000 "$(jnum "$D" totalCharges)"
-nexp "totalOutstanding 7000" 7000 "$(jnum "$D" totalOutstanding)"
+nexp "TRY total HÂLÂ 5000 (amendment debt'e KATILMAZ)" 5000 "$(dval "$D" TRY total)"
+nexp "TRY remaining HÂLÂ 5000" 5000 "$(dval "$D" TRY remaining)"
 
-echo "--- 3) Sadece EndDate uzatma (+14 gün, 0 ders) → ders hakkı ARTMAZ ---"
+echo "--- 3) Sadece EndDate uzatma (+14 gün, 0 ders) → ders hakkı ARTMAZ; borç değişmez ---"
 A2=$(amnd "$C" "{\"kind\":\"DateExtension\",\"additionalLessonCount\":0,\"newEndDate\":\"$ED2\",\"additionalPrice\":0}")
 expect "date-ext amendment → 200" 200 "$(code "$A2")"
 nexp "TotalLessonCount hâlâ 12 (artmadı)" 12 "$(ctot "$C")"
 expect "EndDate $ED2 oldu" "$ED2" "$(cend "$C")"
-nexp "borç değişmedi (7000)" 7000 "$(jnum "$(debt "$St")" totalOutstanding)"
+nexp "borç değişmedi (5000)" 5000 "$(dval "$(debt "$St")" TRY remaining)"
 
 echo "--- 4) Amendment sonrası program üretimi: EK HAK kullanılabilir (12 ders) ---"
 post "/api/studio/contracts/$C/schedule/generate" "{\"slots\":[{\"dayOfWeek\":\"Monday\",\"startTime\":\"18:00:00\"},{\"dayOfWeek\":\"Thursday\",\"startTime\":\"18:00:00\"}],\"reuseExistingGroup\":true,\"individual\":null}" "$ATOK" >/dev/null
@@ -74,20 +78,20 @@ echo "--- 5) Negatif amendment booked altına DÜŞEMEZ (12 planlı, -5 → 7 < 
 expect "negatif amendment → 409" 409 "$(pcode "/api/studio/contracts/$C/amendments" "{\"kind\":\"Correction\",\"additionalLessonCount\":-5,\"additionalPrice\":0}" "$ATOK")"
 nexp "TotalLessonCount değişmedi (12)" 12 "$(ctot "$C")"
 
-echo "--- 6) Ödeme sözleşmeye bağlanınca outstanding düşer ---"
+echo "--- 6) Ödeme (contractId-only, tek-line header → legacy fallback) borç düşer ---"
 P1=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":2000,\"dueDate\":\"$SD\",\"studentContractId\":\"$C\"}" "$ATOK")" | jget id)
 pcode "/api/studio/payments/$P1/mark-paid" '{}' "$ATOK" >/dev/null
-nexp "outstanding 5000 (7000−2000)" 5000 "$(jnum "$(debt "$St")" totalOutstanding)"
-P2=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":5000,\"dueDate\":\"$SD\",\"studentContractId\":\"$C\"}" "$ATOK")" | jget id)
+nexp "TRY remaining 3000 (5000−2000)" 3000 "$(dval "$(debt "$St")" TRY remaining)"
+P2=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":3000,\"dueDate\":\"$SD\",\"studentContractId\":\"$C\"}" "$ATOK")" | jget id)
 pcode "/api/studio/payments/$P2/mark-paid" '{}' "$ATOK" >/dev/null
-nexp "outstanding 0" 0 "$(jnum "$(debt "$St")" totalOutstanding)"
+nexp "TRY remaining 0" 0 "$(dval "$(debt "$St")" TRY remaining)"
 
-echo "--- 7) ETİKETSİZ ödeme contract borcunu DÜŞÜRMEZ ---"
+echo "--- 7) ETİKETSİZ ödeme contract borcunu DÜŞÜRMEZ (atanmamış) ---"
 P3=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":1000,\"dueDate\":\"$SD\"}" "$ATOK")" | jget id)
 pcode "/api/studio/payments/$P3/mark-paid" '{}' "$ATOK" >/dev/null
 D=$(debt "$St")
-nexp "outstanding hâlâ 0 (etiketsiz sayılmaz)" 0 "$(jnum "$D" totalOutstanding)"
-nexp "untaggedPaid 1000 (bilgi)" 1000 "$(jnum "$D" untaggedPaid)"
+nexp "TRY remaining hâlâ 0 (etiketsiz sayılmaz)" 0 "$(dval "$D" TRY remaining)"
+nexp "unassigned TRY 1000 (bilgi)" 1000 "$(unasg "$D" TRY)"
 
 echo "--- 8) Amendment geçmişi immutable ---"
 AHIST=$(curl -s "$BASE/api/studio/contracts/$C/amendments" -H "Authorization: Bearer $ATOK")

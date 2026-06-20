@@ -15,7 +15,10 @@ public sealed record PaymentDto(
     Guid Id, Guid StudentProfileId, string StudentName, Guid? StudentPackageId,
     decimal Amount, string Currency, DateOnly DueDate, DateTime? PaidAt,
     PaymentStatus Status, PaymentMethod? Method, string? Notes, DateTime CreatedAt,
-    Guid? StudentContractId = null);
+    Guid? StudentContractId = null,
+    // Sprint 28B: line bağı + etiket ("ClassTypeName · start–end"); line yoksa null → UI "Diğer ödeme".
+    Guid? StudentContractLineId = null,
+    string? LineLabel = null);
 
 internal static class PaymentMapping
 {
@@ -23,10 +26,13 @@ internal static class PaymentMapping
     public static PaymentStatus Effective(PaymentStatus stored, DateTime? paidAt, DateOnly dueDate, DateOnly today) =>
         stored == PaymentStatus.Pending && paidAt is null && dueDate < today ? PaymentStatus.Overdue : stored;
 
-    public static PaymentDto ToDto(Payment p, string studentName, DateOnly today) =>
+    public static string? LineLabel(string? classTypeName, DateOnly? start, DateOnly? end) =>
+        classTypeName is null ? null : $"{classTypeName} · {start:yyyy-MM-dd} – {end:yyyy-MM-dd}";
+
+    public static PaymentDto ToDto(Payment p, string studentName, DateOnly today, string? lineLabel = null) =>
         new(p.Id, p.StudentProfileId, studentName, p.StudentPackageId, p.Amount, p.Currency, p.DueDate,
             p.PaidAt, Effective(p.Status, p.PaidAt, p.DueDate, today), p.Method, p.Notes, p.CreatedAt,
-            p.StudentContractId);
+            p.StudentContractId, p.StudentContractLineId, lineLabel);
 }
 
 // ---- Öğrencinin ödemeleri (staff) ----
@@ -47,9 +53,16 @@ public sealed class GetStudentPaymentsHandler : IQueryHandler<GetStudentPayments
         var rows = await _db.Payments
             .Where(p => p.StudioId == studioId && p.StudentProfileId == request.StudentProfileId)
             .OrderByDescending(p => p.DueDate)
-            .Select(p => new { p, Name = p.StudentProfile!.FullName })
+            .Select(p => new
+            {
+                p, Name = p.StudentProfile!.FullName,
+                LineCt = p.StudentContractLine!.ClassType!.Name,
+                LineStart = (DateOnly?)p.StudentContractLine!.StartDate,
+                LineEnd = (DateOnly?)p.StudentContractLine!.EndDate,
+            })
             .ToListAsync(ct);
-        return rows.Select(r => PaymentMapping.ToDto(r.p, r.Name, today)).ToList();
+        return rows.Select(r => PaymentMapping.ToDto(r.p, r.Name, today,
+            PaymentMapping.LineLabel(r.LineCt, r.LineStart, r.LineEnd))).ToList();
     }
 }
 
@@ -83,16 +96,24 @@ public sealed class GetPaymentsHandler : IQueryHandler<GetPaymentsQuery, IReadOn
 
         var rows = await query
             .OrderByDescending(p => p.DueDate)
-            .Select(p => new { p, Name = p.StudentProfile!.FullName })
+            .Select(p => new
+            {
+                p, Name = p.StudentProfile!.FullName,
+                LineCt = p.StudentContractLine!.ClassType!.Name,
+                LineStart = (DateOnly?)p.StudentContractLine!.StartDate,
+                LineEnd = (DateOnly?)p.StudentContractLine!.EndDate,
+            })
             .ToListAsync(ct);
-        return rows.Select(r => PaymentMapping.ToDto(r.p, r.Name, today)).ToList();
+        return rows.Select(r => PaymentMapping.ToDto(r.p, r.Name, today,
+            PaymentMapping.LineLabel(r.LineCt, r.LineStart, r.LineEnd))).ToList();
     }
 }
 
 // ---- Oluştur ----
 public sealed record CreatePaymentCommand(
     Guid StudentProfileId, Guid? StudentPackageId, decimal Amount, string? Currency, DateOnly DueDate,
-    PaymentMethod? Method, string? Notes, Guid? StudentContractId = null) : ICommand<PaymentDto>, IStudioWriteRequest;
+    PaymentMethod? Method, string? Notes, Guid? StudentContractId = null,
+    Guid? StudentContractLineId = null) : ICommand<PaymentDto>, IStudioWriteRequest;
 
 public sealed class CreatePaymentValidator : AbstractValidator<CreatePaymentCommand>
 {
@@ -127,23 +148,42 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
             && !await _db.StudentPackages.AnyAsync(p => p.Id == pkgId && p.StudioId == studioId && p.StudentProfileId == student.Id, ct))
             throw new NotFoundException("Öğrenci paketi", pkgId);
 
-        // Sprint 23: ödeme bir sözleşmeye bağlanıyorsa, sözleşme bu öğrenciye ait olmalı ve para birimi uyuşmalı.
-        StudentContract? contract = null;
-        if (request.StudentContractId is { } contractId)
+        // Sprint 28B: ödeme öncelikle LINE'a bağlanır. lineId verilirse line öğrenciye ait + iptal değil + currency uyumlu;
+        // StudentContractId line'dan TÜRETİLİR. lineId yoksa eski contractId yolu tolere edilir (geri uyum). İkisi de yoksa
+        // "Diğer ödeme" (borca sayılmaz). Etiket (label) my-payments'ta gösterilir.
+        StudentContractLine? line = null;
+        Guid? contractId = request.StudentContractId;
+        string? lineLabel = null;
+        string? bindCurrency = null;   // currency uyum referansı (line varsa line.Currency, yoksa contract.Currency)
+
+        if (request.StudentContractLineId is { } lid)
         {
-            contract = await _db.StudentContracts
-                .FirstOrDefaultAsync(c => c.Id == contractId && c.StudioId == studioId && c.StudentProfileId == student.Id, ct)
-                ?? throw new NotFoundException("Sözleşme", contractId);
+            line = await _db.StudentContractLines
+                .Include(l => l.ClassType)
+                .FirstOrDefaultAsync(l => l.Id == lid && l.StudioId == studioId && l.StudentContract!.StudentProfileId == student.Id, ct)
+                ?? throw new NotFoundException("Sözleşme satırı", lid);
+            if (line.Status == StudentContractLineStatus.Cancelled)
+                throw new BusinessRuleException("İptal edilmiş satıra ödeme eklenemez.");
+            contractId = line.StudentContractId;                  // türet
+            bindCurrency = line.Currency;
+            lineLabel = PaymentMapping.LineLabel(line.ClassType?.Name, line.StartDate, line.EndDate);
+        }
+        else if (contractId is { } cid)
+        {
+            var contract = await _db.StudentContracts
+                .FirstOrDefaultAsync(c => c.Id == cid && c.StudioId == studioId && c.StudentProfileId == student.Id, ct)
+                ?? throw new NotFoundException("Sözleşme", cid);
+            bindCurrency = contract.Currency;
         }
 
         var currency = string.IsNullOrWhiteSpace(request.Currency)
-            ? contract?.Currency ?? await _db.Studios.Where(s => s.Id == studioId).Select(s => s.Currency).FirstAsync(ct)
+            ? bindCurrency ?? await _db.Studios.Where(s => s.Id == studioId).Select(s => s.Currency).FirstAsync(ct)
             : request.Currency.Trim().ToUpperInvariant();
 
-        if (contract is not null && !string.Equals(currency, contract.Currency, StringComparison.OrdinalIgnoreCase))
+        if (bindCurrency is not null && !string.Equals(currency, bindCurrency, StringComparison.OrdinalIgnoreCase))
             throw new ValidationException(new Dictionary<string, string[]>
             {
-                ["currency"] = new[] { $"Ödeme para birimi sözleşme ile aynı olmalı ({contract.Currency})." },
+                ["currency"] = new[] { $"Ödeme para birimi {(line is null ? "sözleşme" : "satır")} ile aynı olmalı ({bindCurrency})." },
             });
 
         var payment = new Payment
@@ -151,7 +191,8 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
             StudioId = studioId,
             StudentProfileId = student.Id,
             StudentPackageId = request.StudentPackageId,
-            StudentContractId = request.StudentContractId,
+            StudentContractId = contractId,
+            StudentContractLineId = line?.Id,
             Amount = request.Amount,
             Currency = currency,
             DueDate = request.DueDate,
@@ -164,7 +205,7 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
         await _db.SaveChangesAsync(ct);
 
         var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
-        return PaymentMapping.ToDto(payment, student.FullName, today);
+        return PaymentMapping.ToDto(payment, student.FullName, today, lineLabel);
     }
 }
 

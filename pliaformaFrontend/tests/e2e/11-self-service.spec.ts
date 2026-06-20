@@ -30,7 +30,8 @@ test.describe("Self-service kayıt & katılım (Sprint 15)", () => {
     await expect(page.getByRole("heading", { name: "Sözleşmelerim" })).toBeVisible();
     // Seed öğrenciye Reformer sözleşmesi üretir → ders hakkı + ödeme durumu kartları.
     await expect(page.getByText("Reformer").first()).toBeVisible();
-    await expect(page.getByText("Kalan planlanabilir")).toBeVisible();
+    // Sprint 28B: öğrenci self-servis LINE-bazlı (satır kartları).
+    await expect(page.getByText("Kalan ders").first()).toBeVisible();
     await expect(page.getByText("Ödeme durumu").first()).toBeVisible();
     // Internal alan sızmamalı: "createdByName" sayfada görünmez (ham alan adı).
     const bodyText = await page.locator("body").innerText();

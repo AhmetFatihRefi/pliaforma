@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { studentContractService, studentFinanceService } from "@/lib/studioApi";
+import { studentFinanceService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import {
   type PaymentDto,
   type PaymentStatus,
-  type StudentContractViewDto,
   paymentMethodLabels,
   paymentStatusLabels,
 } from "@/lib/domain-types";
@@ -17,20 +16,13 @@ const tone = (s: PaymentStatus) =>
 
 export default function MyPaymentsPage() {
   const [items, setItems] = useState<PaymentDto[]>([]);
-  const [contracts, setContracts] = useState<StudentContractViewDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // Sözleşme adını ödemeye eşlemek için sözleşmeleri de çekeriz (başarısız olursa ödemeler yine gösterilir).
-      const [ps, cs] = await Promise.all([
-        studentFinanceService.myPayments(),
-        studentContractService.myContracts().catch(() => [] as StudentContractViewDto[]),
-      ]);
-      setItems(ps);
-      setContracts(cs);
+      setItems(await studentFinanceService.myPayments());
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Ödemeler yüklenemedi.");
@@ -42,12 +34,6 @@ export default function MyPaymentsPage() {
   useEffect(() => {
     load();
   }, [load]);
-
-  const contractLabel = (id?: string | null) => {
-    if (!id) return "Diğer ödeme";
-    const c = contracts.find((x) => x.id === id);
-    return c ? `${c.classTypeName} sözleşmesi · ${c.startDate}–${c.endDate}` : "Sözleşme ödemesi";
-  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -72,7 +58,7 @@ export default function MyPaymentsPage() {
                   Vade: {p.dueDate}{p.method ? ` · ${paymentMethodLabels[p.method]}` : ""}
                   {p.paidAt ? ` · Ödendi: ${p.paidAt.slice(0, 10)}` : ""}
                 </p>
-                <p className="mt-0.5 text-xs text-muted">{contractLabel(p.studentContractId)}</p>
+                <p className="mt-0.5 text-xs text-muted">{p.lineLabel ?? "Diğer ödeme"}</p>
                 {p.notes && <p className="mt-1 text-xs text-muted">{p.notes}</p>}
               </div>
               <Badge tone={tone(p.status)}>{paymentStatusLabels[p.status]}</Badge>

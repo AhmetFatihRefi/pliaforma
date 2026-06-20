@@ -294,25 +294,11 @@ export interface ContractAmendmentDto {
   createdByName: string;
   createdAt: string;
 }
-export interface ContractDebtDto {
-  contractId: string;
-  classTypeName: string;
-  status: StudentContractStatus;
-  currency: string;
-  basePrice: number;
-  additionalCharges: number;
-  totalCharges: number;
-  paid: number;
-  outstanding: number;
-}
+// Sprint 28B: borç LINE-bazlı. Kalemler StudentContractLineDto; özet currency bazında; amendment KATILMAZ.
 export interface StudentDebtSummaryDto {
-  studentProfileId: string;
-  currency: string;
-  totalCharges: number;
-  totalPaid: number;
-  totalOutstanding: number;
-  untaggedPaid: number;
-  contracts: ContractDebtDto[];
+  byCurrency: CurrencyDebtDto[];
+  lines: StudentContractLineDto[];
+  unassignedByCurrency: CurrencyPaidDto[];
 }
 
 // ===== Sprint 24: Öğrenci self-servis (salt-okunur) trimmed görünümler =====
@@ -340,15 +326,31 @@ export interface StudentContractViewDto {
 }
 export interface CurrencyDebtDto {
   currency: string;
-  totalCharges: number;
-  totalPaid: number;
-  totalOutstanding: number;
+  total: number;
+  paid: number;
+  remaining: number;
 }
 export interface CurrencyPaidDto { currency: string; paid: number }
 export interface MyDebtSummaryDto {
   byCurrency: CurrencyDebtDto[];
-  untaggedByCurrency: CurrencyPaidDto[];
-  contracts: ContractDebtDto[];
+  lines: StudentContractLineDto[];
+  unassignedByCurrency: CurrencyPaidDto[];
+}
+
+// Sprint 28B: yeni line (ek alım) girdisi.
+export interface ContractLineInput {
+  headerId?: string | null;
+  classTypeId: string;
+  instructorProfileId: string;
+  startDate: string;
+  endDate: string;
+  lessonCount: number;
+  pricePerLesson: number;
+  makeupAllowance: number;
+  dueDate?: string | null;
+  isIndividual: boolean;
+  currency?: string | null;
+  notes?: string | null;
 }
 
 // ===== Sprint 4: Rezervasyon =====
@@ -814,6 +816,9 @@ export interface PaymentDto {
   notes?: string | null;
   createdAt: string;
   studentContractId?: string | null;
+  // Sprint 28B: line bağı + etiket ("ClassTypeName · start–end"); null → "Diğer ödeme".
+  studentContractLineId?: string | null;
+  lineLabel?: string | null;
 }
 
 // ===== Sprint 8: Dashboard & Raporlar =====

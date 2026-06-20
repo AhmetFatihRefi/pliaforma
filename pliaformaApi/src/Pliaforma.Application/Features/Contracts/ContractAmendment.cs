@@ -145,7 +145,7 @@ public sealed class GetContractAmendmentsHandler : IQueryHandler<GetContractAmen
     }
 }
 
-// ---- Öğrenci borç özeti (sözleşme bazlı + roll-up + etiketsiz ödemeler) ----
+// ---- Öğrenci borç özeti (Sprint 28B: LINE-bazlı; amendment debt'e KATILMAZ) ----
 public sealed record GetStudentDebtQuery(Guid StudentProfileId) : IQuery<StudentDebtSummaryDto>;
 
 public sealed class GetStudentDebtHandler : IQueryHandler<GetStudentDebtQuery, StudentDebtSummaryDto>
@@ -158,61 +158,7 @@ public sealed class GetStudentDebtHandler : IQueryHandler<GetStudentDebtQuery, S
     public async Task<StudentDebtSummaryDto> Handle(GetStudentDebtQuery request, CancellationToken ct)
     {
         var studioId = _currentUser.RequireStudioId();
-        var studioCurrency = await _db.Studios.Where(s => s.Id == studioId).Select(s => s.Currency).FirstAsync(ct);
-
-        var items = await ContractDebtService.ComputeContractDebtsAsync(_db, studioId, request.StudentProfileId, ct);
-        var untaggedPaid = await ContractDebtService.UntaggedPaidTotalAsync(_db, studioId, request.StudentProfileId, ct);
-
-        // Staff özeti: stüdyo tek para birimiyle çalışır varsayımıyla tek roll-up (Sprint 23 davranışı korunur).
-        return new StudentDebtSummaryDto(
-            request.StudentProfileId,
-            studioCurrency,
-            items.Sum(i => i.TotalCharges),
-            items.Sum(i => i.Paid),
-            items.Sum(i => i.Outstanding),
-            untaggedPaid,
-            items);
+        var d = await ContractLineQuery.ComputeDebtAsync(_db, studioId, request.StudentProfileId, ct);
+        return new StudentDebtSummaryDto(d.ByCurrency, d.Lines, d.UnassignedByCurrency);
     }
-}
-
-/// <summary>
-/// Sözleşme-bazlı borç hesabı (stored balance YOK). Hem staff (Owner/StudioAdmin) hem öğrenci self-servis
-/// (Sprint 24) tarafından paylaşılır. Tenant-scoped; çağıran studioId + studentProfileId'yi GÜVENLİ çözmelidir.
-/// </summary>
-internal static class ContractDebtService
-{
-    /// <summary>Sözleşme başına borç dökümü: TotalCharges = Price + Σ AdditionalPrice; Paid = sözleşmeye bağlı Paid ödemeler.</summary>
-    public static async Task<List<ContractDebtDto>> ComputeContractDebtsAsync(
-        IAppDbContext db, Guid studioId, Guid studentProfileId, CancellationToken ct)
-    {
-        var contracts = await db.StudentContracts.AsNoTracking()
-            .Where(c => c.StudioId == studioId && c.StudentProfileId == studentProfileId)
-            .OrderByDescending(c => c.StartDate)
-            .Select(c => new { c.Id, ClassTypeName = c.ClassType!.Name, c.Status, c.Price, c.Currency })
-            .ToListAsync(ct);
-
-        var items = new List<ContractDebtDto>(contracts.Count);
-        foreach (var c in contracts)
-        {
-            var additional = await db.ContractAmendments
-                .Where(a => a.StudioId == studioId && a.StudentContractId == c.Id)
-                .Select(a => (decimal?)a.AdditionalPrice).SumAsync(ct) ?? 0m;
-            var paid = await db.Payments
-                .Where(p => p.StudioId == studioId && p.StudentContractId == c.Id && p.Status == PaymentStatus.Paid)
-                .Select(p => (decimal?)p.Amount).SumAsync(ct) ?? 0m;
-            var totalCharges = c.Price + additional;
-            items.Add(new ContractDebtDto(
-                c.Id, c.ClassTypeName, c.Status, c.Currency,
-                c.Price, additional, totalCharges, paid, totalCharges - paid));
-        }
-        return items;
-    }
-
-    /// <summary>Etiketsiz (StudentContractId=NULL) ödenmiş ödemeler toplamı — borçtan DÜŞÜLMEZ, yalnız bilgi.</summary>
-    public static async Task<decimal> UntaggedPaidTotalAsync(
-        IAppDbContext db, Guid studioId, Guid studentProfileId, CancellationToken ct) =>
-        await db.Payments
-            .Where(p => p.StudioId == studioId && p.StudentProfileId == studentProfileId
-                && p.StudentContractId == null && p.Status == PaymentStatus.Paid)
-            .Select(p => (decimal?)p.Amount).SumAsync(ct) ?? 0m;
 }

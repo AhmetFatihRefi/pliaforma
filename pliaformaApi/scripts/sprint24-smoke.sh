@@ -63,16 +63,17 @@ ADEBT=$(get /api/student/debt "$SATOK")
 expect "A debt → 200" 200 "$(gcode /api/student/debt "$SATOK")"
 expect "A debt TRY bloğu var" yes "$(has "$ADEBT" '"currency":"TRY"')"
 expect "A debt USD bloğu var (ayrı)" yes "$(has "$ADEBT" '"currency":"USD"')"
-expect "A TRY kalan 7000 (5000+2000)" yes "$(has "$ADEBT" '"outstanding":7000')"
-expect "A USD kalan 100 (ayrı, birleştirilmedi)" yes "$(has "$ADEBT" '"outstanding":100')"
+# Sprint 28B: borç LINE-bazlı (remaining) — amendment debt'e KATILMAZ → TRY line 5000 (7000 değil).
+expect "A TRY kalan 5000 (line; amendment hariç)" yes "$(has "$ADEBT" '"remaining":5000')"
+expect "A USD kalan 100 (ayrı, birleştirilmedi)" yes "$(has "$ADEBT" '"remaining":100')"
 
 echo "--- 4) İzolasyon: Student A, Student B verisini GÖREMEZ ---"
 expect "A contracts B'nin sözleşmesini İÇERMEZ" no "$(has "$ACON" "$CB_TRY")"
 expect "A debt B'nin sözleşmesini İÇERMEZ" no "$(has "$ADEBT" "$CB_TRY")"
 BDEBT=$(get /api/student/debt "$SBTOK")
-expect "B kendi borcunu görür (3000)" yes "$(has "$BDEBT" '"outstanding":3000')"
+expect "B kendi borcunu görür (3000)" yes "$(has "$BDEBT" '"remaining":3000')"
 expect "B debt A'nın TRY sözleşmesini İÇERMEZ" no "$(has "$BDEBT" "$CA_TRY")"
-expect "B debt 7000 İÇERMEZ (A'nın borcu)" no "$(has "$BDEBT" '"outstanding":7000')"
+expect "B debt 5000 İÇERMEZ (A'nın TRY borcu)" no "$(has "$BDEBT" '"remaining":5000')"
 
 echo "--- 5) Instructor yeni student endpointlerinden veri ALAMAZ (403) ---"
 expect "Instructor /api/student/contracts → 403" 403 "$(gcode /api/student/contracts "$I2TOK")"
@@ -80,7 +81,7 @@ expect "Instructor /api/student/debt → 403" 403 "$(gcode /api/student/debt "$I
 
 echo "--- 6) Owner staff debt endpointi çalışmaya devam eder ---"
 expect "Owner /api/studio/students/{A}/debt → 200" 200 "$(gcode "/api/studio/students/$SA/debt" "$ATOK")"
-expect "Owner staff debt A sözleşmesi 7000 outstanding görür" yes "$(has "$(get "/api/studio/students/$SA/debt" "$ATOK")" '"outstanding":7000')"
+expect "Owner staff debt A TRY kalan 5000 görür (line; amendment hariç)" yes "$(has "$(get "/api/studio/students/$SA/debt" "$ATOK")" '"remaining":5000')"
 
 echo "--- 7) Salt-okunur: öğrenci yazma yapamaz ---"
 expect "POST /api/student/contracts → 405" 405 "$(pcode /api/student/contracts '{}' "$SATOK")"
