@@ -92,6 +92,28 @@ public sealed class CreateStudentContractHandler : ICommandHandler<CreateStudent
             CreatedByUserId = userId,
         };
         _db.StudentContracts.Add(contract);
+
+        // Sprint 28A (line modeli): her sözleşme header'dır + 1 line. Hak/ücret/telafi line üzerinde takip edilir;
+        // davranış değişmez (eski akış hâlâ contract alanlarını okur). Yeni alımlar 28B'de yeni line olur.
+        _db.StudentContractLines.Add(new StudentContractLine
+        {
+            StudioId = studioId,
+            StudentContractId = contract.Id,
+            ClassTypeId = classType.Id,
+            InstructorProfileId = instructor.Id,
+            StartDate = contract.StartDate,
+            EndDate = contract.EndDate,
+            LessonCount = contract.TotalLessonCount,
+            PricePerLesson = contract.TotalLessonCount > 0 ? decimal.Round(contract.Price / contract.TotalLessonCount, 2) : 0m,
+            TotalPrice = contract.Price,
+            MakeupAllowance = contract.MakeupAllowance,
+            DueDate = null,    // Karar: backfill/oluşturmada NULL; son ödeme tarihi line ekranında girilir (28B/28D).
+            IsIndividual = contract.IsIndividualDefault,
+            Status = StudentContractLineStatus.Active,
+            Currency = currency,
+            SequenceNo = 1,
+            CreatedByUserId = userId,
+        });
         await _db.SaveChangesAsync(ct);
 
         return new StudentContractDto(

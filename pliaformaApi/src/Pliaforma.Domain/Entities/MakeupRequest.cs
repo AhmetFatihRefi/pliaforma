@@ -24,6 +24,11 @@ public class MakeupRequest : BaseEntity, ITenantScoped
     /// <summary>Telafi yapılacak öğrenci (misafir dahil — StudentProfileId üzerinden).</summary>
     public Guid StudentProfileId { get; set; }
 
+    /// <summary>Sprint 28A: talebin bağlı olduğu sözleşme SATIRI (line). 28A'da backfill ile doldurulur; 28C'de
+    /// line bazlı zorunlu (telafi hakkı + tüketim o line'dan). NULL → eski/geçiş.</summary>
+    public Guid? StudentContractLineId { get; set; }
+    public StudentContractLine? StudentContractLine { get; set; }
+
     /// <summary>Talebi açan/atanan hocanın profili (= planlanan hoca). Instructor için token'dan ZORLANIR.</summary>
     public Guid RequestedInstructorProfileId { get; set; }
 

@@ -21,7 +21,8 @@ public sealed record UpdateStudentCommand(
     string? HealthNotes,
     string? EmergencyContactName,
     string? EmergencyContactPhone,
-    DateOnly? BirthDate) : ICommand<StudentDto>, IStudioWriteRequest;
+    DateOnly? BirthDate,
+    StudentLevel? Level = null) : ICommand<StudentDto>, IStudioWriteRequest;
 
 public sealed class UpdateStudentValidator : AbstractValidator<UpdateStudentCommand>
 {
@@ -63,6 +64,7 @@ public sealed class UpdateStudentHandler : ICommandHandler<UpdateStudentCommand,
         entity.Phone = request.Phone?.Trim();
         entity.Email = request.Email?.Trim();
         entity.Source = request.Source;
+        entity.Level = request.Level;
         entity.Notes = request.Notes?.Trim();
         entity.HealthNotes = request.HealthNotes?.Trim();
         entity.EmergencyContactName = request.EmergencyContactName?.Trim();

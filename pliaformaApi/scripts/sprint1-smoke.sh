@@ -31,8 +31,9 @@ expect "register-studio C" 200 "$(code "$R")"; CTOK=$(body "$R" | jget accessTok
 echo "--- ClassType (Owner A) ---"
 R=$(post /api/class-types "{\"name\":\"Reformer Group\",\"equipment\":\"Reformer\",\"capacityType\":\"Group\",\"maxCapacity\":6,\"level\":\"Intermediate\",\"purpose\":\"General\",\"defaultDurationMinutes\":50,\"description\":null}" "$ATOK")
 expect "create class-type" 200 "$(code "$R")"; CT_A=$(body "$R" | jget id)
-R=$(post /api/class-types "{\"name\":\"Bad Private\",\"equipment\":\"Mat\",\"capacityType\":\"Private\",\"maxCapacity\":3,\"level\":\"Beginner\",\"purpose\":\"General\",\"defaultDurationMinutes\":50}" "$ATOK")
-expect "capacity validation (Private=3)" 400 "$(code "$R")"
+# Sprint 28A: ders tipi sadeleşti → kapasite/seviye/amaç/ekipman kaldırıldı; fazla alanlar yok sayılır (validation yok) → 200.
+R=$(post /api/class-types "{\"name\":\"Sade Grup\",\"capacityType\":\"Private\",\"maxCapacity\":3,\"defaultDurationMinutes\":50}" "$ATOK")
+expect "ders tipi (fazla/kapasite alanları yok sayılır) → 200" 200 "$(code "$R")"
 LC=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/class-types" -H "Authorization: Bearer $ATOK")
 expect "list class-types" 200 "$LC"
 

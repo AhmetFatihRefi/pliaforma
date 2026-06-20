@@ -50,7 +50,8 @@ echo "--- Ders seansı + EndAt + çakışma (Sprint 26: müsaitlik kontrolü YOK
 R=$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T10:00:00\"}" "$ATOK")
 expect "create session → 200 (availability gerekmez)" 200 "$(code "$R")"; SESS=$(body "$R" | jget id)
 expect "EndAt = start+60 (11:00)" yes "$(has "$(body "$R")" "${DATE}T11:00:00")"
-expect "capacity default=ClassType.MaxCapacity(6)" yes "$(has "$(body "$R")" '"capacity":6')"
+# Sprint 28A: ClassType.MaxCapacity dormant → kapasite verilmezse grup-sınırsız (9999).
+expect "capacity default=grup-sınırsız (9999)" yes "$(has "$(body "$R")" '"capacity":9999')"
 expect "çakışan session → 409" 409 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T10:30:00\"}" "$ATOK")")"
 expect "müsaitlik kontrolü YOK: herhangi saat (13:00) → 200" 200 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${DATE}T13:00:00\"}" "$ATOK")")"
 expect "geçmiş tarihe session → 409" 409 "$(code "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"2020-01-01T10:00:00\"}" "$ATOK")")"

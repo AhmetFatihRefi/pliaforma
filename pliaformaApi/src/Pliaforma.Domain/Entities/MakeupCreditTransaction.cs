@@ -18,6 +18,12 @@ public class MakeupCreditTransaction : BaseEntity, ITenantScoped
     public Guid StudentProfileId { get; set; }
     public StudentProfile? StudentProfile { get; set; }
 
+    /// <summary>Sprint 28A: kredinin doğduğu sözleşme SATIRI (line). "Telafi kredisi hangi line'dan doğduysa
+    /// o line'a bağlı" kararı. 28A'da backfill (booking üzerinden) ile doldurulur; 28C'de YENİ krediler için
+    /// ZORUNLU + balance line-scoped. NULL → eski/bağlanamamış (28A'da bağlanamayan dev kayıtları soft-delete).</summary>
+    public Guid? StudentContractLineId { get; set; }
+    public StudentContractLine? StudentContractLine { get; set; }
+
     /// <summary>İşaretli miktar: Granted/Restored pozitif, Used/Revoked/Expired negatif. 0 olamaz.</summary>
     public int Amount { get; set; }
 

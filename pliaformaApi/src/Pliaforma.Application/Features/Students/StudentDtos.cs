@@ -16,6 +16,7 @@ public sealed record StudentDto(
     string? Email,
     StudentStatus Status,
     StudentSource Source,
+    StudentLevel? Level,
     string? Notes,
     string? HealthNotes,
     string? EmergencyContactName,
@@ -26,7 +27,7 @@ public sealed record StudentDto(
     bool IsActive)
 {
     public static StudentDto From(StudentProfile s, bool includeHealth) =>
-        new(s.Id, s.UserId, s.StudioMembershipId, s.FullName, s.Phone, s.Email, s.Status, s.Source,
+        new(s.Id, s.UserId, s.StudioMembershipId, s.FullName, s.Phone, s.Email, s.Status, s.Source, s.Level,
             s.Notes, includeHealth ? s.HealthNotes : null, s.EmergencyContactName, s.EmergencyContactPhone,
             s.BirthDate, s.CreatedByUserId, s.ConvertedAt, s.IsActive);
 }

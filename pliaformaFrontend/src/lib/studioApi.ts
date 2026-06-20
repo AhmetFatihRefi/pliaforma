@@ -44,6 +44,7 @@ import type {
   MyMakeupCreditsDto,
   PendingInvitationDto,
   StudentContractDto,
+  StudentContractLineDto,
   ContractScheduleSlotInput,
   ContractSchedulePreviewDto,
   GenerateContractScheduleResultDto,
@@ -120,6 +121,8 @@ export const contractService = {
     additionalPrice: number; currency?: string | null; description?: string | null;
   }) => api<ContractAmendmentDto>(`/api/studio/contracts/${id}/amendments`, { method: "POST", body: input }),
   debt: (studentId: string) => api<StudentDebtSummaryDto>(`/api/studio/students/${studentId}/debt`),
+  // Sprint 28A: öğrencinin sözleşme satırları (read-only).
+  lines: (studentId: string) => api<StudentContractLineDto[]>(`/api/studio/students/${studentId}/contract-lines`),
 };
 
 // Kullanıcı tarafı üyelik aksiyonları (/api/members)
@@ -337,6 +340,8 @@ export const studentFinanceService = {
 export const studentContractService = {
   myContracts: () => api<StudentContractViewDto[]>("/api/student/contracts"),
   myDebt: () => api<MyDebtSummaryDto>("/api/student/debt"),
+  // Sprint 28A: kendi sözleşme satırları (read-only).
+  myLines: () => api<StudentContractLineDto[]>("/api/student/contract-lines"),
 };
 
 // Dashboard & raporlar (/api/studio, /api/instructor, /api/student)

@@ -15,8 +15,10 @@ import {
   type MemberDto,
   type PaymentDto,
   type StudentContractDto,
+  type StudentContractLineDto,
   type StudentDebtSummaryDto,
   type StudentDto,
+  type StudentLevel,
   type StudentSource,
   contractAmendmentKindLabels,
   contractAmendmentKinds,
@@ -24,6 +26,7 @@ import {
   dayLabels,
   paymentStatusLabels,
   studentContractStatusLabels,
+  studentLevelLabels,
   studentSourceLabels,
   studentStatusLabels,
 } from "@/lib/domain-types";
@@ -46,7 +49,7 @@ import {
 } from "@/components/ui";
 
 const emptyGuest: GuestInput = {
-  fullName: "", phone: "", email: "", source: "Phone", notes: "", healthNotes: "",
+  fullName: "", phone: "", email: "", source: "Phone", level: null, notes: "", healthNotes: "",
   emergencyContactName: "", emergencyContactPhone: "", birthDate: "",
 };
 
@@ -187,6 +190,7 @@ export default function StudentsPage() {
 // ===== Sprint 18a: Öğrenci sözleşmeleri + sözleşmeden program =====
 function ContractsModal({ student, onClose }: { student: StudentDto; onClose: () => void }) {
   const [contracts, setContracts] = useState<StudentContractDto[]>([]);
+  const [lines, setLines] = useState<StudentContractLineDto[]>([]);
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
   const [instructors, setInstructors] = useState<MemberDto[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -201,14 +205,16 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
 
   const load = useCallback(async () => {
     try {
-      const [cs, ct, ms] = await Promise.all([
+      const [cs, ct, ms, ls] = await Promise.all([
         contractService.forStudent(student.id),
         classTypeService.list(true),
         memberService.list(),
+        contractService.lines(student.id).catch(() => [] as StudentContractLineDto[]),
       ]);
       setContracts(cs);
       setClassTypes(ct);
       setInstructors(ms.filter((m) => m.role === "Instructor" && m.instructorProfileId));
+      setLines(ls);
       setErr(null);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Yüklenemedi.");
@@ -286,6 +292,34 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
             contracts.map((c) => <ContractRow key={c.id} contract={c} onChanged={load} onCancel={() => cancel(c.id)} />)
           )}
         </div>
+
+        {/* Sprint 28A: sözleşme satırları (line) — SALT OKUNUR. Line editör/ekleme + line ödeme/borç 28B. */}
+        {lines.length > 0 && (
+          <div className="space-y-2 border-t border-border pt-3">
+            <p className="text-xs font-semibold text-muted">Sözleşme satırları (line) — salt okunur</p>
+            {lines.map((l) => (
+              <div key={l.id} className="rounded-xl border border-border bg-surface p-3 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+                    {l.classTypeName} · {l.instructorName}
+                    {l.isIndividual && <Badge tone="warning">Bireysel</Badge>}
+                  </span>
+                  <Badge tone={l.status === "Active" ? "success" : "neutral"}>{studentContractStatusLabels[l.status]}</Badge>
+                </div>
+                <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-muted sm:grid-cols-3">
+                  <span>Tarih: {l.startDate} → {l.endDate}</span>
+                  <span>Ders: {l.scheduledLessonCount}/{l.lessonCount} (kalan {l.availableLessonCount})</span>
+                  <span>Telafi hakkı: {l.makeupAllowance}</span>
+                  <span>Ders başı: {l.pricePerLesson.toLocaleString("tr-TR")} {l.currency}</span>
+                  <span>Toplam: {l.totalPrice.toLocaleString("tr-TR")} {l.currency}</span>
+                  <span>Son ödeme: {l.dueDate ?? "—"}</span>
+                  <span>Ödenen: {l.paid.toLocaleString("tr-TR")} {l.currency}</span>
+                  <span className={l.remaining > 0 ? "text-danger" : "text-success"}>Kalan: {l.remaining.toLocaleString("tr-TR")} {l.currency}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -625,6 +659,7 @@ function GuestFormModal({ student, onClose, onSaved }: { student: StudentDto | n
           phone: student.phone ?? "",
           email: student.email ?? "",
           source: student.source,
+          level: student.level ?? null,
           notes: student.notes ?? "",
           healthNotes: student.healthNotes ?? "",
           emergencyContactName: student.emergencyContactName ?? "",
@@ -672,6 +707,13 @@ function GuestFormModal({ student, onClose, onSaved }: { student: StudentDto | n
           <FormField label="Kaynak">
             <Select value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value as StudentSource }))}>
               {Object.entries(studentSourceLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+          </FormField>
+          {/* Sprint 28A: seviye artık öğrenci özelliği (opsiyonel). */}
+          <FormField label="Seviye">
+            <Select value={form.level ?? ""} onChange={(e) => setForm((f) => ({ ...f, level: (e.target.value || null) as StudentLevel | null }))}>
+              <option value="">Belirtilmemiş</option>
+              {Object.entries(studentLevelLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
           </FormField>
           <FormField label="Doğum tarihi">

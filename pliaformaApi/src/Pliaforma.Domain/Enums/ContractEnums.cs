@@ -19,6 +19,25 @@ public enum StudentContractStatus
 }
 
 /// <summary>
+/// Öğrenci sözleşme satırının (StudentContractLine) durumu (Sprint 28A). StudentContract artık üst başlık (header);
+/// asıl hak/ücret/telafi line üzerindedir ve yaşam döngüsü line bazlıdır.
+/// </summary>
+public enum StudentContractLineStatus
+{
+    /// <summary>Yürürlükte; programa ders üretilebilir, booking bağlanabilir.</summary>
+    Active = 0,
+
+    /// <summary>Ders hakkı tamamlandı (bilgi amaçlı).</summary>
+    Completed = 1,
+
+    /// <summary>İptal edildi.</summary>
+    Cancelled = 2,
+
+    /// <summary>Tarih aralığı geçti (bilgi amaçlı).</summary>
+    Expired = 3,
+}
+
+/// <summary>
 /// Sözleşme ek işlemi (amendment) kategorisi (Sprint 23). Raporlama/filtreleme için yardımcı alandır;
 /// asıl doğruluk delta alanlarındadır (AdditionalLessonCount, Previous/NewEndDate, AdditionalPrice).
 /// </summary>

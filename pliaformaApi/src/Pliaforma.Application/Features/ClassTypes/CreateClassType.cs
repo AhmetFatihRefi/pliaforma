@@ -6,14 +6,10 @@ using Pliaforma.Domain.Enums;
 
 namespace Pliaforma.Application.Features.ClassTypes;
 
-/// <summary>Aktif stüdyoda yeni bir pilates grubu (ClassType) oluşturur.</summary>
+/// <summary>Aktif stüdyoda yeni bir pilates grubu (ClassType) oluşturur. Sprint 28A: yalnız ad + süre + açıklama
+/// (kapasite/seviye/amaç/ekipman kaldırıldı; dormant kolonlar nötr varsayılanla doldurulur).</summary>
 public sealed record CreateClassTypeCommand(
     string Name,
-    EquipmentType Equipment,
-    ClassCapacityType CapacityType,
-    int MaxCapacity,
-    ClassLevel Level,
-    ClassPurpose Purpose,
     int DefaultDurationMinutes,
     string? Description) : ICommand<ClassTypeDto>, IStudioWriteRequest;
 
@@ -24,9 +20,6 @@ public sealed class CreateClassTypeValidator : AbstractValidator<CreateClassType
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
         RuleFor(x => x.DefaultDurationMinutes).InclusiveBetween(10, 240);
         RuleFor(x => x.Description).MaximumLength(1000);
-        RuleFor(x => x.MaxCapacity)
-            .Must((cmd, cap) => CapacityRules.IsValid(cmd.CapacityType, cap))
-            .WithMessage(CapacityRules.Message);
     }
 }
 
@@ -49,14 +42,15 @@ public sealed class CreateClassTypeHandler : ICommandHandler<CreateClassTypeComm
         {
             StudioId = studioId,
             Name = request.Name.Trim(),
-            Equipment = request.Equipment,
-            CapacityType = request.CapacityType,
-            MaxCapacity = request.MaxCapacity,
-            Level = request.Level,
-            Purpose = request.Purpose,
             DefaultDurationMinutes = request.DefaultDurationMinutes,
             Description = request.Description?.Trim(),
             IsActive = true,
+            // Sprint 28A: dormant alanlar (UI/DTO'dan kaldırıldı) — nötr varsayılan; hiçbir mantık okumaz.
+            Equipment = EquipmentType.Mat,
+            CapacityType = ClassCapacityType.Group,
+            MaxCapacity = 0,
+            Level = ClassLevel.AllLevels,
+            Purpose = ClassPurpose.General,
         };
 
         _db.ClassTypes.Add(entity);

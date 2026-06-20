@@ -28,8 +28,16 @@ public sealed class MakeupCreditTransactionConfiguration : IEntityTypeConfigurat
             .HasForeignKey(x => x.StudentProfileId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Sprint 28A: kredinin doğduğu sözleşme SATIRI (line). Line silinse de ledger izi kalır (SetNull).
+        b.HasOne(x => x.StudentContractLine)
+            .WithMany()
+            .HasForeignKey(x => x.StudentContractLineId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // Bakiye hesabı ve geçmiş listesi için.
         b.HasIndex(x => new { x.StudioId, x.StudentProfileId });
+        // Sprint 28A: line-bazlı bakiye (28C) için.
+        b.HasIndex(x => new { x.StudioId, x.StudentContractLineId });
 
         // Bir kaynak seans iptali için aynı öğrenciye yalnızca BİR otomatik Granted hareket
         // (StudioCancelledClass/HolidayClosure). Filtered (partial) unique index.

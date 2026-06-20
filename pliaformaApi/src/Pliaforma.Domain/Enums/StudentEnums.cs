@@ -13,6 +13,22 @@ public enum StudentStatus
     Inactive = 2,
 }
 
+/// <summary>
+/// Öğrenci pilates seviyesi (Sprint 28A — seviye artık öğrencinin özelliği; ders tipinin değil).
+/// Opsiyonel; program oluştururken aynı seviyeden öğrencileri bir araya getirme filtresi (28C) için kullanılır.
+/// </summary>
+public enum StudentLevel
+{
+    /// <summary>Başlangıç.</summary>
+    Beginner = 0,
+
+    /// <summary>Orta.</summary>
+    Intermediate = 1,
+
+    /// <summary>İleri.</summary>
+    Advanced = 2,
+}
+
 /// <summary>Öğrencinin stüdyoya nasıl ulaştığı/kaydedildiği.</summary>
 public enum StudentSource
 {

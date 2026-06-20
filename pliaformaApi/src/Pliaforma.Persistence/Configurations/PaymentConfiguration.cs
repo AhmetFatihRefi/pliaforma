@@ -38,9 +38,16 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
             .HasForeignKey(x => x.StudentContractId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Sprint 28A: ödeme → sözleşme SATIRI bağı (line). Line silinirse etiketsiz kalır (SetNull).
+        b.HasOne(x => x.StudentContractLine)
+            .WithMany()
+            .HasForeignKey(x => x.StudentContractLineId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         b.HasIndex(x => new { x.StudioId, x.StudentProfileId });
         b.HasIndex(x => new { x.StudioId, x.Status });
         b.HasIndex(x => new { x.StudioId, x.StudentContractId });
+        b.HasIndex(x => new { x.StudioId, x.StudentContractLineId });
         // Vade bazlı taramalar (hatırlatma: due-soon/overdue; dashboard/rapor DueDate aralığı) için.
         b.HasIndex(x => new { x.StudioId, x.DueDate });
     }

@@ -16,6 +16,7 @@ public sealed class StudentProfileConfiguration : IEntityTypeConfiguration<Stude
         b.Property(x => x.Email).HasMaxLength(256);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
         b.Property(x => x.Source).HasConversion<string>().HasMaxLength(16);
+        b.Property(x => x.Level).HasConversion<string>().HasMaxLength(16);
         b.Property(x => x.Notes).HasMaxLength(2000);
         b.Property(x => x.HealthNotes).HasMaxLength(2000);
         b.Property(x => x.EmergencyContactName).HasMaxLength(150);

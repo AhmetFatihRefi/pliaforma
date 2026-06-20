@@ -51,4 +51,9 @@ public sealed class ContractsController : ApiControllerBase
     [HttpGet("students/{studentId:guid}/debt")]
     public Task<IActionResult> StudentDebt(Guid studentId, CancellationToken ct) =>
         Send(new GetStudentDebtQuery(studentId), ct: ct);
+
+    // Sprint 28A: öğrencinin sözleşme satırları (read-only; line editör/ekleme 28B).
+    [HttpGet("students/{studentId:guid}/contract-lines")]
+    public Task<IActionResult> ContractLines(Guid studentId, CancellationToken ct) =>
+        Send(new GetStudentContractLinesQuery(studentId), ct: ct);
 }

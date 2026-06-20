@@ -19,7 +19,8 @@ public sealed record CreateGuestStudentCommand(
     string? HealthNotes,
     string? EmergencyContactName,
     string? EmergencyContactPhone,
-    DateOnly? BirthDate) : ICommand<StudentDto>, IStudioWriteRequest;
+    DateOnly? BirthDate,
+    StudentLevel? Level = null) : ICommand<StudentDto>, IStudioWriteRequest;
 
 public sealed class CreateGuestStudentValidator : AbstractValidator<CreateGuestStudentCommand>
 {
@@ -60,6 +61,7 @@ public sealed class CreateGuestStudentHandler : ICommandHandler<CreateGuestStude
             Email = request.Email?.Trim(),
             Status = StudentStatus.Guest,
             Source = request.Source,
+            Level = request.Level,
             Notes = request.Notes?.Trim(),
             HealthNotes = request.HealthNotes?.Trim(),
             EmergencyContactName = request.EmergencyContactName?.Trim(),

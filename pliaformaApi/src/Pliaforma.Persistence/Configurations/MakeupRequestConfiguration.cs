@@ -31,6 +31,12 @@ public sealed class MakeupRequestConfiguration : IEntityTypeConfiguration<Makeup
             .HasForeignKey(x => x.StudioId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Sprint 28A: talebin bağlı olduğu sözleşme SATIRI (line). Line silinse de talep izi kalır (SetNull).
+        b.HasOne(x => x.StudentContractLine)
+            .WithMany()
+            .HasForeignKey(x => x.StudentContractLineId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         b.HasIndex(x => new { x.StudioId, x.Status });
         b.HasIndex(x => new { x.StudioId, x.RequestedInstructorProfileId, x.Status });
         b.HasIndex(x => new { x.StudioId, x.StudentProfileId, x.Status });

@@ -8,14 +8,10 @@ export type ClassPurpose = "General" | "ClinicalRehab" | "Prenatal";
 export type RateType = "PerSession" | "PerHour" | "PerStudentPerSession";
 export type MembershipDirection = "InvitedByStudio" | "RequestedByUser";
 
+// Sprint 28A: ders tipi sadeleştirildi → equipment/capacityType/maxCapacity/level/purpose KALDIRILDI.
 export interface ClassTypeDto {
   id: string;
   name: string;
-  equipment: EquipmentType;
-  capacityType: ClassCapacityType;
-  maxCapacity: number;
-  level: ClassLevel;
-  purpose: ClassPurpose;
   defaultDurationMinutes: number;
   description?: string | null;
   isActive: boolean;
@@ -114,6 +110,8 @@ export const rateTypeLabels: Record<RateType, string> = {
 // ===== Sprint 2: Öğrenciler / Misafir akışı =====
 export type StudentStatus = "Guest" | "Active" | "Inactive";
 export type StudentSource = "Phone" | "WalkIn" | "Web" | "Referral" | "Other";
+// Sprint 28A: seviye artık öğrenci özelliği (opsiyonel).
+export type StudentLevel = "Beginner" | "Intermediate" | "Advanced";
 
 export interface StudentDto {
   id: string;
@@ -124,6 +122,7 @@ export interface StudentDto {
   email?: string | null;
   status: StudentStatus;
   source: StudentSource;
+  level?: StudentLevel | null;
   notes?: string | null;
   healthNotes?: string | null;
   emergencyContactName?: string | null;
@@ -139,6 +138,7 @@ export interface GuestInput {
   phone?: string;
   email?: string;
   source: StudentSource;
+  level?: StudentLevel | null;
   notes?: string;
   healthNotes?: string;
   emergencyContactName?: string;
@@ -152,6 +152,37 @@ export const studentStatusLabels: Record<StudentStatus, string> = {
 export const studentSourceLabels: Record<StudentSource, string> = {
   Phone: "Telefon", WalkIn: "Kapıdan", Web: "Web", Referral: "Tavsiye", Other: "Diğer",
 };
+export const studentLevelLabels: Record<StudentLevel, string> = {
+  Beginner: "Başlangıç", Intermediate: "Orta", Advanced: "İleri",
+};
+
+// Sprint 28A: sözleşme satırı (read-only). Line editör/ekleme 28B.
+export type StudentContractLineStatus = "Active" | "Completed" | "Cancelled" | "Expired";
+export interface StudentContractLineDto {
+  id: string;
+  studentContractId: string;
+  studentProfileId: string;
+  studentName: string;
+  classTypeId: string;
+  classTypeName: string;
+  instructorProfileId: string;
+  instructorName: string;
+  startDate: string;
+  endDate: string;
+  lessonCount: number;
+  scheduledLessonCount: number;
+  availableLessonCount: number;
+  pricePerLesson: number;
+  totalPrice: number;
+  paid: number;
+  remaining: number;
+  makeupAllowance: number;
+  dueDate?: string | null;
+  isIndividual: boolean;
+  status: StudentContractLineStatus;
+  currency: string;
+  sequenceNo: number;
+}
 
 // ===== Sprint 3: Ders Seansları (Sprint 26: hoca müsaitlik DTO'su kaldırıldı — modül ana üründen çıktı) =====
 export type DayOfWeek = "Sunday" | "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday";

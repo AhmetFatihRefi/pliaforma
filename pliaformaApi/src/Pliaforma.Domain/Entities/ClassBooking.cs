@@ -27,6 +27,11 @@ public class ClassBooking : BaseEntity, ITenantScoped
     public Guid? StudentContractId { get; set; }
     public StudentContract? StudentContract { get; set; }
 
+    /// <summary>Sprint 28A: rezervasyonun çekildiği sözleşme SATIRI (line). 28A'da backfill ile doldurulur;
+    /// line-bazlı available/telafi (28C) buna dayanacak. NULL → henüz line'a bağlanmamış (eski/geçiş).</summary>
+    public Guid? StudentContractLineId { get; set; }
+    public StudentContractLine? StudentContractLine { get; set; }
+
     public ClassBookingStatus Status { get; set; } = ClassBookingStatus.Booked;
 
     /// <summary>Rezervasyonu yapan kullanıcı (öğrencinin kendisi veya vekaleten personel).</summary>

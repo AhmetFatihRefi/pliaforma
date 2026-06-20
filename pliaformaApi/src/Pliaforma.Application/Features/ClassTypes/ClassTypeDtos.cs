@@ -3,21 +3,17 @@ using Pliaforma.Domain.Enums;
 
 namespace Pliaforma.Application.Features.ClassTypes;
 
+// Sprint 28A: ders tipi sadeleştirildi → Equipment/CapacityType/MaxCapacity/Level/Purpose UI/DTO'dan KALDIRILDI
+// (DB kolonları dormant). Seviye artık öğrenci özelliği. Kapasite gereksiz (grup sınırsız; bireysellik line'dan).
 public sealed record ClassTypeDto(
     Guid Id,
     string Name,
-    EquipmentType Equipment,
-    ClassCapacityType CapacityType,
-    int MaxCapacity,
-    ClassLevel Level,
-    ClassPurpose Purpose,
     int DefaultDurationMinutes,
     string? Description,
     bool IsActive)
 {
     public static ClassTypeDto From(ClassType c) =>
-        new(c.Id, c.Name, c.Equipment, c.CapacityType, c.MaxCapacity, c.Level, c.Purpose,
-            c.DefaultDurationMinutes, c.Description, c.IsActive);
+        new(c.Id, c.Name, c.DefaultDurationMinutes, c.Description, c.IsActive);
 }
 
 /// <summary>Kapasite tipine göre MaxCapacity doğrulaması (Private⇒1, Duo⇒2, Group⇒2..50).</summary>

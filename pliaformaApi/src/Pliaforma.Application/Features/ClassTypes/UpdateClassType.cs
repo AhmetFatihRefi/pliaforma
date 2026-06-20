@@ -11,11 +11,6 @@ namespace Pliaforma.Application.Features.ClassTypes;
 public sealed record UpdateClassTypeCommand(
     Guid Id,
     string Name,
-    EquipmentType Equipment,
-    ClassCapacityType CapacityType,
-    int MaxCapacity,
-    ClassLevel Level,
-    ClassPurpose Purpose,
     int DefaultDurationMinutes,
     string? Description,
     bool IsActive) : ICommand<ClassTypeDto>, IStudioWriteRequest;
@@ -28,9 +23,6 @@ public sealed class UpdateClassTypeValidator : AbstractValidator<UpdateClassType
         RuleFor(x => x.Name).NotEmpty().MaximumLength(150);
         RuleFor(x => x.DefaultDurationMinutes).InclusiveBetween(10, 240);
         RuleFor(x => x.Description).MaximumLength(1000);
-        RuleFor(x => x.MaxCapacity)
-            .Must((cmd, cap) => CapacityRules.IsValid(cmd.CapacityType, cap))
-            .WithMessage(CapacityRules.Message);
     }
 }
 
@@ -54,12 +46,9 @@ public sealed class UpdateClassTypeHandler : ICommandHandler<UpdateClassTypeComm
             .FirstOrDefaultAsync(c => c.Id == request.Id && c.StudioId == studioId, cancellationToken)
             ?? throw new NotFoundException("Ders tipi", request.Id);
 
+        // Sprint 28A: yalnız ad/süre/açıklama/aktiflik güncellenir; dormant alanlara (Equipment/CapacityType/
+        // MaxCapacity/Level/Purpose) dokunulmaz (UI/DTO'dan kaldırıldı).
         entity.Name = request.Name.Trim();
-        entity.Equipment = request.Equipment;
-        entity.CapacityType = request.CapacityType;
-        entity.MaxCapacity = request.MaxCapacity;
-        entity.Level = request.Level;
-        entity.Purpose = request.Purpose;
         entity.DefaultDurationMinutes = request.DefaultDurationMinutes;
         entity.Description = request.Description?.Trim();
         entity.IsActive = request.IsActive;

@@ -60,7 +60,8 @@ public sealed class BulkGenerateClassSessionsHandler
 
         var duration = classType.DefaultDurationMinutes;
         var gap = request.BreakMinutes ?? 0;
-        var capacity = request.Capacity ?? classType.MaxCapacity;
+        // Sprint 28A: ClassType.MaxCapacity dormant → verilmezse grup-sınırsız (9999).
+        var capacity = request.Capacity ?? 9999;
         if (capacity < 1) capacity = 1;
 
         var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, cancellationToken);

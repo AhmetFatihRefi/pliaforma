@@ -58,7 +58,8 @@ public sealed class CreateClassSessionHandler : ICommandHandler<CreateClassSessi
 
         var startAt = DateTime.SpecifyKind(request.StartAt, DateTimeKind.Unspecified);
         var endAt = startAt.AddMinutes(classType.DefaultDurationMinutes);
-        var capacity = request.Capacity ?? classType.MaxCapacity;
+        // Sprint 28A: ClassType.MaxCapacity dormant → verilmezse grup-sınırsız (9999); bireysellik line/akıştan gelir.
+        var capacity = request.Capacity ?? 9999;
         if (capacity < 1) capacity = 1;
 
         await SessionRules.EnsureValidAsync(_db, _clock, studioId, profile.Id, startAt, endAt, excludeId: null, cancellationToken);

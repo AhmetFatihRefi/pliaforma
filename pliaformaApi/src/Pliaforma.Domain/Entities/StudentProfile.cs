@@ -29,6 +29,9 @@ public class StudentProfile : BaseEntity, ITenantScoped
     public StudentStatus Status { get; set; } = StudentStatus.Guest;
     public StudentSource Source { get; set; } = StudentSource.Other;
 
+    /// <summary>Pilates seviyesi (Sprint 28A — öğrenci özelliği). Opsiyonel; program oluştururken seviye filtresi (28C) için.</summary>
+    public StudentLevel? Level { get; set; }
+
     public string? Notes { get; set; }
 
     /// <summary>Hassas sağlık bilgisi — yalnızca yetkili roller görür (Owner/StudioAdmin, oluşturan hoca, öğrencinin kendisi).</summary>

@@ -27,6 +27,11 @@ public class Payment : BaseEntity, ITenantScoped
     public Guid? StudentContractId { get; set; }
     public StudentContract? StudentContract { get; set; }
 
+    /// <summary>Sprint 28A: ödemenin bağlandığı sözleşme SATIRI (line). Line-bazlı borç hesabı (28B) buna dayanır.
+    /// 28A'da backfill (1 line/contract) ile doldurulur. NULL → henüz line'a bağlanmamış/etiketsiz.</summary>
+    public Guid? StudentContractLineId { get; set; }
+    public StudentContractLine? StudentContractLine { get; set; }
+
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "TRY";
 
