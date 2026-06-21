@@ -9,18 +9,19 @@ using Pliaforma.Domain.Exceptions;
 namespace Pliaforma.Application.Features.Contracts;
 
 // ======================= DTO'lar =======================
-/// <summary>Grup düzeni değişikliğine aday öğrenci/sözleşme (hoca + ders tipinde gelecek Regular dersi olan).</summary>
+// Sprint 28C-1: grup düzeni değişikliği LINE-bazlı (seçim birimi = lineId).
+/// <summary>Grup düzeni değişikliğine aday öğrenci/line (hoca + ders tipinde gelecek Regular dersi olan).</summary>
 public sealed record GroupChangeCandidateDto(
-    Guid ContractId, Guid StudentProfileId, string StudentName,
+    Guid LineId, Guid StudentProfileId, string StudentName,
     int AvailableLessonCount, DateOnly StartDate, DateOnly EndDate,
     int FutureRegularCount, string CurrentSlotSummary, bool IsIndividual);
 
 /// <summary>Yeniden üretimde tek slotun sonucu. Outcome: created-new | reused | skipped | conflict.</summary>
 public sealed record GroupChangeSlotOutcomeDto(DateTime StartAt, DateTime EndAt, string Outcome, string? Reason);
 
-/// <summary>Bir öğrenci için grup-değişikliği sonucu (kaldırılan + üretilen + çakışma).</summary>
+/// <summary>Bir line için grup-değişikliği sonucu (kaldırılan + üretilen + çakışma).</summary>
 public sealed record GroupChangeStudentResultDto(
-    Guid ContractId, string StudentName,
+    Guid LineId, string StudentName,
     int RemovedCount, int PlannedCount, int ReusedCount, int NewSessionCount,
     int SkippedCount, int ConflictCount, string? Note,
     IReadOnlyList<GroupChangeSlotOutcomeDto> Slots);
@@ -47,13 +48,13 @@ internal sealed class GroupScheduleChangeService
     public async Task<GroupChangePreviewDto> ExecuteAsync(
         IAppDbContext db, ICurrentUserService user, IDateTime clock,
         Guid instructorProfileId, Guid classTypeId, DateOnly effectiveDate,
-        IReadOnlyList<Guid> contractIds, IReadOnlyList<ContractScheduleSlotInput> newSlots, CancellationToken ct)
+        IReadOnlyList<Guid> lineIds, IReadOnlyList<ContractScheduleSlotInput> newSlots, CancellationToken ct)
     {
         var studioId = user.RequireStudioId();
         var userId = user.RequireUserId();
         if (user.StudioRole is not (StudioRole.Owner or StudioRole.StudioAdmin))
             throw new ForbiddenException("Grup program değişikliği yalnızca Owner/StudioAdmin yetkisindedir.");
-        if (contractIds.Count == 0) throw new BusinessRuleException("En az bir öğrenci seçilmeli.");
+        if (lineIds.Count == 0) throw new BusinessRuleException("En az bir öğrenci (satır) seçilmeli.");
         if (newSlots.Count == 0) throw new BusinessRuleException("En az bir yeni gün/saat seçilmeli.");
 
         var nowLocal = await SessionRules.StudioNowAsync(db, clock, studioId, ct);
@@ -66,30 +67,30 @@ internal sealed class GroupScheduleChangeService
         var duration = classType.DefaultDurationMinutes;
         var closures = await db.StudioClosures.Where(cl => cl.StudioId == studioId).ToListAsync(ct);
 
-        var contracts = await db.StudentContracts
-            .Where(c => c.StudioId == studioId && contractIds.Contains(c.Id)).ToListAsync(ct);
-        var ordered = new List<StudentContract>();
-        foreach (var id in contractIds.Distinct())
+        var lines = await db.StudentContractLines.Include(l => l.StudentContract)
+            .Where(l => l.StudioId == studioId && lineIds.Contains(l.Id)).ToListAsync(ct);
+        var ordered = new List<StudentContractLine>();
+        foreach (var id in lineIds.Distinct())
         {
-            var c = contracts.FirstOrDefault(x => x.Id == id) ?? throw new NotFoundException("Sözleşme", id);
-            if (c.Status != StudentContractStatus.Active)
-                throw new BusinessRuleException("Yalnızca aktif sözleşme taşınabilir.");
-            if (c.InstructorProfileId != instructorProfileId || c.ClassTypeId != classTypeId)
-                throw new BusinessRuleException("Seçilen sözleşme bu hoca/ders tipiyle uyuşmuyor.");
-            ordered.Add(c);
+            var l = lines.FirstOrDefault(x => x.Id == id) ?? throw new NotFoundException("Sözleşme satırı", id);
+            if (l.Status != StudentContractLineStatus.Active)
+                throw new BusinessRuleException("Yalnızca aktif satır taşınabilir.");
+            if (l.InstructorProfileId != instructorProfileId || l.ClassTypeId != classTypeId)
+                throw new BusinessRuleException("Seçilen satır bu hoca/ders tipiyle uyuşmuyor.");
+            ordered.Add(l);
         }
 
-        var studentIds = ordered.Select(c => c.StudentProfileId).Distinct().ToList();
+        var studentIds = ordered.Select(l => l.StudentContract!.StudentProfileId).Distinct().ToList();
         var names = await db.StudentProfiles.Where(s => studentIds.Contains(s.Id))
             .Select(s => new { s.Id, s.FullName }).ToDictionaryAsync(s => s.Id, s => s.FullName, ct);
 
-        // PHASE 1 — Seçili sözleşmelerin effectiveDate ve sonrası Booked Regular bookinglerini TELAFİSİZ iptal.
-        var removedByContract = new Dictionary<Guid, int>();
+        // PHASE 1 — Seçili satırların effectiveDate ve sonrası Booked Regular bookinglerini TELAFİSİZ iptal.
+        var removedByLine = new Dictionary<Guid, int>();
         var affectedSessionIds = new HashSet<Guid>();
-        foreach (var c in ordered)
+        foreach (var l in ordered)
         {
             var toRemove = await db.ClassBookings
-                .Where(b => b.StudioId == studioId && b.StudentContractId == c.Id && b.Status == ClassBookingStatus.Booked
+                .Where(b => b.StudioId == studioId && b.StudentContractLineId == l.Id && b.Status == ClassBookingStatus.Booked
                             && b.ClassSession!.SessionKind == ClassSessionKind.Regular
                             && b.ClassSession.Status == ClassSessionStatus.Scheduled
                             && b.ClassSession.StartAt >= effectiveDt)
@@ -102,7 +103,7 @@ internal sealed class GroupScheduleChangeService
                 b.CancellationReason = "Grup program değişikliği nedeniyle taşındı";
                 affectedSessionIds.Add(b.ClassSessionId);
             }
-            removedByContract[c.Id] = toRemove.Count;
+            removedByLine[l.Id] = toRemove.Count;
         }
         await db.SaveChangesAsync(ct);
 
@@ -123,15 +124,16 @@ internal sealed class GroupScheduleChangeService
         }
         await db.SaveChangesAsync(ct);
 
-        // PHASE 3 — Her sözleşme için yeni slotlardan yeniden üret (sıralı; her öğrenciden sonra SaveChanges → reuse).
+        // PHASE 3 — Her satır için yeni slotlardan yeniden üret (sıralı; her satırdan sonra SaveChanges → reuse).
+        // Adaylar line tarih aralığında (BuildCandidates(line)) → yeni dersler line.StartDate..EndDate içinde garanti.
         var results = new List<GroupChangeStudentResultDto>();
         var canApply = true;
-        foreach (var c in ordered)
+        foreach (var l in ordered)
         {
-            var individual = c.IsIndividualDefault;
-            var reserved = await ContractScheduleEngine.ReservedRegularAsync(db, c.Id, ct);
-            var available = Math.Max(0, c.TotalLessonCount - reserved);
-            var candidates = ContractScheduleEngine.BuildCandidates(c, duration, newSlots)
+            var studentProfileId = l.StudentContract!.StudentProfileId;
+            var individual = l.IsIndividual;
+            var available = await ContractLineRules.AvailableAsync(db, l, ct);
+            var candidates = ContractLineScheduleEngine.BuildCandidates(l, duration, newSlots)
                 .Where(x => x.StartAt >= effectiveDt).ToList();
 
             var slots = new List<GroupChangeSlotOutcomeDto>();
@@ -148,7 +150,7 @@ internal sealed class GroupScheduleChangeService
                 if (target is null && await SessionRules.HasConflictAsync(db, studioId, instructorProfileId, cand.StartAt, cand.EndAt, null, ct))
                 { conflicts++; canApply = false; slots.Add(new(cand.StartAt, cand.EndAt, "conflict", "Hoca çakışması")); continue; }
 
-                if (await ContractScheduleEngine.StudentBusyAsync(db, studioId, c.StudentProfileId, cand.StartAt, cand.EndAt, ct))
+                if (await ContractScheduleEngine.StudentBusyAsync(db, studioId, studentProfileId, cand.StartAt, cand.EndAt, ct))
                 { conflicts++; canApply = false; slots.Add(new(cand.StartAt, cand.EndAt, "conflict", "Öğrenci çakışması")); continue; }
 
                 if (target is null)
@@ -161,14 +163,14 @@ internal sealed class GroupScheduleChangeService
                 else { reused++; slots.Add(new(cand.StartAt, cand.EndAt, "reused", null)); }
 
                 target.BookedCount += 1;
-                db.ClassBookings.Add(ContractScheduleEngine.NewBooking(studioId, target.Id, c.StudentProfileId, c.Id, userId));
+                db.ClassBookings.Add(ContractLineScheduleEngine.NewBooking(l, target.Id, userId));
                 planned++;
             }
             await db.SaveChangesAsync(ct); // cross-student reuse görünürlüğü
 
             var note = planned < available ? $"{available} ders hakkından {planned} ders üretilebildi" : null;
             results.Add(new GroupChangeStudentResultDto(
-                c.Id, names.GetValueOrDefault(c.StudentProfileId, ""), removedByContract.GetValueOrDefault(c.Id),
+                l.Id, names.GetValueOrDefault(studentProfileId, ""), removedByLine.GetValueOrDefault(l.Id),
                 planned, reused, newS, skipped, conflicts, note, slots));
         }
 
@@ -177,7 +179,8 @@ internal sealed class GroupScheduleChangeService
 }
 
 // ======================= Adaylar (read-only) =======================
-public sealed record GetGroupChangeCandidatesQuery(Guid InstructorProfileId, Guid ClassTypeId, DateOnly EffectiveDate)
+public sealed record GetGroupChangeCandidatesQuery(
+    Guid InstructorProfileId, Guid ClassTypeId, DateOnly EffectiveDate, Domain.Enums.StudentLevel? Level = null)
     : IQuery<IReadOnlyList<GroupChangeCandidateDto>>;
 
 public sealed class GetGroupChangeCandidatesHandler : IQueryHandler<GetGroupChangeCandidatesQuery, IReadOnlyList<GroupChangeCandidateDto>>
@@ -192,35 +195,36 @@ public sealed class GetGroupChangeCandidatesHandler : IQueryHandler<GetGroupChan
         var studioId = _currentUser.RequireStudioId();
         var effectiveDt = request.EffectiveDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified);
 
-        var contracts = await _db.StudentContracts
-            .Where(c => c.StudioId == studioId && c.InstructorProfileId == request.InstructorProfileId
-                        && c.ClassTypeId == request.ClassTypeId && c.Status == StudentContractStatus.Active)
+        // Sprint 28C-1: aday birimi = aktif LINE (hoca + ders tipi eşleşen). Opsiyonel seviye filtresi.
+        var lines = await _db.StudentContractLines.Include(l => l.StudentContract)
+            .Where(l => l.StudioId == studioId && l.InstructorProfileId == request.InstructorProfileId
+                        && l.ClassTypeId == request.ClassTypeId && l.Status == StudentContractLineStatus.Active
+                        && (request.Level == null || l.StudentContract!.StudentProfile!.Level == request.Level))
             .ToListAsync(ct);
-        var contractIds = contracts.Select(c => c.Id).ToList();
-        if (contractIds.Count == 0) return Array.Empty<GroupChangeCandidateDto>();
+        var lineIds = lines.Select(l => l.Id).ToList();
+        if (lineIds.Count == 0) return Array.Empty<GroupChangeCandidateDto>();
 
         var future = await _db.ClassBookings
-            .Where(b => b.StudioId == studioId && b.StudentContractId != null && contractIds.Contains(b.StudentContractId!.Value)
+            .Where(b => b.StudioId == studioId && b.StudentContractLineId != null && lineIds.Contains(b.StudentContractLineId!.Value)
                         && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
                         && b.ClassSession.Status == ClassSessionStatus.Scheduled && b.ClassSession.StartAt >= effectiveDt)
-            .Select(b => new { CId = b.StudentContractId!.Value, b.ClassSession!.StartAt })
+            .Select(b => new { LId = b.StudentContractLineId!.Value, b.ClassSession!.StartAt })
             .ToListAsync(ct);
-        var byContract = future.GroupBy(x => x.CId).ToDictionary(g => g.Key, g => g.ToList());
+        var byLine = future.GroupBy(x => x.LId).ToDictionary(g => g.Key, g => g.ToList());
 
-        var studentIds = contracts.Select(c => c.StudentProfileId).Distinct().ToList();
+        var studentIds = lines.Select(l => l.StudentContract!.StudentProfileId).Distinct().ToList();
         var names = await _db.StudentProfiles.Where(s => studentIds.Contains(s.Id))
             .Select(s => new { s.Id, s.FullName }).ToDictionaryAsync(s => s.Id, s => s.FullName, ct);
 
         var result = new List<GroupChangeCandidateDto>();
-        foreach (var c in contracts)
+        foreach (var l in lines)
         {
-            if (!byContract.TryGetValue(c.Id, out var fut) || fut.Count == 0) continue; // yalnız gelecek Regular dersi olanlar
-            var reserved = await ContractScheduleEngine.ReservedRegularAsync(_db, c.Id, ct);
-            var available = Math.Max(0, c.TotalLessonCount - reserved);
+            if (!byLine.TryGetValue(l.Id, out var fut) || fut.Count == 0) continue; // yalnız gelecek Regular dersi olanlar
+            var available = await ContractLineRules.AvailableAsync(_db, l, ct);
             var summary = string.Join(", ", fut.Select(x => GroupScheduleChangeService.SlotLabel(x.StartAt)).Distinct().OrderBy(s => s));
             result.Add(new GroupChangeCandidateDto(
-                c.Id, c.StudentProfileId, names.GetValueOrDefault(c.StudentProfileId, ""),
-                available, c.StartDate, c.EndDate, fut.Count, summary, c.IsIndividualDefault));
+                l.Id, l.StudentContract!.StudentProfileId, names.GetValueOrDefault(l.StudentContract!.StudentProfileId, ""),
+                available, l.StartDate, l.EndDate, fut.Count, summary, l.IsIndividual));
         }
         return result.OrderBy(r => r.StudentName).ToList();
     }
@@ -229,7 +233,7 @@ public sealed class GetGroupChangeCandidatesHandler : IQueryHandler<GetGroupChan
 // ======================= Önizleme (dry-run + rollback = apply ile birebir) =======================
 public sealed record PreviewGroupScheduleChangeQuery(
     Guid InstructorProfileId, Guid ClassTypeId, DateOnly EffectiveDate,
-    IReadOnlyList<Guid> ContractIds, IReadOnlyList<ContractScheduleSlotInput> NewSlots) : IQuery<GroupChangePreviewDto>;
+    IReadOnlyList<Guid> LineIds, IReadOnlyList<ContractScheduleSlotInput> NewSlots) : IQuery<GroupChangePreviewDto>;
 
 public sealed class PreviewGroupScheduleChangeHandler : IQueryHandler<PreviewGroupScheduleChangeQuery, GroupChangePreviewDto>
 {
@@ -248,7 +252,7 @@ public sealed class PreviewGroupScheduleChangeHandler : IQueryHandler<PreviewGro
         {
             var result = await new GroupScheduleChangeService().ExecuteAsync(
                 _db, _currentUser, _clock, request.InstructorProfileId, request.ClassTypeId, request.EffectiveDate,
-                request.ContractIds, request.NewSlots, ct);
+                request.LineIds, request.NewSlots, ct);
             return result;
         }
         finally
@@ -261,7 +265,7 @@ public sealed class PreviewGroupScheduleChangeHandler : IQueryHandler<PreviewGro
 // ======================= Uygula (atomik; telafi YOK) =======================
 public sealed record ApplyGroupScheduleChangeCommand(
     Guid InstructorProfileId, Guid ClassTypeId, DateOnly EffectiveDate,
-    IReadOnlyList<Guid> ContractIds, IReadOnlyList<ContractScheduleSlotInput> NewSlots)
+    IReadOnlyList<Guid> LineIds, IReadOnlyList<ContractScheduleSlotInput> NewSlots)
     : ICommand<GroupChangePreviewDto>, IStudioWriteRequest;
 
 public sealed class ApplyGroupScheduleChangeHandler : ICommandHandler<ApplyGroupScheduleChangeCommand, GroupChangePreviewDto>
@@ -276,7 +280,7 @@ public sealed class ApplyGroupScheduleChangeHandler : ICommandHandler<ApplyGroup
     {
         var result = await new GroupScheduleChangeService().ExecuteAsync(
             _db, _currentUser, _clock, request.InstructorProfileId, request.ClassTypeId, request.EffectiveDate,
-            request.ContractIds, request.NewSlots, ct);
+            request.LineIds, request.NewSlots, ct);
 
         // HARD çakışma varsa atomik abort: exception → TransactionBehavior tüm işlemi rollback eder (yarım taşıma yok).
         if (!result.CanApply)

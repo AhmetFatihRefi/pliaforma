@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService, studentService } from "@/lib/studioApi";
+import { attendanceService, bookingService, classSessionService, classTypeService, contractService, groupScheduleChangeService, makeupCreditService, makeupRequestService, studentService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceItemDto,
@@ -20,6 +20,8 @@ import {
   type MakeupRequestDto,
   type SessionAttendanceDto,
   type StudentDto,
+  type StudentContractLineDto,
+  type StudentLevel,
   attendanceStatusLabels,
   bookingStatusLabels,
   dayLabels,
@@ -27,6 +29,7 @@ import {
   isUnlimitedCapacity,
   sessionKindLabels,
   sessionStatusLabels,
+  studentLevelLabels,
 } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR } from "@/components/ui";
 
@@ -449,6 +452,7 @@ function GroupChangeModal({ instructors, classTypes, onClose, onDone }: {
   const [instructorId, setInstructorId] = useState(instructors[0]?.id ?? "");
   const [classTypeId, setClassTypeId] = useState(classTypes[0]?.id ?? "");
   const [effectiveDate, setEffectiveDate] = useState(todayStr());
+  const [level, setLevel] = useState<StudentLevel | "">(""); // Sprint 28C-1: opsiyonel seviye filtresi
   const [candidates, setCandidates] = useState<GroupChangeCandidateDto[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [days, setDays] = useState<Set<DayOfWeek>>(new Set());
@@ -458,12 +462,13 @@ function GroupChangeModal({ instructors, classTypes, onClose, onDone }: {
   const [busy, setBusy] = useState(false);
 
   const slots = () => Array.from(days).map((d) => ({ dayOfWeek: d, startTime: `${time}:00` }));
-  const input = () => ({ instructorProfileId: instructorId, classTypeId, effectiveDate, contractIds: Array.from(selected), newSlots: slots() });
+  // Sprint 28C-1: seçim birimi lineId.
+  const input = () => ({ instructorProfileId: instructorId, classTypeId, effectiveDate, lineIds: Array.from(selected), newSlots: slots() });
   const reset = () => { setPreview(null); };
 
   const loadCandidates = async () => {
     setBusy(true); setErr(null); setPreview(null);
-    try { setCandidates(await groupScheduleChangeService.candidates(instructorId, classTypeId, effectiveDate)); setSelected(new Set()); }
+    try { setCandidates(await groupScheduleChangeService.candidates(instructorId, classTypeId, effectiveDate, level || null)); setSelected(new Set()); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Adaylar getirilemedi."); }
     finally { setBusy(false); }
   };
@@ -507,6 +512,12 @@ function GroupChangeModal({ instructors, classTypes, onClose, onDone }: {
           <FormField label="Geçerlilik tarihi">
             <Input type="date" value={effectiveDate} onChange={(e) => { setEffectiveDate(e.target.value); setCandidates(null); }} />
           </FormField>
+          <FormField label="Seviye (opsiyonel)">
+            <Select value={level} onChange={(e) => { setLevel(e.target.value as StudentLevel | ""); setCandidates(null); }}>
+              <option value="">Tüm seviyeler</option>
+              {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
+            </Select>
+          </FormField>
         </div>
         <Button size="sm" variant="secondary" loading={busy} onClick={loadCandidates}>Öğrencileri getir</Button>
 
@@ -518,9 +529,9 @@ function GroupChangeModal({ instructors, classTypes, onClose, onDone }: {
               <p className="text-xs font-semibold text-muted">Taşınacak öğrenciler (tek tek seçin):</p>
               <div className="max-h-44 space-y-1 overflow-y-auto">
                 {candidates.map((c) => (
-                  <label key={c.contractId} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                  <label key={c.lineId} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
                     <span className="flex items-center gap-2">
-                      <input type="checkbox" checked={selected.has(c.contractId)} onChange={() => toggleSel(c.contractId)} />
+                      <input type="checkbox" checked={selected.has(c.lineId)} onChange={() => toggleSel(c.lineId)} />
                       <span className="font-medium text-foreground">{c.studentName}</span>
                       {c.isIndividual && <Badge tone="warning">Bireysel</Badge>}
                     </span>
@@ -544,7 +555,7 @@ function GroupChangeModal({ instructors, classTypes, onClose, onDone }: {
                 <div className="max-h-52 space-y-1 overflow-y-auto rounded-xl border border-border p-2 text-xs">
                   <p className="font-semibold text-muted">Önizleme · {preview.emptiedSessionsCancelled} boş ders iptal olacak</p>
                   {preview.students.map((s) => (
-                    <div key={s.contractId} className="flex items-center justify-between gap-2">
+                    <div key={s.lineId} className="flex items-center justify-between gap-2">
                       <span className="text-foreground">{s.studentName}</span>
                       <span className="text-muted">−{s.removedCount} kaldır · +{s.plannedCount} üret (yeni {s.newSessionCount}, paylaşılan {s.reusedCount})</span>
                       <span className="flex gap-1">
@@ -894,10 +905,14 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
   // Sprint 20: Telafi (Makeup) seansına YALNIZCA kullanılabilir telafi hakkı olan öğrenciler eklenebilir.
   const isMakeup = session.sessionKind === "Makeup";
   const [search, setSearch] = useState("");
+  const [level, setLevel] = useState<StudentLevel | "">(""); // Sprint 28C-1: opsiyonel seviye filtresi
   const [results, setResults] = useState<StudentDto[]>([]);
   const [eligible, setEligible] = useState<MakeupEligibleStudentDto[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Sprint 28C-1: Regular booking line seçimi — öğrencinin bu hoca+ders tipindeki birden çok aktif satırı varsa seçtir.
+  const [pickFor, setPickFor] = useState<StudentDto | null>(null);
+  const [pickLines, setPickLines] = useState<StudentContractLineDto[]>([]);
 
   useEffect(() => {
     if (isMakeup) {
@@ -906,23 +921,39 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
     }
     const t = setTimeout(async () => {
       try {
-        setResults(search.trim() ? await studentService.search(search.trim()) : await studentService.list());
+        const lv = level || null;
+        setResults(search.trim() ? await studentService.search(search.trim(), lv) : await studentService.list(lv));
       } catch {
         setResults([]);
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [search, isMakeup]);
+  }, [search, level, isMakeup]);
 
-  const book = async (studentProfileId: string) => {
+  const book = async (studentProfileId: string, lineId?: string | null) => {
     setBusyId(studentProfileId);
     setErr(null);
     try {
-      await bookingService.create(session.id, studentProfileId);
+      await bookingService.create(session.id, studentProfileId, lineId);
       onDone();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Rezervasyon yapılamadı.");
     } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Regular: önce öğrencinin bu hoca+ders tipindeki uygun aktif satırlarını çöz; 0/1 → otomatik, 2+ → seçtir.
+  const startBook = async (s: StudentDto) => {
+    setBusyId(s.id); setErr(null);
+    try {
+      const lines = await contractService.lines(s.id);
+      const matching = lines.filter((l) => l.status === "Active" && l.classTypeId === session.classTypeId
+        && l.instructorProfileId === session.instructorProfileId && l.availableLessonCount > 0);
+      if (matching.length > 1) { setPickFor(s); setPickLines(matching); setBusyId(null); return; }
+      await book(s.id, matching[0]?.id ?? null);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Satırlar yüklenemedi.");
       setBusyId(null);
     }
   };
@@ -935,7 +966,27 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
       <div className="space-y-3">
         {err && <Alert kind="error">{err}</Alert>}
         {isMakeup && <Alert kind="info">Telafi dersine yalnızca kullanılabilir telafi hakkı olan öğrenciler eklenebilir.</Alert>}
-        <Input placeholder="Öğrenci ara…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex items-center gap-2">
+          <Input placeholder="Öğrenci ara…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          {!isMakeup && (
+            <Select value={level} onChange={(e) => setLevel(e.target.value as StudentLevel | "")} className="w-40">
+              <option value="">Tüm seviyeler</option>
+              {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
+            </Select>
+          )}
+        </div>
+        {pickFor && (
+          <div className="space-y-2 rounded-xl border border-primary bg-primary-soft/30 p-3">
+            <p className="text-sm font-medium text-foreground">{pickFor.fullName} — hangi satırdan eklensin?</p>
+            {pickLines.map((l) => (
+              <div key={l.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+                <span>{l.classTypeName} · {l.startDate}→{l.endDate} · kalan {l.availableLessonCount}{l.isIndividual ? " · Bireysel" : ""}</span>
+                <Button size="sm" disabled={busyId !== null} onClick={() => book(pickFor.id, l.id)}>Bu satır</Button>
+              </div>
+            ))}
+            <Button size="sm" variant="ghost" onClick={() => { setPickFor(null); setPickLines([]); }}>Vazgeç</Button>
+          </div>
+        )}
         <div className="max-h-72 space-y-2 overflow-y-auto">
           {isMakeup ? (
             filteredEligible.length === 0 ? (
@@ -961,7 +1012,7 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
                   {s.status === "Guest" && <Badge tone="warning">Misafir</Badge>}
                   {s.status === "Inactive" && <Badge tone="neutral">Pasif</Badge>}
                 </div>
-                <Button size="sm" disabled={busyId !== null || s.status === "Inactive"} onClick={() => book(s.id)}>Ekle</Button>
+                <Button size="sm" disabled={busyId !== null || s.status === "Inactive"} onClick={() => startBook(s)}>Ekle</Button>
               </div>
             ))
           )}

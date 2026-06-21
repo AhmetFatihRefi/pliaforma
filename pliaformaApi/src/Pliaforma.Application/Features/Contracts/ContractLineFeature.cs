@@ -59,6 +59,10 @@ internal static class ContractLineQuery
                 l.StartDate, l.EndDate, l.LessonCount,
                 Scheduled = db.ClassBookings.Count(b => b.StudentContractLineId == l.Id
                     && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular),
+                // Sprint 28C-1 (karar #7): legacy null-line booking — tek-line header'da bu line'a sayılır (available fallback).
+                LegacyScheduled = db.ClassBookings.Count(b => b.StudentContractLineId == null
+                    && b.StudentContractId == l.StudentContractId
+                    && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular),
                 l.PricePerLesson, l.TotalPrice,
                 DirectPaid = db.Payments.Where(p => p.StudentContractLineId == l.Id && p.Status == PaymentStatus.Paid)
                     .Sum(p => (decimal?)p.Amount) ?? 0m,
@@ -73,10 +77,11 @@ internal static class ContractLineQuery
         return raw.Select(r =>
         {
             var paid = r.DirectPaid + (r.HeaderLineCount == 1 ? r.LegacyCandidate : 0m);
+            var scheduled = r.Scheduled + (r.HeaderLineCount == 1 ? r.LegacyScheduled : 0);
             return new StudentContractLineDto(
                 r.Id, r.StudentContractId, r.StudentProfileId, r.StudentName, r.ClassTypeId, r.ClassTypeName,
-                r.InstructorProfileId, r.InstructorName, r.StartDate, r.EndDate, r.LessonCount, r.Scheduled,
-                r.LessonCount - r.Scheduled, r.PricePerLesson, r.TotalPrice, paid, r.TotalPrice - paid,
+                r.InstructorProfileId, r.InstructorName, r.StartDate, r.EndDate, r.LessonCount, scheduled,
+                r.LessonCount - scheduled, r.PricePerLesson, r.TotalPrice, paid, r.TotalPrice - paid,
                 r.MakeupAllowance, r.DueDate, r.IsIndividual, r.Status, r.Currency, r.SequenceNo);
         }).ToList();
     }

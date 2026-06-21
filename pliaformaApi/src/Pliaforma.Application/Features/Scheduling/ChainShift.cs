@@ -12,7 +12,7 @@ namespace Pliaforma.Application.Features.Scheduling;
 public sealed record ChainShiftItemDto(
     Guid SessionId, string ClassTypeName,
     DateTime OldStartAt, DateTime OldEndAt, DateTime NewStartAt, DateTime NewEndAt,
-    string? ConflictReason);   // null | "past" | "instructor" | "student"  (Sprint 26: availability YOK)
+    string? ConflictReason);   // null | "past" | "instructor" | "student" | "lineRange" (Sprint 28C-1)
 
 /// <summary>Zincirleme kaydırma önizlemesi: kayacak dersler + uygulanabilir mi.</summary>
 public sealed record ChainShiftPreviewDto(IReadOnlyList<ChainShiftItemDto> Affected, bool CanApply);
@@ -84,6 +84,15 @@ internal static class ChainShiftPlanner
             .GroupBy(b => b.ClassSessionId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.StudentProfileId).ToList());
 
+        // Sprint 28C-1: zincirdeki Regular derslerin bağlı booking line tarih aralıkları (line-range hard block).
+        var lineRangesBySession = (await db.ClassBookings
+            .Where(b => b.StudioId == studioId && sessionIds.Contains(b.ClassSessionId)
+                        && b.Status == ClassBookingStatus.Booked && b.StudentContractLineId != null)
+            .Select(b => new { b.ClassSessionId, b.StudentContractLine!.StartDate, b.StudentContractLine!.EndDate })
+            .ToListAsync(ct))
+            .GroupBy(b => b.ClassSessionId)
+            .ToDictionary(g => g.Key, g => g.Select(x => (x.StartDate, x.EndDate)).ToList());
+
         var instructorId = chain[0].Session.InstructorProfileId;
 
         var items = new List<ChainShiftItemDto>(chain.Count);
@@ -101,6 +110,14 @@ internal static class ChainShiftPlanner
                 var studentIds = bookingsByStudent.TryGetValue(m.Session.Id, out var ids) ? ids : new List<Guid>();
                 if (studentIds.Count > 0 && await SessionRules.StudentConflictAsync(db, studioId, studentIds, m.NewStart, m.NewEnd, chainIds, ct))
                     reason = "student";
+                // Sprint 28C-1: Regular ders, bağlı booking line tarih aralığını aşamaz.
+                else if (m.Session.SessionKind == ClassSessionKind.Regular
+                         && lineRangesBySession.TryGetValue(m.Session.Id, out var ranges))
+                {
+                    var nd = DateOnly.FromDateTime(m.NewStart);
+                    if (ranges.Any(r => nd < r.StartDate || nd > r.EndDate))
+                        reason = "lineRange";
+                }
             }
 
             items.Add(new ChainShiftItemDto(
@@ -186,6 +203,7 @@ public sealed class ChainShiftSessionHandler : ICommandHandler<ChainShiftSession
                 "past" => "Zincirde geçmiş bir zamana taşınan ders var.",
                 "instructor" => "Zincir, hocanın başka bir dersiyle çakışıyor.",
                 "student" => "Zincir, bir öğrencinin başka dersiyle çakışıyor.",
+                "lineRange" => "Zincirde bir ders, sözleşme satırı (line) tarih aralığını aşıyor.",
                 _ => "Zincir uygulanamıyor (çakışma).",
             });
 

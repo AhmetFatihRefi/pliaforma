@@ -30,6 +30,7 @@ public sealed class ContractsController : ApiControllerBase
     public Task<IActionResult> Cancel(Guid id, CancellationToken ct) =>
         Send(new CancelStudentContractCommand(id), "Sözleşme iptal edildi.", ct);
 
+    // Sprint 28C-1: DEPRECATED header-bazlı program üretimi → aktif line'lar üzerinde döner (geri uyum). UI yeni line uçlarını kullanır.
     [HttpPost("contracts/{id:guid}/schedule/preview")]
     public Task<IActionResult> Preview(Guid id, PreviewContractScheduleQuery body, CancellationToken ct) =>
         Send(body with { ContractId = id }, ct: ct);
@@ -37,6 +38,15 @@ public sealed class ContractsController : ApiControllerBase
     [HttpPost("contracts/{id:guid}/schedule/generate")]
     public Task<IActionResult> Generate(Guid id, GenerateContractScheduleCommand body, CancellationToken ct) =>
         Send(body with { ContractId = id }, "Program oluşturuldu.", ct);
+
+    // Sprint 28C-1: line-bazlı program üretimi (yeni kaynak). LineCard "Programı oluştur" bunu kullanır.
+    [HttpPost("contract-lines/{lineId:guid}/schedule/preview")]
+    public Task<IActionResult> PreviewLine(Guid lineId, PreviewLineScheduleQuery body, CancellationToken ct) =>
+        Send(body with { LineId = lineId }, ct: ct);
+
+    [HttpPost("contract-lines/{lineId:guid}/schedule/generate")]
+    public Task<IActionResult> GenerateLine(Guid lineId, GenerateLineScheduleCommand body, CancellationToken ct) =>
+        Send(body with { LineId = lineId }, "Program oluşturuldu.", ct);
 
     // ---- Sprint 23: ek işlem (amendment) + borç ----
 

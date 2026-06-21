@@ -70,9 +70,10 @@ nexp "TotalLessonCount hâlâ 12 (artmadı)" 12 "$(ctot "$C")"
 expect "EndDate $ED2 oldu" "$ED2" "$(cend "$C")"
 nexp "borç değişmedi (5000)" 5000 "$(dval "$(debt "$St")" TRY remaining)"
 
-echo "--- 4) Amendment sonrası program üretimi: EK HAK kullanılabilir (12 ders) ---"
+# Sprint 28C-1: program LINE-bazlı → amendment line'ı ŞİŞİRMEZ; üretim line.LessonCount (8) ile sınırlı.
+echo "--- 4) Amendment program üretimini ETKİLEMEZ (line-bazlı: 8 ders; ek hak yeni line gerektirir) ---"
 post "/api/studio/contracts/$C/schedule/generate" "{\"slots\":[{\"dayOfWeek\":\"Monday\",\"startTime\":\"18:00:00\"},{\"dayOfWeek\":\"Thursday\",\"startTime\":\"18:00:00\"}],\"reuseExistingGroup\":true,\"individual\":null}" "$ATOK" >/dev/null
-nexp "12 Regular booking üretildi (8 değil → ek hak kullanıldı)" 12 "$(sql "SELECT count(*) FROM \"ClassBookings\" b JOIN \"ClassSessions\" s ON s.\"Id\"=b.\"ClassSessionId\" WHERE b.\"StudentContractId\"='$C' AND b.\"Status\"='Booked' AND s.\"SessionKind\"='Regular';")"
+nexp "8 Regular booking üretildi (amendment line'a yansımaz)" 8 "$(sql "SELECT count(*) FROM \"ClassBookings\" b JOIN \"ClassSessions\" s ON s.\"Id\"=b.\"ClassSessionId\" WHERE b.\"StudentContractId\"='$C' AND b.\"Status\"='Booked' AND s.\"SessionKind\"='Regular';")"
 
 echo "--- 5) Negatif amendment booked altına DÜŞEMEZ (12 planlı, -5 → 7 < 12) ---"
 expect "negatif amendment → 409" 409 "$(pcode "/api/studio/contracts/$C/amendments" "{\"kind\":\"Correction\",\"additionalLessonCount\":-5,\"additionalPrice\":0}" "$ATOK")"

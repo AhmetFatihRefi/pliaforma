@@ -23,6 +23,9 @@ public static class DependencyInjection
         services.AddScoped<Features.Packages.PackageEligibilityChecker>();
         services.AddScoped<Features.Contracts.ContractEligibilityChecker>();
         services.AddScoped<Features.Contracts.ContractResolver>();
+        // Sprint 28C-1: Regular scheduling/booking line-bazlı resolver + eligibility (instructor eşleşmesi zorunlu).
+        services.AddScoped<Features.Contracts.ContractLineResolver>();
+        services.AddScoped<Features.Contracts.ContractLineEligibilityChecker>();
         services.AddScoped<Features.Attendance.AttendanceMarker>();
         services.AddScoped<Features.Notifications.ReminderScanner>();
 

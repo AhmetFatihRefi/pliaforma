@@ -73,6 +73,8 @@ expect "T4 değişmedi (boşlukta zincir durdu)" "15:00" "$(sstart "$T4")"
 expect "chain-shift telafi üretmez (St1 bakiye 0)" 0 "$(bal "$St1")"
 
 echo "--- 3) Chain-shift zincir-dışı çakışma → ATOMİK abort ---"
+# Sprint 28C-1: booking resolver instructor-zorunlu → St2'nin I2P seansına (U) bookluyabilmesi için I2P line'ı gerekir.
+post "/api/studio/students/$St2/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I2P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":50,\"makeupAllowance\":3,\"price\":0,\"isIndividualDefault\":false}" "$ATOK" >/dev/null
 C1=$(mksess "$I1P" "${D5}T10:00:00"); C2=$(mksess "$I1P" "${D5}T11:00:00")
 book "$C2" "$St2" >/dev/null
 U=$(mksess "$I2P" "${D5}T12:15:00"); book "$U" "$St2" >/dev/null   # St2: C2(11-12) + U(12:15-13:15) çakışmaz

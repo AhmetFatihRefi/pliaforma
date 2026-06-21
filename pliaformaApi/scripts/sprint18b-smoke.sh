@@ -53,8 +53,9 @@ C2=$(mkcontract "$S2" "$CT" "$I1P" "$NS" "$NE" 5 false)
 SESFAR=$(mksess "$I1P" "$CT" "$FARS")
 expect "tarih aralığı dışı booking → 409" 409 "$(book "$SESFAR" "$S2")"
 # Ders hakkı: C1 total=2, S1 SES1'de 1 kullandı; 2. ders 200, 3. → 409
-SES2=$(mksess "$I2P" "$CT" "$(date -d "+6 days" +%Y-%m-%dT10:00:00)")
-SES3=$(mksess "$I2P" "$CT" "$(date -d "+7 days" +%Y-%m-%dT10:00:00)")
+# Sprint 28C-1: resolver instructor-zorunlu → C1 hocası (I1P) seansları kullanılır (farklı gün, çakışma yok).
+SES2=$(mksess "$I1P" "$CT" "$(date -d "+6 days" +%Y-%m-%dT10:00:00)")
+SES3=$(mksess "$I1P" "$CT" "$(date -d "+7 days" +%Y-%m-%dT10:00:00)")
 expect "2. ders hakkı → 200" 200 "$(book "$SES2" "$S1")"
 expect "3. ders (hak doldu) → 409" 409 "$(book "$SES3" "$S1")"
 
@@ -78,6 +79,8 @@ if [ -n "$IND_SES" ]; then
 else ok "bireysel seans üretilemedi (gün/saat penceresi) — atlandı"; fi
 GSES=$(mksess "$I1P" "$CT" "$(date -d "+8 days" +%Y-%m-%dT11:00:00)")
 mkcontract "$S2" "$CT" "$I1P" "$WIDE_S" "$WIDE_E" 5 false >/dev/null
+# Sprint 28C-1: S1'in ilk I1P hakkı (C1=2) bitti; instructor-zorunlu resolver için taze I1P line gerekir.
+mkcontract "$S1" "$CT" "$I1P" "$WIDE_S" "$WIDE_E" 5 false >/dev/null
 expect "grup seansa S1 → 200" 200 "$(book "$GSES" "$S1")"
 expect "grup seansa S2 → 200 (çok öğrenci)" 200 "$(book "$GSES" "$S2")"
 

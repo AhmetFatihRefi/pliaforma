@@ -46,8 +46,9 @@ markp(){ putcode "/api/studio/class-sessions/$1/attendance" "{\"items\":[{\"book
 # --- Veri: i1 2 seans (PerSession), i2 1 seans (PerStudent) — hepsi 2020-01'e çekilir, Present ---
 GA=$(guest "GA"); GB=$(guest "GB"); GC=$(guest "GC"); GD=$(guest "GD")
 # Sprint 18b: Regular booking sözleşme ister → booked öğrencilere geniş sözleşme (CT; auto-resolve).
-mkc(){ curl -s -o /dev/null -X POST "$BASE/api/studio/students/$1/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"; }
-mkc "$GA"; mkc "$GB"; mkc "$GC"; mkc "$GD"
+# Sprint 28C-1: booking resolver instructor-zorunlu → öğrencinin sözleşmesi seansın hocasıyla eşleşmeli ($2=hoca, vars. I1P).
+mkc(){ curl -s -o /dev/null -X POST "$BASE/api/studio/students/$1/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"${2:-$I1P}\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"; }
+mkc "$GA"; mkc "$GB"; mkc "$GC" "$I2P"; mkc "$GD" "$I2P"   # GC,GD I2P seansında → I2P sözleşme
 S1=$(mksess "$I1P" "10:00"); BA=$(sbook "$S1" "$GA"); backdate "$S1"; markp "$S1" "$BA" >/dev/null
 S2=$(mksess "$I1P" "11:00"); BB=$(sbook "$S2" "$GB"); backdate "$S2"; markp "$S2" "$BB" >/dev/null
 S3=$(mksess "$I2P" "12:00"); BC=$(sbook "$S3" "$GC"); BD=$(sbook "$S3" "$GD"); backdate "$S3"

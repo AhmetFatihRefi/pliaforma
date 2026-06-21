@@ -24,28 +24,28 @@ public sealed class BookingCreator
     private readonly IDateTime _clock;
     private readonly MakeupCreditService _credits;
     private readonly IMakeupCreditLock _creditLock;
-    private readonly ContractEligibilityChecker _contracts;
-    private readonly ContractResolver _resolver;
+    private readonly ContractLineEligibilityChecker _lineEligibility;
+    private readonly ContractLineResolver _lineResolver;
 
     public BookingCreator(
         IAppDbContext db, IClassSessionCapacityService capacity, IDateTime clock,
         MakeupCreditService credits, IMakeupCreditLock creditLock,
-        ContractEligibilityChecker contracts, ContractResolver resolver)
+        ContractLineEligibilityChecker lineEligibility, ContractLineResolver lineResolver)
     {
         _db = db;
         _capacity = capacity;
         _clock = clock;
         _credits = credits;
         _creditLock = creditLock;
-        _contracts = contracts;
-        _resolver = resolver;
+        _lineEligibility = lineEligibility;
+        _lineResolver = lineResolver;
     }
 
-    /// <param name="studentContractId">Sprint 18a: dolu → sözleşme yolu (paket yerine sözleşme uygunluğu).
-    /// null → mevcut paket/booking yolu (geri uyum, bozulmaz).</param>
+    /// <param name="studentContractId">Sprint 18a: header (back-compat) → bu header'ın uygun line'ı çözülür.</param>
+    /// <param name="studentContractLineId">Sprint 28C-1: doğrudan line seçimi (staff line seçtiyse). null → resolver line bulur.</param>
     public async Task<ClassBooking> CreateAsync(
         Guid studioId, ClassSession session, StudentProfile student, Guid bookedByUserId, StudioRole bookerRole,
-        CancellationToken ct, Guid? studentContractId = null)
+        CancellationToken ct, Guid? studentContractId = null, Guid? studentContractLineId = null)
     {
         if (session.Status != ClassSessionStatus.Scheduled)
             throw new BusinessRuleException("Yalnızca planlı (Scheduled) seanslara rezervasyon yapılabilir.");
@@ -81,27 +81,37 @@ public sealed class BookingCreator
         // Kullanılabilir-hak hesabı + makeup kredisi tüketimi için öğrenci satırını kilitle (serileştirme).
         await _creditLock.LockStudentAsync(studioId, student.Id, ct);
 
-        // Sprint 18b: Regular ders SÖZLEŞME zorunlu (paket gate kaldırıldı). Makeup → telafi kredisi yolu;
-        // Trial/Special → istisna (sözleşme gerektirmez). Sözleşmesiz Regular → 409.
+        // Sprint 28C-1: Regular ders LINE zorunlu (hak/tarih/hoca/bireysellik line'dan). Makeup → telafi kredisi yolu
+        // (28C-1'de değişmez); Trial/Special → istisna (line gerektirmez). Uygun line yoksa → 409.
         Guid? contractId = null;
+        Guid? contractLineId = null;
 
         if (session.SessionKind == ClassSessionKind.Regular)
         {
             var sessionDate = DateOnly.FromDateTime(session.StartAt);
-            if (studentContractId is { } provided)
+            StudentContractLine line;
+            if (studentContractLineId is { } lid)
             {
-                var ce = await _contracts.EvaluateAsync(studioId, provided, student.Id, session.ClassTypeId, sessionDate, ct);
+                var ce = await _lineEligibility.EvaluateAsync(studioId, lid, student.Id, session.ClassTypeId, sessionDate, session.InstructorProfileId, ct);
                 if (!ce.IsEligible)
-                    throw new ConflictException(ce.Message ?? "Sözleşme bu rezervasyon için uygun değil.");
-                contractId = provided;
+                    throw new ConflictException(ce.Message ?? "Sözleşme satırı bu rezervasyon için uygun değil.");
+                line = ce.Line!;
             }
             else
             {
-                var resolved = await _resolver.ResolveAsync(studioId, student.Id, session.ClassTypeId, sessionDate, ct);
+                // studentContractId verildiyse o header'ın uygun line'ı (back-compat); yoksa serbest çözüm.
+                var resolved = await _lineResolver.ResolveAsync(studioId, student.Id, session.ClassTypeId, sessionDate, session.InstructorProfileId, ct, headerId: studentContractId);
                 if (resolved is null)
-                    throw new ConflictException("Bu ders için uygun aktif sözleşme yok. Önce sözleşme oluşturun.");
-                contractId = resolved.Id;
+                    throw new ConflictException("Bu ders için uygun aktif sözleşme satırı yok (hoca/ders tipi/tarih/hak). Önce satır oluşturun.");
+                line = resolved;
             }
+
+            // Sprint 28C-1 HARD RULE: bireysel line grup dersine atanamaz.
+            if (line.IsIndividual && !session.IsIndividual)
+                throw new ConflictException("Bireysel pakete (satır) sahip öğrenci grup dersine eklenemez; ayrı bireysel ders gerekir.");
+
+            contractLineId = line.Id;
+            contractId = line.StudentContractId;
         }
 
         // Atomik koltuk rezervasyonu (BookedCount < Capacity ise artırır). Doluysa reddet.
@@ -115,6 +125,7 @@ public sealed class BookingCreator
             ClassSessionId = session.Id,
             StudentProfileId = student.Id,
             StudentContractId = contractId,
+            StudentContractLineId = contractLineId,
             Status = ClassBookingStatus.Booked,
             BookedByUserId = bookedByUserId,
             // Sprint 18b: paket alanları yeni Regular akışında kullanılmaz (dormant; her zaman null/false).

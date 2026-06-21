@@ -37,6 +37,8 @@ guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\
 ED=$(date -d "+60 days" +%F)   # contract end
 mkc(){ body "$(post "/api/studio/students/$1/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$(date +%F)\",\"endDate\":\"$ED\",\"totalLessonCount\":8,\"makeupAllowance\":2,\"price\":0,\"isIndividualDefault\":$2}" "$ATOK")" | jget id; }
 genc(){ pcode "/api/studio/contracts/$1/schedule/generate" "{\"slots\":[{\"dayOfWeek\":\"$2\",\"startTime\":\"$3:00\"}],\"reuseExistingGroup\":true,\"individual\":$4}" "$ATOK"; }
+# Sprint 28C-1: grup düzeni değişikliği LINE-bazlı → contract'ın line id'si (28A dual-write: 1 contract = 1 line).
+lineof(){ sql "SELECT \"Id\" FROM \"StudentContractLines\" WHERE \"StudentContractId\"='$1' LIMIT 1;"; }
 TODAY=$(date +%F)
 St1=$(guest St1); St2=$(guest St2); St3=$(guest St3); St4=$(guest St4); Sob=$(guest Sob)
 C1=$(mkc "$St1" false); C2=$(mkc "$St2" false); C3=$(mkc "$St3" false); C4=$(mkc "$St4" false); COB=$(mkc "$Sob" true)
@@ -55,14 +57,14 @@ expect "candidates St4 listede" yes "$(has "$CAND" "$St4")"
 
 echo "--- 2) Preview = DRY-RUN (DB değişmez) ---"
 St1MonBefore=$(bookedDow "$St1" 1)
-PV=$(post /api/studio/group-schedule-change/preview "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"contractIds\":[\"$C1\",\"$C2\"],\"newSlots\":$NEWSLOTS_FRI}" "$ATOK")
+PV=$(post /api/studio/group-schedule-change/preview "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"lineIds\":[\"$(lineof $C1)\",\"$(lineof $C2)\"],\"newSlots\":$NEWSLOTS_FRI}" "$ATOK")
 expect "preview → 200" 200 "$(code "$PV")"
 expect "preview canApply true" yes "$(has "$(body "$PV")" '"canApply":true')"
 expect "preview reuse var (St2 St1'in slotunu paylaşır)" yes "$(echo "$(body "$PV")" | grep -o '"reusedCount":[1-9]' >/dev/null && echo yes || echo no)"
 expect "DRY-RUN: St1 Pazartesi bookingleri DEĞİŞMEDİ" "$St1MonBefore" "$(bookedDow "$St1" 1)"
 
 echo "--- 3) Apply (St1,St2 → Cuma 19:00) ---"
-expect "apply → 200" 200 "$(pcode /api/studio/group-schedule-change/apply "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"contractIds\":[\"$C1\",\"$C2\"],\"newSlots\":$NEWSLOTS_FRI}" "$ATOK")"
+expect "apply → 200" 200 "$(pcode /api/studio/group-schedule-change/apply "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"lineIds\":[\"$(lineof $C1)\",\"$(lineof $C2)\"],\"newSlots\":$NEWSLOTS_FRI}" "$ATOK")"
 expect "St1 Pazartesi (eski) booking kalmadı" 0 "$(bookedDow "$St1" 1)"
 expect "St1 Cuma (yeni) bookingleri var" yes "$([ "$(bookedDow "$St1" 5)" -ge 1 ] && echo yes || echo no)"
 expect "cross-student reuse: bir Cuma grup seansı BookedCount=2" 2 "$(sql "SELECT COALESCE(MAX(\"BookedCount\"),0) FROM \"ClassSessions\" WHERE \"InstructorProfileId\"='$I1P' AND \"Status\"='Scheduled' AND EXTRACT(DOW FROM \"StartAt\")=5;")"
@@ -71,22 +73,22 @@ expect "telafi üretilmedi (St1 bakiye 0)" 0 "$(bal "$St1")"
 expect "St1,St2 ayrıldı ama St3 kaldı → Pazartesi session boşalmadı (Scheduled)" yes "$([ "$(sql "SELECT count(*) FROM \"ClassSessions\" WHERE \"InstructorProfileId\"='$I1P' AND \"Status\"='Scheduled' AND EXTRACT(DOW FROM \"StartAt\")=1 AND \"BookedCount\">0;")" -ge 1 ] && echo yes || echo no)"
 
 echo "--- 4) Boş kalan eski session → Cancelled (St4 yalnız Çarşamba) ---"
-pcode /api/studio/group-schedule-change/apply "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"contractIds\":[\"$C4\"],\"newSlots\":$NEWSLOTS_SAT}" "$ATOK" >/dev/null
+pcode /api/studio/group-schedule-change/apply "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"lineIds\":[\"$(lineof $C4)\"],\"newSlots\":$NEWSLOTS_SAT}" "$ATOK" >/dev/null
 expect "St4 eski Çarşamba sessionları boşaldı → Cancelled" yes "$([ "$(sql "SELECT count(*) FROM \"ClassSessions\" WHERE \"InstructorProfileId\"='$I1P' AND \"Status\"='Cancelled' AND EXTRACT(DOW FROM \"StartAt\")=3;")" -ge 1 ] && echo yes || echo no)"
 expect "St4 telafi üretilmedi (bakiye 0)" 0 "$(bal "$St4")"
 
 echo "--- 5) Atomik abort: çakışmada hiçbir şey değişmez (St3 → Salı 19:00, Sob bireysel engeli) ---"
-PVC=$(post /api/studio/group-schedule-change/preview "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"contractIds\":[\"$C3\"],\"newSlots\":$NEWSLOTS_TUE}" "$ATOK")
+PVC=$(post /api/studio/group-schedule-change/preview "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"lineIds\":[\"$(lineof $C3)\"],\"newSlots\":$NEWSLOTS_TUE}" "$ATOK")
 expect "preview canApply false (hoca çakışması — Sob bireysel Salı 19:00)" no "$(has "$(body "$PVC")" '"canApply":true')"
 expect "preview conflict işaretli" yes "$(has "$(body "$PVC")" '"conflict"')"
 St3MonBefore=$(bookedDow "$St3" 1)
-expect "apply → 409 (atomik)" 409 "$(pcode /api/studio/group-schedule-change/apply "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"contractIds\":[\"$C3\"],\"newSlots\":$NEWSLOTS_TUE}" "$ATOK")"
+expect "apply → 409 (atomik)" 409 "$(pcode /api/studio/group-schedule-change/apply "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"lineIds\":[\"$(lineof $C3)\"],\"newSlots\":$NEWSLOTS_TUE}" "$ATOK")"
 expect "ATOMİK: St3 Pazartesi bookingleri DEĞİŞMEDİ" "$St3MonBefore" "$(bookedDow "$St3" 1)"
 expect "ATOMİK: St3 Salı dersi oluşmadı" 0 "$(bookedDow "$St3" 2)"
 
 echo "--- 6) Yetki ---"
 expect "Instructor candidates → 403" 403 "$(gcode "/api/studio/group-schedule-change/candidates?instructorProfileId=$I1P&classTypeId=$CT&effectiveDate=$TODAY" "$I2TOK")"
-expect "Instructor apply → 403" 403 "$(pcode /api/studio/group-schedule-change/apply "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"contractIds\":[\"$C3\"],\"newSlots\":$NEWSLOTS_SAT}" "$I2TOK")"
+expect "Instructor apply → 403" 403 "$(pcode /api/studio/group-schedule-change/apply "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"effectiveDate\":\"$TODAY\",\"lineIds\":[\"$(lineof $C3)\"],\"newSlots\":$NEWSLOTS_SAT}" "$I2TOK")"
 
 echo
 [ "$FAILED" = "0" ] && { printf "\033[36mSPRINT 22 SMOKE: TÜM AKIŞLAR GEÇTİ ✅\033[0m\n"; exit 0; } || { printf "\033[36mSPRINT 22 SMOKE: BAŞARISIZ ❌\033[0m\n"; exit 1; }

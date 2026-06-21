@@ -10,7 +10,7 @@ namespace Pliaforma.Application.Features.Students;
 /// Aktif stüdyonun öğrencilerini listeler/arar. Owner/StudioAdmin tümünü; Instructor yalnızca KENDİ
 /// oluşturduklarını görür; Student bu uca erişemez. Soft-delete'ler global filter ile gizli.
 /// </summary>
-public sealed record GetStudentsQuery(string? Search = null) : IQuery<IReadOnlyList<StudentDto>>;
+public sealed record GetStudentsQuery(string? Search = null, StudentLevel? Level = null) : IQuery<IReadOnlyList<StudentDto>>;
 
 public sealed class GetStudentsHandler : IQueryHandler<GetStudentsQuery, IReadOnlyList<StudentDto>>
 {
@@ -53,6 +53,10 @@ public sealed class GetStudentsHandler : IQueryHandler<GetStudentsQuery, IReadOn
                 || (s.Phone != null && s.Phone.ToLower().Contains(term))
                 || (s.Email != null && s.Email.ToLower().Contains(term)));
         }
+
+        // Sprint 28C-1: opsiyonel seviye filtresi (öğrenci-seçim kolaylığı; null → tümü). ClassType.Level kullanılmaz.
+        if (request.Level is { } level)
+            query = query.Where(s => s.Level == level);
 
         var list = await query.OrderBy(s => s.FullName).ToListAsync(cancellationToken);
 

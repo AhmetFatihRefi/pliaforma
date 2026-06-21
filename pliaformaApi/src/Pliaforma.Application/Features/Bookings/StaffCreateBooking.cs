@@ -12,7 +12,8 @@ namespace Pliaforma.Application.Features.Bookings;
 /// öğrenci için yapılamaz; Guest için yapılabilir. Instructor yalnızca KENDİ seansına ve KENDİ
 /// oluşturduğu öğrenci için.
 /// </summary>
-public sealed record StaffCreateBookingCommand(Guid ClassSessionId, Guid StudentProfileId, Guid? StudentContractId = null)
+public sealed record StaffCreateBookingCommand(
+    Guid ClassSessionId, Guid StudentProfileId, Guid? StudentContractId = null, Guid? StudentContractLineId = null)
     : ICommand<ClassBookingDto>, IStudioWriteRequest;
 
 public sealed class StaffCreateBookingValidator : AbstractValidator<StaffCreateBookingCommand>
@@ -71,9 +72,17 @@ public sealed class StaffCreateBookingHandler : ICommandHandler<StaffCreateBooki
             if (!owns)
                 throw new NotFoundException("Sözleşme", cid);
         }
+        // Sprint 28C-1: verilen line bu öğrenciye + bu stüdyoya ait olmalı (uygunluk/instructor BookingCreator'da).
+        if (request.StudentContractLineId is { } lid)
+        {
+            var owns = await _db.StudentContractLines.AnyAsync(
+                l => l.Id == lid && l.StudioId == studioId && l.StudentContract!.StudentProfileId == student.Id, cancellationToken);
+            if (!owns)
+                throw new NotFoundException("Sözleşme satırı", lid);
+        }
 
         var bookerRole = _currentUser.StudioRole ?? StudioRole.Instructor;
-        var booking = await _creator.CreateAsync(studioId, session, student, userId, bookerRole, cancellationToken, request.StudentContractId);
+        var booking = await _creator.CreateAsync(studioId, session, student, userId, bookerRole, cancellationToken, request.StudentContractId, request.StudentContractLineId);
 
         var classTypeName = await _db.ClassTypes.Where(c => c.Id == session.ClassTypeId).Select(c => c.Name).FirstAsync(cancellationToken);
         var instructorName = await _db.InstructorProfiles.Where(p => p.Id == session.InstructorProfileId).Select(p => p.DisplayName).FirstAsync(cancellationToken);

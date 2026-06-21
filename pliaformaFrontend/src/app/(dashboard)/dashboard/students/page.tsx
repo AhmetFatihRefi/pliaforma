@@ -332,6 +332,12 @@ function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDt
   const [editing, setEditing] = useState(false);
   const [due, setDue] = useState(l.dueDate ?? "");
   const [busy, setBusy] = useState(false);
+  // Sprint 28C-1: line-bazlı program üretimi (bireysellik line'dan; bireysel line gruba bağlanmaz).
+  const [genOpen, setGenOpen] = useState(false);
+  const [days, setDays] = useState<DayOfWeek[]>([]);
+  const [time, setTime] = useState("18:00");
+  const [reuse, setReuse] = useState(!l.isIndividual);
+  const [genMsg, setGenMsg] = useState<string | null>(null);
 
   const saveEdit = async () => {
     setBusy(true);
@@ -346,6 +352,19 @@ function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDt
     catch (e) { onError(e instanceof ApiError ? e.message : "İptal edilemedi."); }
     finally { setBusy(false); }
   };
+  const generate = async () => {
+    if (days.length === 0) { setGenMsg("En az bir gün seçin."); return; }
+    setBusy(true); setGenMsg(null);
+    try {
+      const r = await contractService.generateLineSchedule(l.id, {
+        slots: days.map((d) => ({ dayOfWeek: d, startTime: `${time}:00` })),
+        reuseExistingGroup: l.isIndividual ? false : reuse,
+      });
+      setGenMsg(`${r.createdCount} ders oluşturuldu (yeni ${r.newSessionCount}, gruba bağlanan ${r.reusedSessionCount}, atlanan ${r.skippedCount}).`);
+      onChanged();
+    } catch (e) { setGenMsg(e instanceof ApiError ? e.message : "Program oluşturulamadı."); }
+    finally { setBusy(false); }
+  };
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3 text-xs">
@@ -356,6 +375,7 @@ function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDt
         </span>
         <div className="flex items-center gap-2">
           <Badge tone={l.status === "Active" ? "success" : "neutral"}>{studentContractStatusLabels[l.status]}</Badge>
+          {l.status === "Active" && <Button variant="ghost" size="sm" onClick={() => setGenOpen((v) => !v)}>Programı oluştur</Button>}
           {l.status === "Active" && <Button variant="ghost" size="sm" onClick={() => { setDue(l.dueDate ?? ""); setEditing((v) => !v); }}>Düzenle</Button>}
           {l.status === "Active" && <Button variant="ghost" size="sm" disabled={busy} onClick={cancelLine}>İptal</Button>}
         </div>
@@ -376,6 +396,29 @@ function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDt
           <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="w-40" />
           <Button size="sm" loading={busy} onClick={saveEdit}>Kaydet</Button>
           <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Vazgeç</Button>
+        </div>
+      )}
+      {genOpen && l.status === "Active" && (
+        <div className="mt-2 space-y-2 border-t border-border pt-2">
+          <div className="flex flex-wrap gap-2">
+            {daysOfWeek.map((d) => (
+              <label key={d} className={`cursor-pointer rounded-lg border px-2 py-1 text-xs ${days.includes(d) ? "border-primary bg-primary-soft text-primary" : "border-border text-muted"}`}>
+                <input type="checkbox" className="hidden" checked={days.includes(d)}
+                  onChange={(e) => setDays((xs) => e.target.checked ? [...xs, d] : xs.filter((x) => x !== d))} />
+                {dayLabels[d]}
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-32" />
+            {!l.isIndividual && (
+              <label className="flex items-center gap-2 text-xs text-muted">
+                <input type="checkbox" checked={reuse} onChange={(e) => setReuse(e.target.checked)} /> Mevcut gruba bağlan
+              </label>
+            )}
+            <Button size="sm" loading={busy} onClick={generate}>Oluştur ({l.availableLessonCount} ders)</Button>
+          </div>
+          {genMsg && <p className="text-xs text-muted">{genMsg}</p>}
         </div>
       )}
     </div>

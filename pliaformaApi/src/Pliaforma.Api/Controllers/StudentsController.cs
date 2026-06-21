@@ -17,12 +17,12 @@ public sealed class StudentsController : ApiControllerBase
     public StudentsController(IDispatcher dispatcher) : base(dispatcher) { }
 
     [HttpGet]
-    public Task<IActionResult> GetAll(CancellationToken ct) =>
-        Send(new GetStudentsQuery(), ct: ct);
+    public Task<IActionResult> GetAll([FromQuery] Domain.Enums.StudentLevel? level, CancellationToken ct) =>
+        Send(new GetStudentsQuery(Level: level), ct: ct);
 
     [HttpGet("search")]
-    public Task<IActionResult> Search([FromQuery] string? query, CancellationToken ct) =>
-        Send(new GetStudentsQuery(query), ct: ct);
+    public Task<IActionResult> Search([FromQuery] string? query, [FromQuery] Domain.Enums.StudentLevel? level, CancellationToken ct) =>
+        Send(new GetStudentsQuery(query, level), ct: ct);
 
     [HttpGet("{id:guid}")]
     public Task<IActionResult> Get(Guid id, CancellationToken ct) =>

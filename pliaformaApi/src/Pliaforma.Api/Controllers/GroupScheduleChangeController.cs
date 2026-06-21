@@ -17,8 +17,9 @@ public sealed class GroupScheduleChangeController : ApiControllerBase
 
     [HttpGet("candidates")]
     public Task<IActionResult> Candidates(
-        [FromQuery] Guid instructorProfileId, [FromQuery] Guid classTypeId, [FromQuery] DateOnly effectiveDate, CancellationToken ct) =>
-        Send(new GetGroupChangeCandidatesQuery(instructorProfileId, classTypeId, effectiveDate), ct: ct);
+        [FromQuery] Guid instructorProfileId, [FromQuery] Guid classTypeId, [FromQuery] DateOnly effectiveDate,
+        [FromQuery] Domain.Enums.StudentLevel? level, CancellationToken ct) =>
+        Send(new GetGroupChangeCandidatesQuery(instructorProfileId, classTypeId, effectiveDate, level), ct: ct);
 
     [HttpPost("preview")]
     public Task<IActionResult> Preview(PreviewGroupScheduleChangeQuery query, CancellationToken ct) =>

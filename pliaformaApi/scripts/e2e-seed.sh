@@ -103,8 +103,9 @@ ok "Sözleşme + program: GS limitsiz grup (10:00, headroom'lu) + GG bireysel (1
 echo "== 6) Geçmiş ders + yoklama (yaklaşan dersler program üretiminden gelir) =="
 IST(){ TZ='Europe/Istanbul' date "$@" 2>/dev/null || date "$@"; }
 # Yaklaşan rezervasyon + ClassReminder: GS'in üretilen günlük 10:00 dersleri (sonraki ders her zaman <25h içinde) sağlar.
-# Geçmiş ders (backdate) + yoklama (Present): GS'i I2P 16:00 seansına book (auto-resolve → GS grup sözleşmesi,
-# headroom var); 16:00 ≠ GS'in 10:00 dersi + I2P boş → çakışma yok. Sonra geçmişe çek + Present.
+# Geçmiş ders (backdate) + yoklama (Present): GS'i I2P 16:00 seansına book.
+# Sprint 28C-1: booking resolver instructor-zorunlu → GS'in I2P seansına booklanabilmesi için I2P line'ı gerekir.
+post "/api/studio/students/$GS/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I2P\",\"startDate\":\"$C18SD\",\"endDate\":\"$C18ED\",\"totalLessonCount\":5,\"makeupAllowance\":1,\"price\":0,\"isIndividualDefault\":false}" "$OTOK" >/dev/null
 PASTS=$(mksess "$(IST -d '+2 days' +%Y-%m-%dT16:00:00)")
 PBOOK=$(body "$(post "/api/studio/class-sessions/$PASTS/bookings" "{\"studentProfileId\":\"$GS\"}" "$OTOK")" | jget id)
 psql "UPDATE \"ClassSessions\" SET \"StartAt\"='2020-01-06 10:00:00', \"EndAt\"='2020-01-06 11:00:00' WHERE \"Id\"='$PASTS';"

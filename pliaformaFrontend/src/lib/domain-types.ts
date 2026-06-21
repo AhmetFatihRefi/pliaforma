@@ -544,7 +544,7 @@ export interface ChainShiftPreviewDto {
 
 // Sprint 22: köklü grup düzeni değişikliği.
 export interface GroupChangeCandidateDto {
-  contractId: string;
+  lineId: string; // Sprint 28C-1: grup düzeni değişikliği line-bazlı
   studentProfileId: string;
   studentName: string;
   availableLessonCount: number;
@@ -561,7 +561,7 @@ export interface GroupChangeSlotOutcomeDto {
   reason?: string | null;
 }
 export interface GroupChangeStudentResultDto {
-  contractId: string;
+  lineId: string; // Sprint 28C-1
   studentName: string;
   removedCount: number;
   plannedCount: number;

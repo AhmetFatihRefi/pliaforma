@@ -38,7 +38,8 @@ mksess(){ post /api/studio/class-sessions "{\"instructorProfileId\":\"$1\",\"cla
 S1=$(guest S1)
 D3=$(date -d "+3 days" +%Y-%m-%d)
 # S1'e her iki hocada sözleşme (Regular booking sözleşme ister; öğrenci-çakışması testi için ikisi de gerekir).
-mkc(){ body "$(post "/api/studio/students/$1/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$2\",\"startDate\":\"$(date +%F)\",\"endDate\":\"$(date -d '+30 days' +%F)\",\"totalLessonCount\":4,\"makeupAllowance\":0,\"price\":0,\"isIndividualDefault\":false}" "$ATOK")" | jget id; }
+# Sprint 28C-1: booking+generate line hakkını tüketir → sonraki yoklama/onay booking'i için bol hak (30).
+mkc(){ body "$(post "/api/studio/students/$1/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$2\",\"startDate\":\"$(date +%F)\",\"endDate\":\"$(date -d '+30 days' +%F)\",\"totalLessonCount\":30,\"makeupAllowance\":0,\"price\":0,\"isIndividualDefault\":false}" "$ATOK")" | jget id; }
 C1=$(mkc "$S1" "$I1P"); C2=$(mkc "$S1" "$I2P")
 
 echo "--- 1) Availability'ye göre ENGEL YOK + HARD block'lar korunur ---"

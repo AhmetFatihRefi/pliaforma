@@ -101,55 +101,30 @@ public sealed class PreviewContractScheduleHandler : IQueryHandler<PreviewContra
     public PreviewContractScheduleHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
     { _db = db; _currentUser = currentUser; _clock = clock; }
 
+    // Sprint 28C-1: DEPRECATED wrapper — header'ın aktif LINE'ları üzerinde line-bazlı önizleme üretip toplar (geri uyum).
     public async Task<ContractSchedulePreviewDto> Handle(PreviewContractScheduleQuery request, CancellationToken ct)
     {
         var studioId = _currentUser.RequireStudioId();
         var contract = await _db.StudentContracts.FirstOrDefaultAsync(c => c.Id == request.ContractId && c.StudioId == studioId, ct)
             ?? throw new NotFoundException("Sözleşme", request.ContractId);
 
-        var duration = await _db.ClassTypes.Where(c => c.Id == contract.ClassTypeId).Select(c => c.DefaultDurationMinutes).FirstAsync(ct);
-        var reserved = await _db.ClassBookings.CountAsync(b => b.StudentContractId == contract.Id
-            && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular, ct);
-        var available = Math.Max(0, contract.TotalLessonCount - reserved);
+        var lines = await _db.StudentContractLines
+            .Include(l => l.StudentContract)
+            .Where(l => l.StudioId == studioId && l.StudentContractId == contract.Id && l.Status == StudentContractLineStatus.Active)
+            .OrderBy(l => l.SequenceNo).ToListAsync(ct);
 
-        var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, ct);
-        var closures = await _db.StudioClosures
-            .Where(cl => cl.StudioId == studioId && cl.EndAt >= contract.StartDate.ToDateTime(TimeOnly.MinValue))
-            .ToListAsync(ct);
-
-        var candidates = ContractScheduleEngine.BuildCandidates(contract, duration, request.Slots);
+        int totalAvailable = 0, totalPlanned = 0;
         var slots = new List<ContractScheduleSlotPreviewDto>();
-        var planned = 0;
-        foreach (var c in candidates)
+        foreach (var line in lines)
         {
-            if (planned >= available) break;
-            string? skip = null;
-            if (c.StartAt <= nowLocal) skip = "Geçmiş zaman";
-            else if (ContractScheduleEngine.InAnyClosure(c.StartAt, closures)) skip = "Stüdyo kapalı (tatil/kapanış)";
-            else if (await SessionRules.HasConflictAsync(_db, studioId, contract.InstructorProfileId, c.StartAt, c.EndAt, null, ct)
-                     && !await ExistingReusableGroupAsync(studioId, contract, c.StartAt, ct))
-                skip = "Hoca çakışması";
-            else if (await StudentBusyAsync(studioId, contract.StudentProfileId, c.StartAt, c.EndAt, ct))
-                skip = "Öğrenci çakışması";
-
-            var plannable = skip is null;
-            slots.Add(new ContractScheduleSlotPreviewDto(c.StartAt, c.EndAt, plannable, skip));
-            if (plannable) planned++;
+            var inner = await new PreviewLineScheduleHandler(_db, _currentUser, _clock)
+                .Handle(new PreviewLineScheduleQuery(line.Id, request.Slots), ct);
+            totalAvailable += inner.AvailableLessonCount;
+            totalPlanned += inner.PlannableCount;
+            slots.AddRange(inner.Slots);
         }
-
-        return new ContractSchedulePreviewDto(available, planned, slots);
+        return new ContractSchedulePreviewDto(totalAvailable, totalPlanned, slots);
     }
-
-    private Task<bool> ExistingReusableGroupAsync(Guid studioId, StudentContract contract, DateTime startAt, CancellationToken ct) =>
-        _db.ClassSessions.AnyAsync(s => s.StudioId == studioId && s.InstructorProfileId == contract.InstructorProfileId
-            && s.ClassTypeId == contract.ClassTypeId && s.StartAt == startAt
-            && s.Status == ClassSessionStatus.Scheduled && !s.IsIndividual, ct);
-
-    private Task<bool> StudentBusyAsync(Guid studioId, Guid studentProfileId, DateTime startAt, DateTime endAt, CancellationToken ct) =>
-        _db.ClassBookings.AnyAsync(b => b.StudioId == studioId && b.StudentProfileId == studentProfileId
-            && b.Status == ClassBookingStatus.Booked
-            && b.ClassSession!.Status == ClassSessionStatus.Scheduled
-            && b.ClassSession.StartAt < endAt && startAt < b.ClassSession.EndAt, ct);
 }
 
 // ======================= ÜRETİM (oluşturur) =======================
@@ -176,6 +151,7 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
     public GenerateContractScheduleHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
     { _db = db; _currentUser = currentUser; _clock = clock; }
 
+    // Sprint 28C-1: DEPRECATED wrapper — header'ın aktif LINE'ları üzerinde line-bazlı üretim (booking lineId yazar). Geri uyum.
     public async Task<GenerateContractScheduleResultDto> Handle(GenerateContractScheduleCommand request, CancellationToken ct)
     {
         var studioId = _currentUser.RequireStudioId();
@@ -186,67 +162,20 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
         if (contract.Status != StudentContractStatus.Active)
             throw new BusinessRuleException("Yalnızca aktif sözleşmeden program üretilebilir.");
 
-        var classType = await _db.ClassTypes.FirstAsync(c => c.Id == contract.ClassTypeId, ct);
-        var duration = classType.DefaultDurationMinutes;
-        var individual = request.Individual ?? contract.IsIndividualDefault;
+        var lines = await _db.StudentContractLines
+            .Include(l => l.StudentContract)
+            .Where(l => l.StudioId == studioId && l.StudentContractId == contract.Id && l.Status == StudentContractLineStatus.Active)
+            .OrderBy(l => l.SequenceNo).ToListAsync(ct);
 
-        var reserved = await ContractScheduleEngine.ReservedRegularAsync(_db, contract.Id, ct);
-        var available = Math.Max(0, contract.TotalLessonCount - reserved);
-        if (available == 0)
-            return new GenerateContractScheduleResultDto(0, 0, 0, 0, Array.Empty<DateTime>());
-
-        var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, ct);
-        var closures = await _db.StudioClosures.Where(cl => cl.StudioId == studioId).ToListAsync(ct);
-
-        var candidates = ContractScheduleEngine.BuildCandidates(contract, duration, request.Slots);
-
-        var created = new List<DateTime>();
-        var newSessions = 0; var reusedSessions = 0; var skipped = 0;
-        // Aynı batch içinde oluşturulanları çakışma için takip et (hoca/öğrenci meşguliyeti).
-        var batchInstructor = new List<(DateTime s, DateTime e)>();
-        var batchStudent = new List<(DateTime s, DateTime e)>();
-
-        foreach (var c in candidates)
+        int created = 0, newSessions = 0, reusedSessions = 0, skipped = 0;
+        var startAts = new List<DateTime>();
+        foreach (var line in lines)
         {
-            if (created.Count >= available) break;
-
-            if (c.StartAt <= nowLocal) { skipped++; continue; }
-            if (ContractScheduleEngine.InAnyClosure(c.StartAt, closures)) { skipped++; continue; }
-
-            // Reuse: aynı slotta mevcut grup seansı (bireysel değil) varsa ona bağlan.
-            ClassSession? target = null;
-            if (!individual && request.ReuseExistingGroup)
-                target = await ContractScheduleEngine.FindReusableGroupAsync(_db, studioId, contract.InstructorProfileId, contract.ClassTypeId, c.StartAt, ct);
-
-            // Çakışma: hoca (reuse hedefi yoksa) + öğrenci. Batch içi meşguliyet de kontrol edilir.
-            var instructorBusy = batchInstructor.Any(x => x.s < c.EndAt && c.StartAt < x.e)
-                || await SessionRules.HasConflictAsync(_db, studioId, contract.InstructorProfileId, c.StartAt, c.EndAt, null, ct);
-            if (target is null && instructorBusy) { skipped++; continue; }
-
-            var studentBusy = batchStudent.Any(x => x.s < c.EndAt && c.StartAt < x.e)
-                || await ContractScheduleEngine.StudentBusyAsync(_db, studioId, contract.StudentProfileId, c.StartAt, c.EndAt, ct);
-            if (studentBusy) { skipped++; continue; }
-
-            if (target is null)
-            {
-                target = ContractScheduleEngine.NewSession(studioId, contract.InstructorProfileId, contract.ClassTypeId, c.StartAt, c.EndAt, individual, userId);
-                _db.ClassSessions.Add(target);
-                newSessions++;
-            }
-            else
-            {
-                reusedSessions++;
-            }
-
-            target.BookedCount += 1;
-            _db.ClassBookings.Add(ContractScheduleEngine.NewBooking(studioId, target.Id, contract.StudentProfileId, contract.Id, userId));
-
-            batchInstructor.Add((c.StartAt, c.EndAt));
-            batchStudent.Add((c.StartAt, c.EndAt));
-            created.Add(c.StartAt);
+            var duration = await _db.ClassTypes.Where(c => c.Id == line.ClassTypeId).Select(c => c.DefaultDurationMinutes).FirstAsync(ct);
+            var r = await ContractLineScheduleEngine.RunAsync(_db, _clock, studioId, userId, line, duration, request.Slots, request.ReuseExistingGroup, generate: true, ct);
+            created += r.CreatedCount; newSessions += r.NewSessionCount; reusedSessions += r.ReusedSessionCount; skipped += r.SkippedCount;
+            startAts.AddRange(r.CreatedStartAts);
         }
-
-        await _db.SaveChangesAsync(ct);
-        return new GenerateContractScheduleResultDto(created.Count, newSessions, reusedSessions, skipped, created);
+        return new GenerateContractScheduleResultDto(created, newSessions, reusedSessions, skipped, startAts);
     }
 }

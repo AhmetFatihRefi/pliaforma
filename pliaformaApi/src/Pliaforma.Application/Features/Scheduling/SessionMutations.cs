@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Contracts;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
 
@@ -56,6 +57,8 @@ public sealed class UpdateClassSessionHandler : ICommandHandler<UpdateClassSessi
             var newStart = DateTime.SpecifyKind(newStartRaw, DateTimeKind.Unspecified);
             var newEnd = newStart.AddMinutes(classType.DefaultDurationMinutes);
             await SessionRules.EnsureValidAsync(_db, _clock, studioId, session.InstructorProfileId, newStart, newEnd, excludeId: session.Id, cancellationToken);
+            // Sprint 28C-1: Regular ders, bağlı booking'lerin line tarih aralığını aşamaz (hard block).
+            await ContractLineRules.EnsureRegularInLineRangeAsync(_db, studioId, session, newStart, cancellationToken);
             session.StartAt = newStart;
             session.EndAt = newEnd;
         }
@@ -173,6 +176,10 @@ public sealed class RescheduleClassSessionHandler : ICommandHandler<RescheduleCl
                 .Select(b => b.StudentProfileId).ToListAsync(cancellationToken)
             : new List<Guid>();
         await SessionRules.EnsureMovableAsync(_db, _clock, studioId, session.InstructorProfileId, movingStudentIds, newStart, newEnd, new[] { session.Id }, cancellationToken);
+
+        // Sprint 28C-1: rezervasyonlar taşınıyorsa (KeepBookings) Regular ders line tarih aralığını aşamaz (hard block).
+        if (request.KeepBookings)
+            await ContractLineRules.EnsureRegularInLineRangeAsync(_db, studioId, session, newStart, cancellationToken);
 
         if (!request.KeepBookings)
         {

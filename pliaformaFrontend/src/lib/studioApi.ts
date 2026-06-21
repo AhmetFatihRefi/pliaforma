@@ -58,6 +58,7 @@ import type {
   ConfirmTodayResultDto,
   RateType,
   StudentDto,
+  StudentLevel,
   StudentMakeupCreditsDto,
   MakeupEligibleStudentDto,
   ChainShiftPreviewDto,
@@ -115,6 +116,11 @@ export const contractService = {
     api<ContractSchedulePreviewDto>(`/api/studio/contracts/${id}/schedule/preview`, { method: "POST", body: { slots } }),
   generateSchedule: (id: string, input: { slots: ContractScheduleSlotInput[]; reuseExistingGroup: boolean; individual: boolean | null }) =>
     api<GenerateContractScheduleResultDto>(`/api/studio/contracts/${id}/schedule/generate`, { method: "POST", body: input }),
+  // Sprint 28C-1: line-bazlı program üretimi (yeni kaynak — LineCard "Programı oluştur"). Bireysellik line'dan gelir.
+  previewLineSchedule: (lineId: string, slots: ContractScheduleSlotInput[]) =>
+    api<ContractSchedulePreviewDto>(`/api/studio/contract-lines/${lineId}/schedule/preview`, { method: "POST", body: { slots } }),
+  generateLineSchedule: (lineId: string, input: { slots: ContractScheduleSlotInput[]; reuseExistingGroup: boolean }) =>
+    api<GenerateContractScheduleResultDto>(`/api/studio/contract-lines/${lineId}/schedule/generate`, { method: "POST", body: input }),
   // Sprint 23: ek işlem (amendment) + borç.
   amendments: (id: string) => api<ContractAmendmentDto[]>(`/api/studio/contracts/${id}/amendments`),
   addAmendment: (id: string, input: {
@@ -205,12 +211,12 @@ export interface GroupChangeInput {
   instructorProfileId: string;
   classTypeId: string;
   effectiveDate: string;
-  contractIds: string[];
+  lineIds: string[]; // Sprint 28C-1: line-bazlı
   newSlots: ContractScheduleSlotInput[];
 }
 export const groupScheduleChangeService = {
-  candidates: (instructorProfileId: string, classTypeId: string, effectiveDate: string) =>
-    api<GroupChangeCandidateDto[]>(`/api/studio/group-schedule-change/candidates?instructorProfileId=${instructorProfileId}&classTypeId=${classTypeId}&effectiveDate=${effectiveDate}`),
+  candidates: (instructorProfileId: string, classTypeId: string, effectiveDate: string, level?: StudentLevel | null) =>
+    api<GroupChangeCandidateDto[]>(`/api/studio/group-schedule-change/candidates?instructorProfileId=${instructorProfileId}&classTypeId=${classTypeId}&effectiveDate=${effectiveDate}${level ? `&level=${level}` : ""}`),
   preview: (input: GroupChangeInput) =>
     api<GroupChangePreviewDto>("/api/studio/group-schedule-change/preview", { method: "POST", body: input }),
   apply: (input: GroupChangeInput) =>
@@ -406,8 +412,9 @@ export const bookingService = {
     return api<ClassBookingDto[]>(`/api/studio/bookings${qs ? `?${qs}` : ""}`);
   },
   forSession: (sessionId: string) => api<ClassBookingDto[]>(`/api/studio/class-sessions/${sessionId}/bookings`),
-  create: (sessionId: string, studentProfileId: string) =>
-    api<ClassBookingDto>(`/api/studio/class-sessions/${sessionId}/bookings`, { method: "POST", body: { studentProfileId } }),
+  // Sprint 28C-1: Regular rezervasyonda opsiyonel line seçimi (verilmezse backend resolver line bulur).
+  create: (sessionId: string, studentProfileId: string, studentContractLineId?: string | null) =>
+    api<ClassBookingDto>(`/api/studio/class-sessions/${sessionId}/bookings`, { method: "POST", body: { studentProfileId, studentContractLineId: studentContractLineId ?? null } }),
   cancel: (id: string) => api<null>(`/api/studio/bookings/${id}/cancel`, { method: "POST", body: {} }),
 };
 
@@ -428,8 +435,10 @@ export const studentBookingService = {
 
 // Öğrenci yönetimi (/api/studio/students) + öğrenci self (/api/student/me)
 export const studentService = {
-  list: () => api<StudentDto[]>("/api/studio/students"),
-  search: (query: string) => api<StudentDto[]>(`/api/studio/students/search?query=${encodeURIComponent(query)}`),
+  // Sprint 28C-1: opsiyonel seviye filtresi (öğrenci-seçim kolaylığı).
+  list: (level?: StudentLevel | null) => api<StudentDto[]>(`/api/studio/students${level ? `?level=${level}` : ""}`),
+  search: (query: string, level?: StudentLevel | null) =>
+    api<StudentDto[]>(`/api/studio/students/search?query=${encodeURIComponent(query)}${level ? `&level=${level}` : ""}`),
   get: (id: string) => api<StudentDto>(`/api/studio/students/${id}`),
   createGuest: (input: GuestInput) => api<StudentDto>("/api/studio/students/guest", { method: "POST", body: input }),
   update: (id: string, input: GuestInput) => api<StudentDto>(`/api/studio/students/${id}`, { method: "PUT", body: input }),
