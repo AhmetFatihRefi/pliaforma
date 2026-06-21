@@ -466,6 +466,9 @@ export interface MakeupCreditTransactionDto {
   // Sprint 20: kaynak ders + kullanıldığı telafi dersi etiketleri.
   sourceLabel?: string | null;
   usedForLabel?: string | null;
+  // Sprint 28C-2: hareketin bağlı olduğu line.
+  studentContractLineId?: string | null;
+  lineLabel?: string | null;
 }
 
 // Sprint 20: kazanılan / kullanılan / kullanılabilir özeti.
@@ -475,25 +478,51 @@ export interface MakeupCreditSummaryDto {
   available: number;
 }
 
+// Sprint 28C-2: line bazlı telafi kırılımı.
+export interface MakeupCreditByLineDto {
+  lineId: string;
+  classTypeId: string;
+  classTypeName: string;
+  lineLabel: string;
+  earned: number;
+  used: number;
+  available: number;
+  isIndividual: boolean;
+  startDate: string;
+  endDate: string;
+}
+
 export interface StudentMakeupCreditsDto {
   studentProfileId: string;
   studentName: string;
   balance: number;
   summary: MakeupCreditSummaryDto;
+  byLine: MakeupCreditByLineDto[];
   transactions: MakeupCreditTransactionDto[];
 }
 
 export interface MyMakeupCreditsDto {
   balance: number;
   summary: MakeupCreditSummaryDto;
+  byLine: MakeupCreditByLineDto[];
   transactions: MakeupCreditTransactionDto[];
 }
 
-// Sprint 20: telafi dersine eklenebilir öğrenci (kullanılabilir hak > 0).
-export interface MakeupEligibleStudentDto {
+// Sprint 28C-2: telafi dersine/talebine uygun LINE (staff booking + request eligible ortak).
+export interface MakeupEligibleLineDto {
+  lineId: string;
   studentProfileId: string;
   studentName: string;
+  classTypeId: string;
+  classTypeName: string;
+  instructorProfileId: string;
+  instructorName: string;
+  lineLabel: string;
   availableCredits: number;
+  level?: StudentLevel | null;
+  isIndividual: boolean;
+  startDate: string;
+  endDate: string;
 }
 
 // Sprint 27: telafi dersi talebi (Instructor Makeup Request & Pending Schedule Blocks).

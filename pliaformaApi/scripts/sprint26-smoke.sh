@@ -94,7 +94,8 @@ expect "Instructor seansa öğrenci EKLE (booking) → 403" 403 "$(pcode "/api/s
 expect "Instructor booking iptal → 403" 403 "$(pcode "/api/studio/bookings/00000000-0000-0000-0000-000000000000/cancel" '{}' "$I1TOK")"
 # Owner bu işlemleri yapmaya devam eder.
 expect "Owner ders tipi create → 200 (regresyon)" 200 "$(pcode /api/class-types "$CTBODY" "$ATOK")"
-expect "Owner telafi kredisi GRANT → 200 (regresyon)" 200 "$(pcode "/api/studio/students/$S1/makeup-credits/grant" '{"amount":1,"notes":"x"}' "$ATOK")"
+S1LINE=$(sql "SELECT l.\"Id\" FROM \"StudentContractLines\" l JOIN \"StudentContracts\" c ON c.\"Id\"=l.\"StudentContractId\" WHERE c.\"StudentProfileId\"='$S1' LIMIT 1;")
+expect "Owner telafi kredisi GRANT (line) → 200 (regresyon)" 200 "$(pcode "/api/studio/students/$S1/makeup-credits/grant" "{\"studentContractLineId\":\"$S1LINE\",\"amount\":1,\"notes\":\"x\"}" "$ATOK")"
 expect "Owner öğrenci listesi (GET) → 200 (regresyon)" 200 "$(gcode /api/studio/students "$ATOK")"
 
 echo "--- 8) Ek karar: Instructor KENDİ dersinde yoklama/onay akışı BOZULMAZ ---"

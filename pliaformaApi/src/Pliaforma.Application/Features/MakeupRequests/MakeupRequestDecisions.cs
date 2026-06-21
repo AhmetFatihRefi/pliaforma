@@ -141,6 +141,13 @@ public sealed class ApproveMakeupRequestHandler : ICommandHandler<ApproveMakeupR
         if (entity.Status != MakeupRequestStatus.Pending)
             throw new ConflictException("Yalnızca onay bekleyen (Pending) talep onaylanabilir.");
 
+        // ---- Sprint 28C-2: talep LINE'a bağlı → bireysellik/kredi line'dan. ----
+        if (entity.StudentContractLineId is not { } lineId)
+            throw new BusinessRuleException("Talep bir sözleşme satırına bağlı değil (eski kayıt); line-bazlı onay yapılamaz.");
+        var line = await _db.StudentContractLines
+            .FirstOrDefaultAsync(l => l.Id == lineId && l.StudioId == studioId, cancellationToken)
+            ?? throw new NotFoundException("Sözleşme satırı", lineId);
+
         // ---- Final değerler (edit-approve: tarih/saat/hoca/ders tipi değiştirilebilir). ----
         var instructorProfileId = request.RequestedInstructorProfileId ?? entity.RequestedInstructorProfileId;
         var classTypeId = request.ClassTypeId ?? entity.ClassTypeId;
@@ -177,7 +184,7 @@ public sealed class ApproveMakeupRequestHandler : ICommandHandler<ApproveMakeupR
         entity.DecidedAt = _clock.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
 
-        // ---- Gerçek Makeup seansı (bireysel) + booking; kredi BookingCreator makeup yolundan Use(−1). ----
+        // ---- Sprint 28C-2: Makeup seansı line.IsIndividual'a göre (group line → group makeup); kredi o line'dan Use(−1). ----
         var session = new ClassSession
         {
             StudioId = studioId,
@@ -185,8 +192,8 @@ public sealed class ApproveMakeupRequestHandler : ICommandHandler<ApproveMakeupR
             ClassTypeId = classType.Id,
             StartAt = startAt,
             EndAt = endAt,
-            Capacity = 1,
-            IsIndividual = true,
+            Capacity = line.IsIndividual ? 1 : 9999, // 9999 = grup-sınırsız (ContractScheduleEngine deseni)
+            IsIndividual = line.IsIndividual,
             SessionKind = ClassSessionKind.Makeup,
             Notes = entity.Description,
             CreatedByUserId = userId,
@@ -194,7 +201,7 @@ public sealed class ApproveMakeupRequestHandler : ICommandHandler<ApproveMakeupR
         _db.ClassSessions.Add(session);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var booking = await _bookingCreator.CreateAsync(studioId, session, student, userId, role, cancellationToken);
+        var booking = await _bookingCreator.CreateAsync(studioId, session, student, userId, role, cancellationToken, studentContractLineId: line.Id);
 
         entity.ResultingClassSessionId = session.Id;
         entity.ResultingBookingId = booking.Id;

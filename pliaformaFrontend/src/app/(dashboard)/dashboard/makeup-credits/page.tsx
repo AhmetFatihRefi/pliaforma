@@ -1,17 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { makeupCreditService, studentService } from "@/lib/studioApi";
+import { contractService, makeupCreditService, studentService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import { useRole } from "@/lib/useRole";
 import {
   type MakeupPolicyDto,
+  type StudentContractLineDto,
   type StudentDto,
   type StudentMakeupCreditsDto,
   creditReasonLabels,
   creditTypeLabels,
 } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Table, TableEmpty, TD, TH, THead, TR } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR } from "@/components/ui";
 
 const fmt = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 
@@ -21,6 +22,7 @@ export default function MakeupCreditsPage() {
   const [results, setResults] = useState<StudentDto[]>([]);
   const [selected, setSelected] = useState<StudentDto | null>(null);
   const [credits, setCredits] = useState<StudentMakeupCreditsDto | null>(null);
+  const [studentLines, setStudentLines] = useState<StudentContractLineDto[]>([]); // Sprint 28C-2: grant hedef line'ları
   const [error, setError] = useState<string | null>(null);
   const [grantOpen, setGrantOpen] = useState(false);
   const [revokeOpen, setRevokeOpen] = useState(false);
@@ -39,7 +41,12 @@ export default function MakeupCreditsPage() {
   const loadCredits = useCallback(async (studentId: string) => {
     setError(null);
     try {
-      setCredits(await makeupCreditService.forStudent(studentId));
+      const [c, lines] = await Promise.all([
+        makeupCreditService.forStudent(studentId),
+        contractService.lines(studentId),
+      ]);
+      setCredits(c);
+      setStudentLines(lines.filter((l) => l.status === "Active")); // grant hedefi = aktif line'lar
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Krediler yüklenemedi.");
       setCredits(null);
@@ -111,6 +118,19 @@ export default function MakeupCreditsPage() {
                 <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Kullanılabilir</p><p className="text-lg font-semibold text-foreground">{credits.summary.available}</p></div>
               </div>
 
+              {/* Sprint 28C-2: line bazlı telafi kırılımı */}
+              {credits.byLine.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  <p className="text-xs font-semibold text-muted">Satır bazlı telafi</p>
+                  {credits.byLine.map((l) => (
+                    <div key={l.lineId} className="flex items-center justify-between rounded-lg border border-border px-3 py-1.5 text-xs">
+                      <span className="text-foreground">{l.lineLabel}{l.isIndividual ? " · Bireysel" : ""}</span>
+                      <span className="text-muted">kazanılan {l.earned} · kullanılan {l.used} · <span className={l.available > 0 ? "text-success" : "text-muted"}>kalan {l.available}</span></span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="mt-4">
                 <Table>
                   <THead><TR><TH>Tarih</TH><TH>İşlem</TH><TH>Gerekçe</TH><TH>Kaynak / Kullanım</TH><TH>Not</TH><TH className="text-right">Miktar</TH></TR></THead>
@@ -143,17 +163,19 @@ export default function MakeupCreditsPage() {
         <CreditActionModal
           title={`${selected.fullName} — Kredi ver`}
           actionLabel="Kredi ver"
+          lineOptions={studentLines.map((l) => ({ lineId: l.id, label: `${l.classTypeName} · ${l.startDate}–${l.endDate}${l.isIndividual ? " · Bireysel" : ""}` }))}
           onClose={() => setGrantOpen(false)}
-          onSubmit={(amount, notes) => makeupCreditService.grant(selected.id, { amount, notes })}
+          onSubmit={(lineId, amount, notes) => makeupCreditService.grant(selected.id, { studentContractLineId: lineId, amount, notes })}
           onDone={(c) => { setCredits(c); setGrantOpen(false); }}
         />
       )}
-      {revokeOpen && selected && (
+      {revokeOpen && selected && credits && (
         <CreditActionModal
           title={`${selected.fullName} — Kredi geri al`}
           actionLabel="Geri al"
+          lineOptions={credits.byLine.filter((l) => l.available > 0).map((l) => ({ lineId: l.lineId, label: `${l.lineLabel} (kalan ${l.available})` }))}
           onClose={() => setRevokeOpen(false)}
-          onSubmit={(amount, notes) => makeupCreditService.revoke(selected.id, { amount, notes })}
+          onSubmit={(lineId, amount, notes) => makeupCreditService.revoke(selected.id, { studentContractLineId: lineId, amount, notes })}
           onDone={(c) => { setCredits(c); setRevokeOpen(false); }}
         />
       )}
@@ -162,14 +184,16 @@ export default function MakeupCreditsPage() {
 }
 
 function CreditActionModal({
-  title, actionLabel, onClose, onSubmit, onDone,
+  title, actionLabel, lineOptions, onClose, onSubmit, onDone,
 }: {
   title: string;
   actionLabel: string;
+  lineOptions: { lineId: string; label: string }[]; // Sprint 28C-2: kredi LINE-scoped → hedef line seçilir
   onClose: () => void;
-  onSubmit: (amount: number, notes?: string) => Promise<StudentMakeupCreditsDto>;
+  onSubmit: (lineId: string, amount: number, notes?: string) => Promise<StudentMakeupCreditsDto>;
   onDone: (c: StudentMakeupCreditsDto) => void;
 }) {
+  const [lineId, setLineId] = useState(lineOptions.length === 1 ? lineOptions[0].lineId : "");
   const [amount, setAmount] = useState("1");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -177,10 +201,11 @@ function CreditActionModal({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!lineId) { setErr("Bir sözleşme satırı (line) seçin."); return; }
     setBusy(true);
     setErr(null);
     try {
-      onDone(await onSubmit(Number(amount), notes || undefined));
+      onDone(await onSubmit(lineId, Number(amount), notes || undefined));
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "İşlem başarısız.");
     } finally {
@@ -192,6 +217,16 @@ function CreditActionModal({
     <Modal open onClose={onClose} title={title}>
       <form onSubmit={submit} className="space-y-4">
         {err && <Alert kind="error">{err}</Alert>}
+        <FormField label="Sözleşme satırı (line)">
+          {lineOptions.length === 0 ? (
+            <p className="text-sm text-muted">Uygun satır yok.</p>
+          ) : (
+            <Select value={lineId} onChange={(e) => setLineId(e.target.value)} required>
+              <option value="">Seçin…</option>
+              {lineOptions.map((o) => <option key={o.lineId} value={o.lineId}>{o.label}</option>)}
+            </Select>
+          )}
+        </FormField>
         <FormField label="Miktar">
           <Input type="number" min={1} max={10} value={amount} onChange={(e) => setAmount(e.target.value)} required />
         </FormField>

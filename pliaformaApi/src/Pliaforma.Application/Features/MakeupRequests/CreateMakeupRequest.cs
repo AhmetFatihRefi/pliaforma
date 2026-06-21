@@ -17,19 +17,17 @@ namespace Pliaforma.Application.Features.MakeupRequests;
 /// (kullanılabilir bakiye) kontrolünden geçer. HARD: geçmişe talep yasak (StartAt &gt; studioNow); gerçek+pending
 /// hoca/öğrenci çakışması; kullanılabilir telafi hakkı &gt; 0 (örtük rezerve = aktif Pending talep sayısı).
 /// </summary>
+// Sprint 28C-2: talep LINE-driven → StudentContractLineId zorunlu; öğrenci/ders tipi/hoca line'dan türetilir.
 public sealed record CreateMakeupRequestCommand(
-    Guid StudentProfileId,
-    Guid ClassTypeId,
+    Guid StudentContractLineId,
     DateTime StartAt,
-    string? Description = null,
-    Guid? RequestedInstructorProfileId = null) : ICommand<MakeupRequestDto>, IStudioWriteRequest;
+    string? Description = null) : ICommand<MakeupRequestDto>, IStudioWriteRequest;
 
 public sealed class CreateMakeupRequestValidator : AbstractValidator<CreateMakeupRequestCommand>
 {
     public CreateMakeupRequestValidator()
     {
-        RuleFor(x => x.StudentProfileId).NotEmpty();
-        RuleFor(x => x.ClassTypeId).NotEmpty();
+        RuleFor(x => x.StudentContractLineId).NotEmpty().WithMessage("Telafi talebi bir sözleşme satırına (line) bağlı olmalı.");
         RuleFor(x => x.StartAt).NotEmpty();
         RuleFor(x => x.Description).MaximumLength(1000);
     }
@@ -61,56 +59,44 @@ public sealed class CreateMakeupRequestHandler : ICommandHandler<CreateMakeupReq
         var role = _currentUser.StudioRole;
         var isInstructor = role == StudioRole.Instructor;
 
-        // ---- Hoca profili: Instructor → token'dan ZORLANIR (başka hoca adına talep YASAK). Manager → seçer. ----
-        Guid instructorProfileId;
+        // ---- Sprint 28C-2: line authoritative → öğrenci/ders tipi/hoca line'dan türetilir. ----
+        var line = await _db.StudentContractLines.Include(l => l.StudentContract)
+            .FirstOrDefaultAsync(l => l.Id == request.StudentContractLineId && l.StudioId == studioId, cancellationToken)
+            ?? throw new NotFoundException("Sözleşme satırı", request.StudentContractLineId);
+        if (line.Status != StudentContractLineStatus.Active)
+            throw new BusinessRuleException("Pasif/iptal satıra telafi talebi açılamaz.");
+
+        var instructorProfileId = line.InstructorProfileId;
+        // Instructor yalnız KENDİ instructorProfileId'siyle eşleşen line'a talep açabilir.
         if (isInstructor)
         {
             var ownProfileId = await SchedulingAccess.CurrentInstructorProfileIdAsync(_db, _currentUser, studioId, cancellationToken)
                 ?? throw new ForbiddenException("Hoca profiliniz bulunamadı.");
-            if (request.RequestedInstructorProfileId is { } req && req != ownProfileId)
-                throw new ForbiddenException("Başka bir hoca adına telafi talebi oluşturamazsınız.");
-            instructorProfileId = ownProfileId;
+            if (line.InstructorProfileId != ownProfileId)
+                throw new ForbiddenException("Yalnızca kendi satırlarınız için telafi talebi açabilirsiniz.");
         }
         else
         {
-            if (request.RequestedInstructorProfileId is not { } req)
-                throw new BusinessRuleException("Hoca seçilmeli (requestedInstructorProfileId).");
-            var profile = await SchedulingAccess.RequireManageableInstructorAsync(_db, _currentUser, studioId, req, cancellationToken);
-            instructorProfileId = profile.Id;
+            await SchedulingAccess.RequireManageableInstructorAsync(_db, _currentUser, studioId, instructorProfileId, cancellationToken);
         }
 
         var student = await _db.StudentProfiles
-            .FirstOrDefaultAsync(s => s.Id == request.StudentProfileId && s.StudioId == studioId, cancellationToken)
-            ?? throw new NotFoundException("Öğrenci", request.StudentProfileId);
+            .FirstOrDefaultAsync(s => s.Id == line.StudentContract!.StudentProfileId && s.StudioId == studioId, cancellationToken)
+            ?? throw new NotFoundException("Öğrenci", line.StudentContract!.StudentProfileId);
         if (student.Status == StudentStatus.Inactive)
             throw new BusinessRuleException("Pasif öğrenci için telafi talebi oluşturulamaz.");
 
         var classType = await _db.ClassTypes
-            .FirstOrDefaultAsync(c => c.Id == request.ClassTypeId && c.StudioId == studioId, cancellationToken)
-            ?? throw new NotFoundException("Ders tipi", request.ClassTypeId);
+            .FirstOrDefaultAsync(c => c.Id == line.ClassTypeId && c.StudioId == studioId, cancellationToken)
+            ?? throw new NotFoundException("Ders tipi", line.ClassTypeId);
 
         var startAt = DateTime.SpecifyKind(request.StartAt, DateTimeKind.Unspecified);
         var endAt = startAt.AddMinutes(classType.DefaultDurationMinutes);
 
-        // ---- R5: geçmişe talep YASAK. ----
+        // ---- R5: geçmişe talep YASAK. (Makeup line.EndDate sonrası serbest → tarih-aralığı kontrolü YOK.) ----
         var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, cancellationToken);
         if (startAt <= nowLocal)
             throw new BusinessRuleException("Geçmiş bir zamana telafi talebi oluşturulamaz.");
-
-        // ---- R2: Instructor "kendi bağlamı" = bu hocayla AKTİF SÖZLEŞMELİ + ders tipi uyumlu + tarih aralığında öğrenci. ----
-        if (isInstructor)
-        {
-            var requestDate = DateOnly.FromDateTime(startAt);
-            var hasContract = await _db.StudentContracts.AnyAsync(c =>
-                c.StudioId == studioId
-                && c.StudentProfileId == student.Id
-                && c.InstructorProfileId == instructorProfileId
-                && c.ClassTypeId == classType.Id
-                && c.Status == StudentContractStatus.Active
-                && c.StartDate <= requestDate && requestDate <= c.EndDate, cancellationToken);
-            if (!hasContract)
-                throw new ForbiddenException("Bu öğrenci için sizinle aktif/uygun bir sözleşme yok; telafi talebi açamazsınız.");
-        }
 
         // ---- Çakışma: gerçek (hoca+öğrenci) + pending (hoca+öğrenci). Çift yönlü blok. ----
         if (await SessionRules.HasConflictAsync(_db, studioId, instructorProfileId, startAt, endAt, null, cancellationToken))
@@ -122,16 +108,17 @@ public sealed class CreateMakeupRequestHandler : ICommandHandler<CreateMakeupReq
         if (await SessionRules.PendingStudentConflictAsync(_db, studioId, new[] { student.Id }, startAt, endAt, null, cancellationToken))
             throw new ConflictException("Öğrencinin bu zaman aralığında onay bekleyen bir telafi talebi var.");
 
-        // ---- Rezerve: kullanılabilir bakiye > 0 (ledger − aktif Pending talep). Lock ile serileştir. ----
+        // ---- Rezerve LINE-bazlı: line kullanılabilir bakiye > 0 (lineBalance − line pending). Aynı line 2. pending → 0 → 409. ----
         await _creditLock.LockStudentAsync(studioId, student.Id, cancellationToken);
-        var available = await _credits.GetAvailableBalanceAsync(studioId, student.Id, cancellationToken);
+        var available = await _credits.GetLineAvailableBalanceAsync(studioId, line.Id, cancellationToken);
         if (available <= 0)
-            throw new ConflictException("Öğrencinin kullanılabilir telafi hakkı yok (kredi yok veya başka talepte rezerve).");
+            throw new ConflictException("Bu satırda kullanılabilir telafi hakkı yok (kredi yok veya başka talepte rezerve).");
 
         var entity = new MakeupRequest
         {
             StudioId = studioId,
             StudentProfileId = student.Id,
+            StudentContractLineId = line.Id,
             RequestedInstructorProfileId = instructorProfileId,
             ClassTypeId = classType.Id,
             StartAt = startAt,

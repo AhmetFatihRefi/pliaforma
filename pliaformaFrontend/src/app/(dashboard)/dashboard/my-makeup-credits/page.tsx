@@ -49,6 +49,21 @@ export default function MyMakeupCreditsPage() {
         </div>
       )}
 
+      {/* Sprint 28C-2: telafi hakkı paketinize (line) göre kırılım */}
+      {data && data.byLine.length > 0 && (
+        <Card>
+          <h3 className="mb-2 text-sm font-semibold text-muted">Paket bazlı telafi hakkı</h3>
+          <div className="space-y-1.5">
+            {data.byLine.map((l) => (
+              <div key={l.lineId} className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm">
+                <span className="text-foreground">{l.classTypeName}{l.isIndividual ? " · Bireysel" : ""} <span className="text-xs text-muted">({l.startDate}–{l.endDate})</span></span>
+                <Badge tone={l.available > 0 ? "rose" : "neutral"}>{l.available} telafi hakkı</Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card>
         <h3 className="mb-3 text-sm font-semibold text-muted">Hareket geçmişi (salt-okunur — telafi dersini stüdyo planlar)</h3>
         <Table>

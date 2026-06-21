@@ -23,10 +23,10 @@ test.describe.serial("Telafi talepleri (Sprint 27)", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("heading", { name: "Telafi dersi talebi" })).toBeVisible();
 
-    // Yalnız kullanılabilir telafi hakkı olan öğrenciler listelenir → E2E Student seçilebilir olmalı.
+    // Sprint 28C-2: talep LINE-bazlı → satır seçici (2. select; 1. select seviye filtresi). Line etiketi öğrenci adını içerir.
     await expect(dialog.locator("option", { hasText: "E2E Student" })).toHaveCount(1);
     const optVal = await dialog.locator("option", { hasText: "E2E Student" }).getAttribute("value");
-    await dialog.locator("select").first().selectOption(optVal!);
+    await dialog.locator("select").nth(1).selectOption(optVal!);
 
     // Retry'da çakışmayı önlemek için saat = 6 + retry (farklı slot).
     await dialog.locator('input[type="datetime-local"]').fill(tomorrowAt(6 + testInfo.retry));

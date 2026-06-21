@@ -23,11 +23,33 @@ public sealed class MakeupCreditService
         _clock = clock;
     }
 
-    /// <summary>Bakiye = aktif (silinmemiş) hareketlerin işaretli toplamı. Expiry bu sürümde ZORLANMAZ.</summary>
+    /// <summary>Bakiye = aktif (silinmemiş) hareketlerin işaretli toplamı. Expiry bu sürümde ZORLANMAZ.
+    /// ÖĞRENCİ-global (read/report). Sprint 28C-2: yeni yazma/karar akışı LINE-scoped metotları kullanır.</summary>
     public async Task<int> GetBalanceAsync(Guid studioId, Guid studentProfileId, CancellationToken ct)
         => await _db.MakeupCreditTransactions
             .Where(t => t.StudioId == studioId && t.StudentProfileId == studentProfileId)
             .SumAsync(t => (int?)t.Amount, ct) ?? 0;
+
+    // ---- Sprint 28C-2: LINE-scoped telafi defteri (yeni akışın TEK karar kaynağı) ----
+    /// <summary>Bir line'ın telafi bakiyesi = o line'a bağlı hareketlerin işaretli toplamı.</summary>
+    public async Task<int> GetLineBalanceAsync(Guid studioId, Guid studentContractLineId, CancellationToken ct)
+        => await _db.MakeupCreditTransactions
+            .Where(t => t.StudioId == studioId && t.StudentContractLineId == studentContractLineId)
+            .SumAsync(t => (int?)t.Amount, ct) ?? 0;
+
+    /// <summary>Bir line için aktif (Pending) telafi talebi sayısı = line-bazlı örtük rezerve.</summary>
+    public Task<int> ActivePendingRequestCountForLineAsync(
+        Guid studioId, Guid studentContractLineId, Guid? excludeRequestId, CancellationToken ct)
+        => _db.MakeupRequests.CountAsync(
+            r => r.StudioId == studioId && r.StudentContractLineId == studentContractLineId
+                 && r.Status == Domain.Enums.MakeupRequestStatus.Pending
+                 && (excludeRequestId == null || r.Id != excludeRequestId), ct);
+
+    /// <summary>Line KULLANILABİLİR bakiye = lineBalance − line-bazlı aktif Pending talep rezervesi. (28C-2 TEK NOKTA.)</summary>
+    public async Task<int> GetLineAvailableBalanceAsync(
+        Guid studioId, Guid studentContractLineId, CancellationToken ct, Guid? excludeRequestId = null)
+        => await GetLineBalanceAsync(studioId, studentContractLineId, ct)
+           - await ActivePendingRequestCountForLineAsync(studioId, studentContractLineId, excludeRequestId, ct);
 
     /// <summary>
     /// Aktif (Pending) telafi talebi sayısı = ÖRTÜK rezerve (Sprint 27). Her Pending talep 1 krediyi rezerve eder;
@@ -81,51 +103,51 @@ public sealed class MakeupCreditService
                  && t.SourceClassSessionId == sourceSessionId
                  && t.Type == MakeupCreditTransactionType.Granted, ct);
 
+    // Sprint 28C-2: tüm yazma metotları LINE-scoped → tx.StudentContractLineId zorunlu.
     public MakeupCreditTransaction Grant(
-        Guid studioId, Guid studentProfileId, int amount, MakeupCreditReason reason, Guid createdByUserId,
+        Guid studioId, Guid studentProfileId, Guid studentContractLineId, int amount, MakeupCreditReason reason, Guid createdByUserId,
         Guid? sourceSessionId = null, Guid? sourceBookingId = null, DateTime? expiresAt = null, string? notes = null)
     {
         if (amount <= 0) throw new BusinessRuleException("Kredi miktarı pozitif olmalı.");
-        return Add(studioId, studentProfileId, amount, MakeupCreditTransactionType.Granted, reason,
+        return Add(studioId, studentProfileId, studentContractLineId, amount, MakeupCreditTransactionType.Granted, reason,
             createdByUserId, sourceSessionId, sourceBookingId, usedForBookingId: null, expiresAt, notes);
     }
 
-    public MakeupCreditTransaction Use(Guid studioId, Guid studentProfileId, int amount, Guid usedForBookingId, Guid createdByUserId)
+    public MakeupCreditTransaction Use(Guid studioId, Guid studentProfileId, Guid studentContractLineId, int amount, Guid usedForBookingId, Guid createdByUserId)
     {
         if (amount <= 0) throw new BusinessRuleException("Kullanım miktarı pozitif olmalı.");
-        return Add(studioId, studentProfileId, -amount, MakeupCreditTransactionType.Used, MakeupCreditReason.MakeupBookingUsed,
+        return Add(studioId, studentProfileId, studentContractLineId, -amount, MakeupCreditTransactionType.Used, MakeupCreditReason.MakeupBookingUsed,
             createdByUserId, sourceSessionId: null, sourceBookingId: null, usedForBookingId: usedForBookingId, expiresAt: null, notes: null);
     }
 
-    public MakeupCreditTransaction Restore(Guid studioId, Guid studentProfileId, int amount, Guid sourceBookingId, Guid createdByUserId)
+    public MakeupCreditTransaction Restore(Guid studioId, Guid studentProfileId, Guid studentContractLineId, int amount, Guid sourceBookingId, Guid createdByUserId)
     {
         if (amount <= 0) throw new BusinessRuleException("İade miktarı pozitif olmalı.");
-        return Add(studioId, studentProfileId, amount, MakeupCreditTransactionType.Restored, MakeupCreditReason.MakeupBookingCancelled,
+        return Add(studioId, studentProfileId, studentContractLineId, amount, MakeupCreditTransactionType.Restored, MakeupCreditReason.MakeupBookingCancelled,
             createdByUserId, sourceSessionId: null, sourceBookingId: sourceBookingId, usedForBookingId: null, expiresAt: null, notes: null);
     }
 
-    public MakeupCreditTransaction Revoke(Guid studioId, Guid studentProfileId, int amount, Guid createdByUserId, MakeupCreditReason reason, string? notes)
+    public MakeupCreditTransaction Revoke(Guid studioId, Guid studentProfileId, Guid studentContractLineId, int amount, Guid createdByUserId, MakeupCreditReason reason, string? notes)
     {
         if (amount <= 0) throw new BusinessRuleException("Geri alma miktarı pozitif olmalı.");
-        return Add(studioId, studentProfileId, -amount, MakeupCreditTransactionType.Revoked, reason,
+        return Add(studioId, studentProfileId, studentContractLineId, -amount, MakeupCreditTransactionType.Revoked, reason,
             createdByUserId, sourceSessionId: null, sourceBookingId: null, usedForBookingId: null, expiresAt: null, notes);
     }
 
     /// <summary>
     /// Devamsızlık (AbsentEarned) defter hareketi. Sign + Type çağıran tarafından verilir
-    /// (Granted/Restored +1, Revoked −1). <c>SourceClassSessionId</c> yazılmaz → (StudentProfileId,
-    /// SourceClassSessionId) Granted-unique index'inden bağımsızdır; booking başına <c>SourceBookingId</c>
-    /// ile izlenir. SaveChanges çağıranda.
+    /// (Granted/Restored +1, Revoked −1). Sprint 28C-2: line-scoped (booking.StudentContractLineId).
+    /// <c>SourceClassSessionId</c> yazılmaz; booking başına <c>SourceBookingId</c> ile izlenir.
     /// </summary>
     public MakeupCreditTransaction AddAbsenceLedger(
-        Guid studioId, Guid studentProfileId, int signedAmount, MakeupCreditTransactionType type,
+        Guid studioId, Guid studentProfileId, Guid studentContractLineId, int signedAmount, MakeupCreditTransactionType type,
         Guid createdByUserId, Guid sourceBookingId, DateTime? expiresAt)
-        => Add(studioId, studentProfileId, signedAmount, type, MakeupCreditReason.AbsentEarned,
+        => Add(studioId, studentProfileId, studentContractLineId, signedAmount, type, MakeupCreditReason.AbsentEarned,
             createdByUserId, sourceSessionId: null, sourceBookingId: sourceBookingId,
             usedForBookingId: null, expiresAt, notes: null);
 
     private MakeupCreditTransaction Add(
-        Guid studioId, Guid studentProfileId, int signedAmount, MakeupCreditTransactionType type,
+        Guid studioId, Guid studentProfileId, Guid studentContractLineId, int signedAmount, MakeupCreditTransactionType type,
         MakeupCreditReason reason, Guid createdByUserId, Guid? sourceSessionId, Guid? sourceBookingId,
         Guid? usedForBookingId, DateTime? expiresAt, string? notes)
     {
@@ -133,6 +155,7 @@ public sealed class MakeupCreditService
         {
             StudioId = studioId,
             StudentProfileId = studentProfileId,
+            StudentContractLineId = studentContractLineId,
             Amount = signedAmount,
             Type = type,
             Reason = reason,

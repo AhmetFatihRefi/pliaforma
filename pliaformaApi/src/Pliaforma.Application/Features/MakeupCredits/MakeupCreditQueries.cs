@@ -12,7 +12,7 @@ namespace Pliaforma.Application.Features.MakeupCredits;
 /// </summary>
 internal static class MakeupCreditView
 {
-    public static async Task<(int Balance, MakeupCreditSummaryDto Summary, List<MakeupCreditTransactionDto> Txs)>
+    public static async Task<(int Balance, MakeupCreditSummaryDto Summary, List<MakeupCreditByLineDto> ByLine, List<MakeupCreditTransactionDto> Txs)>
         BuildLedgerAsync(IAppDbContext db, Guid studioId, Guid studentProfileId, CancellationToken ct)
     {
         var raw = await db.MakeupCreditTransactions
@@ -21,7 +21,7 @@ internal static class MakeupCreditView
             .Select(t => new
             {
                 t.Id, t.Amount, t.Type, t.Reason, t.SourceClassSessionId, t.SourceBookingId,
-                t.UsedForBookingId, t.ExpiresAt, t.Notes, t.CreatedAt,
+                t.UsedForBookingId, t.ExpiresAt, t.Notes, t.CreatedAt, t.StudentContractLineId,
             })
             .ToListAsync(ct);
 
@@ -47,14 +47,45 @@ internal static class MakeupCreditView
             .ToListAsync(ct);
         var labelMap = sessionLabels.ToDictionary(s => s.Id, s => $"{s.ClassTypeName} · {s.StartAt:yyyy-MM-dd HH:mm}");
 
+        // Sprint 28C-2: line meta + line etiketi + line-bazlı pending rezerve.
+        var lineIds = raw.Where(t => t.StudentContractLineId != null).Select(t => t.StudentContractLineId!.Value).Distinct().ToList();
+        var lineMeta = await db.StudentContractLines
+            .Where(l => l.StudioId == studioId && lineIds.Contains(l.Id))
+            .Select(l => new { l.Id, l.ClassTypeId, ClassTypeName = l.ClassType!.Name, l.IsIndividual, l.StartDate, l.EndDate })
+            .ToListAsync(ct);
+        var lineMetaMap = lineMeta.ToDictionary(l => l.Id);
+        string LineLabel(Guid id) => lineMetaMap.TryGetValue(id, out var m) ? $"{m.ClassTypeName} · {m.StartDate:yyyy-MM-dd} – {m.EndDate:yyyy-MM-dd}" : "";
+        var pendingByLine = (await db.MakeupRequests
+            .Where(r => r.StudioId == studioId && r.StudentContractLineId != null && lineIds.Contains(r.StudentContractLineId!.Value)
+                        && r.Status == MakeupRequestStatus.Pending)
+            .Select(r => r.StudentContractLineId!.Value).ToListAsync(ct))
+            .GroupBy(x => x).ToDictionary(g => g.Key, g => g.Count());
+
+        var byLine = raw.Where(t => t.StudentContractLineId != null)
+            .GroupBy(t => t.StudentContractLineId!.Value)
+            .Where(g => lineMetaMap.ContainsKey(g.Key))
+            .Select(g =>
+            {
+                var m = lineMetaMap[g.Key];
+                var le = g.Where(t => t.Amount > 0).Sum(t => t.Amount);
+                var lu = g.Where(t => t.Amount < 0).Sum(t => -t.Amount);
+                var lbal = g.Sum(t => t.Amount);
+                var avail = lbal - pendingByLine.GetValueOrDefault(g.Key);
+                return new MakeupCreditByLineDto(g.Key, m.ClassTypeId, m.ClassTypeName, LineLabel(g.Key),
+                    le, lu, avail, m.IsIndividual, m.StartDate, m.EndDate);
+            })
+            .OrderBy(b => b.ClassTypeName).ToList();
+
         var txs = raw.Select(t => new MakeupCreditTransactionDto(
             t.Id, t.Amount, t.Type, t.Reason, t.SourceClassSessionId, t.SourceBookingId, t.UsedForBookingId,
             t.ExpiresAt, t.Notes, t.CreatedAt,
             t.SourceClassSessionId is { } sid && labelMap.TryGetValue(sid, out var sl) ? sl : null,
-            t.UsedForBookingId is { } ub && usedBookingSessionMap.TryGetValue(ub, out var us) && labelMap.TryGetValue(us, out var ul) ? ul : null))
+            t.UsedForBookingId is { } ub && usedBookingSessionMap.TryGetValue(ub, out var us) && labelMap.TryGetValue(us, out var ul) ? ul : null,
+            t.StudentContractLineId,
+            t.StudentContractLineId is { } lid ? LineLabel(lid) : null))
             .ToList();
 
-        return (balance, summary, txs);
+        return (balance, summary, byLine, txs);
     }
 }
 
@@ -82,8 +113,8 @@ public sealed class GetStudentMakeupCreditsHandler : IQueryHandler<GetStudentMak
 
         await MakeupCreditAccess.EnsureCanManageAsync(_db, _currentUser, studioId, student, cancellationToken);
 
-        var (balance, summary, txs) = await MakeupCreditView.BuildLedgerAsync(_db, studioId, student.Id, cancellationToken);
-        return new StudentMakeupCreditsDto(student.Id, student.FullName, balance, summary, txs);
+        var (balance, summary, byLine, txs) = await MakeupCreditView.BuildLedgerAsync(_db, studioId, student.Id, cancellationToken);
+        return new StudentMakeupCreditsDto(student.Id, student.FullName, balance, summary, byLine, txs);
     }
 }
 
@@ -110,47 +141,73 @@ public sealed class GetMyMakeupCreditsHandler : IQueryHandler<GetMyMakeupCredits
             .Where(s => s.StudioId == studioId && s.UserId == userId)
             .Select(s => (Guid?)s.Id).FirstOrDefaultAsync(cancellationToken);
         if (profileId is null)
-            return new MyMakeupCreditsDto(0, new MakeupCreditSummaryDto(0, 0, 0), []);
+            return new MyMakeupCreditsDto(0, new MakeupCreditSummaryDto(0, 0, 0), [], []);
 
-        var (balance, summary, txs) = await MakeupCreditView.BuildLedgerAsync(_db, studioId, profileId.Value, cancellationToken);
-        return new MyMakeupCreditsDto(balance, summary, txs);
+        var (balance, summary, byLine, txs) = await MakeupCreditView.BuildLedgerAsync(_db, studioId, profileId.Value, cancellationToken);
+        return new MyMakeupCreditsDto(balance, summary, byLine, txs);
     }
 }
 
-// ---- Staff: telafi dersine eklenebilir öğrenciler (Sprint 20 — kullanılabilir hak > 0) ----
-public sealed record GetMakeupEligibleStudentsQuery : IQuery<IReadOnlyList<MakeupEligibleStudentDto>>;
+// ---- Sprint 28C-2: telafiye uygun LINE listesi — ORTAK internal query (staff booking + request eligible aynı mantık) ----
+internal static class MakeupEligibleLineQuery
+{
+    /// <summary>
+    /// Active line + KULLANILABİLİR telafi hakkı > 0 (lineBalance − line-bazlı Pending talep rezervesi). Pasif öğrenci hariç.
+    /// <paramref name="onlyInstructorProfileId"/> dolu → yalnız o hocanın line'ları (Instructor self). <paramref name="level"/> opsiyonel filtre.
+    /// </summary>
+    public static async Task<List<MakeupEligibleLineDto>> BuildAsync(
+        IAppDbContext db, MakeupCreditService credits, Guid studioId,
+        Guid? onlyInstructorProfileId, StudentLevel? level, CancellationToken ct)
+    {
+        var lines = await db.StudentContractLines
+            .Where(l => l.StudioId == studioId && l.Status == StudentContractLineStatus.Active
+                        && l.StudentContract!.StudentProfile!.Status != StudentStatus.Inactive
+                        && (onlyInstructorProfileId == null || l.InstructorProfileId == onlyInstructorProfileId)
+                        && (level == null || l.StudentContract!.StudentProfile!.Level == level))
+            .Select(l => new
+            {
+                l.Id, l.ClassTypeId, ClassTypeName = l.ClassType!.Name,
+                l.InstructorProfileId, InstructorName = l.InstructorProfile!.DisplayName,
+                StudentProfileId = l.StudentContract!.StudentProfileId,
+                StudentName = l.StudentContract!.StudentProfile!.FullName,
+                Level = l.StudentContract!.StudentProfile!.Level,
+                l.IsIndividual, l.StartDate, l.EndDate,
+            })
+            .ToListAsync(ct);
 
-public sealed class GetMakeupEligibleStudentsHandler : IQueryHandler<GetMakeupEligibleStudentsQuery, IReadOnlyList<MakeupEligibleStudentDto>>
+        var result = new List<MakeupEligibleLineDto>();
+        foreach (var l in lines)
+        {
+            var avail = await credits.GetLineAvailableBalanceAsync(studioId, l.Id, ct);
+            if (avail <= 0) continue;
+            result.Add(new MakeupEligibleLineDto(
+                l.Id, l.StudentProfileId, l.StudentName, l.ClassTypeId, l.ClassTypeName,
+                l.InstructorProfileId, l.InstructorName, $"{l.ClassTypeName} · {l.StartDate:yyyy-MM-dd} – {l.EndDate:yyyy-MM-dd}",
+                avail, l.Level, l.IsIndividual, l.StartDate, l.EndDate));
+        }
+        return result.OrderBy(r => r.StudentName).ThenBy(r => r.ClassTypeName).ToList();
+    }
+}
+
+// ---- Staff: telafi dersine eklenebilir LINE'lar (Sprint 20 → 28C-2 line-based; Owner/StudioAdmin tümü) ----
+public sealed record GetMakeupEligibleStudentsQuery(StudentLevel? Level = null) : IQuery<IReadOnlyList<MakeupEligibleLineDto>>;
+
+public sealed class GetMakeupEligibleStudentsHandler : IQueryHandler<GetMakeupEligibleStudentsQuery, IReadOnlyList<MakeupEligibleLineDto>>
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly MakeupCreditService _credits;
 
-    public GetMakeupEligibleStudentsHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public GetMakeupEligibleStudentsHandler(IAppDbContext db, ICurrentUserService currentUser, MakeupCreditService credits)
     {
         _db = db;
         _currentUser = currentUser;
+        _credits = credits;
     }
 
-    public async Task<IReadOnlyList<MakeupEligibleStudentDto>> Handle(GetMakeupEligibleStudentsQuery request, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<MakeupEligibleLineDto>> Handle(GetMakeupEligibleStudentsQuery request, CancellationToken cancellationToken)
     {
         var studioId = _currentUser.RequireStudioId();
-
-        // Pasif olmayan + KULLANILABİLİR telafi hakkı > 0 öğrenciler (Sprint 27: ledger − aktif Pending talep
-        // rezervesi). Pending bir talebin rezerve ettiği kredi burada "kullanılabilir" sayılmaz. Tek toplu sorgu.
-        var rows = await (
-            from sp in _db.StudentProfiles
-            where sp.StudioId == studioId && sp.Status != StudentStatus.Inactive
-            let bal = _db.MakeupCreditTransactions
-                .Where(t => t.StudioId == studioId && t.StudentProfileId == sp.Id)
-                .Sum(t => (int?)t.Amount) ?? 0
-            let pending = _db.MakeupRequests
-                .Count(r => r.StudioId == studioId && r.StudentProfileId == sp.Id
-                            && r.Status == MakeupRequestStatus.Pending)
-            where bal - pending > 0
-            orderby sp.FullName
-            select new MakeupEligibleStudentDto(sp.Id, sp.FullName, bal - pending))
-            .ToListAsync(cancellationToken);
-
-        return rows;
+        return await MakeupEligibleLineQuery.BuildAsync(_db, _credits, studioId, onlyInstructorProfileId: null, request.Level, cancellationToken);
     }
 }

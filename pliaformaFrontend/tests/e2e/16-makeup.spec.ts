@@ -9,8 +9,9 @@ test.describe("Telafi kredileri görünürlüğü (Sprint 20)", () => {
     await expect(page.getByRole("heading", { name: "Telafi Kredileri" })).toBeVisible();
     // Seed E2E Student'a 1 telafi kredisi verir → seç, özet görünür.
     await page.getByRole("button", { name: "E2E Student" }).first().click();
-    await expect(page.getByText("Kazanılan")).toBeVisible();
-    await expect(page.getByText("Kullanılabilir")).toBeVisible();
+    // Sprint 28C-2: byLine kartları da "kazanılan/kullanılan" içerir → özet etiketini exact eşleştir.
+    await expect(page.getByText("Kazanılan", { exact: true })).toBeVisible();
+    await expect(page.getByText("Kullanılabilir", { exact: true })).toBeVisible();
   });
 
   test("Öğrenci telafi ekranı SALT-OKUNUR (özet var, kredi ver/geri al yok)", async ({ page }) => {

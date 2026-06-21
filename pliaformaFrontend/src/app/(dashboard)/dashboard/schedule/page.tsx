@@ -16,7 +16,7 @@ import {
   type DayOfWeek,
   type GroupChangeCandidateDto,
   type GroupChangePreviewDto,
-  type MakeupEligibleStudentDto,
+  type MakeupEligibleLineDto,
   type MakeupRequestDto,
   type SessionAttendanceDto,
   type StudentDto,
@@ -365,40 +365,31 @@ export default function SchedulePage() {
   );
 }
 
-// Sprint 27: telafi dersi talebi oluştur. Yalnız kullanılabilir telafi hakkı olan öğrenciler listelenir. Instructor →
-// hoca KENDİSİ (backend zorlar; kendi aktif sözleşmeli öğrencisi olmalı). Manager → hoca seçer.
-function MakeupRequestModal({ instructors, classTypes, isManager, myInstructorId, onClose, onDone }: {
+// Sprint 28C-2: telafi dersi talebi LINE-bazlı. Uygun LINE listesi (öğrenci+ders tipi+hoca+kalan telafi+seviye+bireysel/grup).
+// Instructor → yalnız kendi line'ları (backend zorlar); manager → tümü. Öğrenci/ders tipi/hoca line'dan türer.
+function MakeupRequestModal({ onClose, onDone }: {
   instructors: { id: string; name: string }[]; classTypes: ClassTypeDto[];
   isManager: boolean; myInstructorId: string | null; onClose: () => void; onDone: () => void;
 }) {
-  const [eligible, setEligible] = useState<MakeupEligibleStudentDto[]>([]);
-  const [studentProfileId, setStudentProfileId] = useState("");
-  const [classTypeId, setClassTypeId] = useState(classTypes[0]?.id ?? "");
-  const [instructorId, setInstructorId] = useState(isManager ? instructors[0]?.id ?? "" : myInstructorId ?? "");
+  const [eligible, setEligible] = useState<MakeupEligibleLineDto[]>([]);
+  const [level, setLevel] = useState<StudentLevel | "">("");
+  const [lineId, setLineId] = useState("");
   const [startAt, setStartAt] = useState("");
   const [description, setDescription] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // Sprint 27: Instructor → kendi sözleşmeli + kredili öğrencileri; manager → tümü (talep akışına özel uç).
-    makeupRequestService.eligibleStudents().then(setEligible).catch(() => setEligible([]));
-  }, []);
+    makeupRequestService.eligibleStudents(level || null).then(setEligible).catch(() => setEligible([]));
+  }, [level]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentProfileId) { setErr("Öğrenci seçin."); return; }
+    if (!lineId) { setErr("Satır (line) seçin."); return; }
     setBusy(true);
     setErr(null);
     try {
-      await makeupRequestService.create({
-        studentProfileId,
-        classTypeId,
-        startAt,
-        description: description || undefined,
-        // Instructor → backend token'dan zorlar; manager → seçili hoca.
-        requestedInstructorProfileId: isManager ? instructorId : undefined,
-      });
+      await makeupRequestService.create({ studentContractLineId: lineId, startAt, description: description || undefined });
       onDone();
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "Talep oluşturulamadı.");
@@ -411,26 +402,24 @@ function MakeupRequestModal({ instructors, classTypes, isManager, myInstructorId
     <Modal open onClose={onClose} title="Telafi dersi talebi">
       <form onSubmit={submit} className="space-y-4">
         {err && <Alert kind="error">{err}</Alert>}
-        <Alert kind="info">Talep onaya gider; onaylanana kadar saat bloklanır ve telafi hakkı rezerve edilir. Yalnızca kullanılabilir telafi hakkı olan öğrenciler listelenir.</Alert>
-        <FormField label="Öğrenci">
-          <Select value={studentProfileId} onChange={(e) => setStudentProfileId(e.target.value)} required>
+        <Alert kind="info">Talep onaya gider; onaylanana kadar saat bloklanır ve seçili satırın telafi hakkı rezerve edilir.</Alert>
+        <FormField label="Seviye filtresi (ops.)">
+          <Select value={level} onChange={(e) => { setLevel(e.target.value as StudentLevel | ""); setLineId(""); }}>
+            <option value="">Tüm seviyeler</option>
+            {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
+          </Select>
+        </FormField>
+        <FormField label="Satır (öğrenci · ders tipi · tarih · kalan telafi)">
+          <Select value={lineId} onChange={(e) => setLineId(e.target.value)} required>
             <option value="">Seçin…</option>
-            {eligible.map((s) => <option key={s.studentProfileId} value={s.studentProfileId}>{s.studentName} · {s.availableCredits} telafi</option>)}
+            {eligible.map((l) => (
+              <option key={l.lineId} value={l.lineId}>
+                {l.studentName} · {l.classTypeName} · {l.startDate}–{l.endDate} · {l.availableCredits} telafi{l.level ? ` · ${studentLevelLabels[l.level]}` : ""}{l.isIndividual ? " · Bireysel" : " · Grup"} · {l.instructorName}
+              </option>
+            ))}
           </Select>
         </FormField>
-        {isManager && (
-          <FormField label="Hoca">
-            <Select value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
-              {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-            </Select>
-          </FormField>
-        )}
-        <FormField label="Ders Tipi" hint="Süre buradan gelir">
-          <Select value={classTypeId} onChange={(e) => setClassTypeId(e.target.value)}>
-            {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk</option>)}
-          </Select>
-        </FormField>
-        <FormField label="Başlangıç" hint="Gelecek bir zaman olmalı">
+        <FormField label="Başlangıç" hint="Gelecek bir zaman olmalı (telafi satır bitişinden sonra da olabilir)">
           <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} required />
         </FormField>
         <FormField label="Açıklama (ops.)">
@@ -905,9 +894,10 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
   // Sprint 20: Telafi (Makeup) seansına YALNIZCA kullanılabilir telafi hakkı olan öğrenciler eklenebilir.
   const isMakeup = session.sessionKind === "Makeup";
   const [search, setSearch] = useState("");
-  const [level, setLevel] = useState<StudentLevel | "">(""); // Sprint 28C-1: opsiyonel seviye filtresi
+  const [level, setLevel] = useState<StudentLevel | "">(""); // Sprint 28C-1/2: opsiyonel seviye filtresi (regular + makeup)
   const [results, setResults] = useState<StudentDto[]>([]);
-  const [eligible, setEligible] = useState<MakeupEligibleStudentDto[]>([]);
+  // Sprint 28C-2: makeup eligible LINE'lar (classType session ile eşleşenler).
+  const [eligible, setEligible] = useState<MakeupEligibleLineDto[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   // Sprint 28C-1: Regular booking line seçimi — öğrencinin bu hoca+ders tipindeki birden çok aktif satırı varsa seçtir.
@@ -916,7 +906,7 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
 
   useEffect(() => {
     if (isMakeup) {
-      makeupCreditService.eligibleStudents().then(setEligible).catch(() => setEligible([]));
+      makeupCreditService.eligibleStudents(level || null).then(setEligible).catch(() => setEligible([]));
       return;
     }
     const t = setTimeout(async () => {
@@ -959,7 +949,8 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
   };
 
   const q = search.trim().toLowerCase();
-  const filteredEligible = eligible.filter((e) => e.studentName.toLowerCase().includes(q));
+  // Makeup: line classType session ile eşleşmeli (Reformer telafisi Mat dersine harcanmaz) + isim araması.
+  const filteredEligible = eligible.filter((e) => e.classTypeId === session.classTypeId && e.studentName.toLowerCase().includes(q));
 
   return (
     <Modal open onClose={onClose} title={`${session.classTypeName} — ${isMakeup ? "Telafi dersine öğrenci ekle" : "Öğrenci ekle"}`}>
@@ -968,12 +959,10 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
         {isMakeup && <Alert kind="info">Telafi dersine yalnızca kullanılabilir telafi hakkı olan öğrenciler eklenebilir.</Alert>}
         <div className="flex items-center gap-2">
           <Input placeholder="Öğrenci ara…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          {!isMakeup && (
-            <Select value={level} onChange={(e) => setLevel(e.target.value as StudentLevel | "")} className="w-40">
-              <option value="">Tüm seviyeler</option>
-              {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
-            </Select>
-          )}
+          <Select value={level} onChange={(e) => setLevel(e.target.value as StudentLevel | "")} className="w-40">
+            <option value="">Tüm seviyeler</option>
+            {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
+          </Select>
         </div>
         {pickFor && (
           <div className="space-y-2 rounded-xl border border-primary bg-primary-soft/30 p-3">
@@ -990,15 +979,17 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
         <div className="max-h-72 space-y-2 overflow-y-auto">
           {isMakeup ? (
             filteredEligible.length === 0 ? (
-              <p className="text-sm text-muted">Telafi hakkı olan uygun öğrenci yok.</p>
+              <p className="text-sm text-muted">Bu ders tipinde kullanılabilir telafi hakkı olan satır yok.</p>
             ) : (
+              // Sprint 28C-2: her satır = (öğrenci + line); kredi o line'dan düşülür.
               filteredEligible.map((e) => (
-                <div key={e.studentProfileId} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
+                <div key={e.lineId} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{e.studentName}</span>
+                    <span className="text-xs text-muted">{e.classTypeName} · {e.startDate}–{e.endDate}</span>
                     <Badge tone="rose">{e.availableCredits} telafi</Badge>
                   </div>
-                  <Button size="sm" disabled={busyId !== null} onClick={() => book(e.studentProfileId)}>Ekle</Button>
+                  <Button size="sm" disabled={busyId !== null} onClick={() => book(e.studentProfileId, e.lineId)}>Ekle</Button>
                 </div>
               ))
             )

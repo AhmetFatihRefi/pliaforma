@@ -60,7 +60,7 @@ import type {
   StudentDto,
   StudentLevel,
   StudentMakeupCreditsDto,
-  MakeupEligibleStudentDto,
+  MakeupEligibleLineDto,
   ChainShiftPreviewDto,
   GroupChangeCandidateDto,
   GroupChangePreviewDto,
@@ -242,11 +242,13 @@ export const closureService = {
 // Telafi kredileri — personel tarafı (/api/studio)
 export const makeupCreditService = {
   forStudent: (studentId: string) => api<StudentMakeupCreditsDto>(`/api/studio/students/${studentId}/makeup-credits`),
-  // Sprint 20: telafi dersine eklenebilir (kullanılabilir hak > 0) öğrenciler.
-  eligibleStudents: () => api<MakeupEligibleStudentDto[]>("/api/studio/makeup-eligible-students"),
-  grant: (studentId: string, input: { amount: number; notes?: string }) =>
+  // Sprint 28C-2: telafi dersine eklenebilir LINE'lar (kullanılabilir line hak > 0). Opsiyonel level filtre.
+  eligibleStudents: (level?: StudentLevel | null) =>
+    api<MakeupEligibleLineDto[]>(`/api/studio/makeup-eligible-students${level ? `?level=${level}` : ""}`),
+  // Sprint 28C-2: grant/revoke LINE-scoped → studentContractLineId zorunlu.
+  grant: (studentId: string, input: { studentContractLineId: string; amount: number; notes?: string }) =>
     api<StudentMakeupCreditsDto>(`/api/studio/students/${studentId}/makeup-credits/grant`, { method: "POST", body: input }),
-  revoke: (studentId: string, input: { amount: number; notes?: string }) =>
+  revoke: (studentId: string, input: { studentContractLineId: string; amount: number; notes?: string }) =>
     api<StudentMakeupCreditsDto>(`/api/studio/students/${studentId}/makeup-credits/revoke`, { method: "POST", body: input }),
   getPolicy: () => api<MakeupPolicyDto>("/api/studio/makeup-policy"),
   updatePolicy: (input: MakeupPolicyDto) =>
@@ -262,10 +264,12 @@ export const studentMakeupCreditService = {
 export const makeupRequestService = {
   list: (status?: MakeupRequestStatus) =>
     api<MakeupRequestDto[]>(`/api/studio/makeup-requests${status ? `?status=${status}` : ""}`),
-  // Sprint 27: talep açılabilecek öğrenciler (Instructor → kendi sözleşmeli + kredili; manager → tümü).
-  eligibleStudents: () => api<MakeupEligibleStudentDto[]>("/api/studio/makeup-requests/eligible-students"),
+  // Sprint 28C-2: talep açılabilecek LINE'lar (Instructor → kendi line'ları; manager → tümü). Opsiyonel level.
+  eligibleStudents: (level?: StudentLevel | null) =>
+    api<MakeupEligibleLineDto[]>(`/api/studio/makeup-requests/eligible-students${level ? `?level=${level}` : ""}`),
   get: (id: string) => api<MakeupRequestDto>(`/api/studio/makeup-requests/${id}`),
-  create: (input: { studentProfileId: string; classTypeId: string; startAt: string; description?: string; requestedInstructorProfileId?: string }) =>
+  // Sprint 28C-2: create LINE-driven → studentContractLineId zorunlu (öğrenci/ders tipi/hoca line'dan).
+  create: (input: { studentContractLineId: string; startAt: string; description?: string }) =>
     api<MakeupRequestDto>("/api/studio/makeup-requests", { method: "POST", body: input }),
   withdraw: (id: string) =>
     api<MakeupRequestDto>(`/api/studio/makeup-requests/${id}/withdraw`, { method: "POST", body: {} }),

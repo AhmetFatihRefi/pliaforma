@@ -8,44 +8,29 @@ using Pliaforma.Domain.Exceptions;
 
 namespace Pliaforma.Application.Features.MakeupRequests;
 
-// ---- Talep açmak için uygun öğrenciler: KULLANILABİLİR telafi hakkı (ledger − pending) > 0. Instructor → yalnız
-// KENDİ aktif sözleşmeli öğrencileri (v1.1.2 gizlilik); Owner/StudioAdmin → tümü. (Sprint 27 talep akışı UI'ı.) ----
-public sealed record GetMakeupRequestEligibleStudentsQuery : IQuery<IReadOnlyList<MakeupEligibleStudentDto>>;
+// ---- Talep açmak için uygun LINE'lar (Sprint 28C-2): KULLANILABİLİR line telafi hakkı > 0. Instructor → yalnız
+// KENDİ instructorProfileId'siyle eşleşen aktif/kredili line'lar; Owner/StudioAdmin → tümü. Opsiyonel level filtre. ----
+public sealed record GetMakeupRequestEligibleStudentsQuery(StudentLevel? Level = null) : IQuery<IReadOnlyList<MakeupEligibleLineDto>>;
 
-public sealed class GetMakeupRequestEligibleStudentsHandler : IQueryHandler<GetMakeupRequestEligibleStudentsQuery, IReadOnlyList<MakeupEligibleStudentDto>>
+public sealed class GetMakeupRequestEligibleStudentsHandler : IQueryHandler<GetMakeupRequestEligibleStudentsQuery, IReadOnlyList<MakeupEligibleLineDto>>
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly MakeupCreditService _credits;
 
-    public GetMakeupRequestEligibleStudentsHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public GetMakeupRequestEligibleStudentsHandler(IAppDbContext db, ICurrentUserService currentUser, MakeupCreditService credits)
     {
         _db = db;
         _currentUser = currentUser;
+        _credits = credits;
     }
 
-    public async Task<IReadOnlyList<MakeupEligibleStudentDto>> Handle(GetMakeupRequestEligibleStudentsQuery request, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<MakeupEligibleLineDto>> Handle(GetMakeupRequestEligibleStudentsQuery request, CancellationToken cancellationToken)
     {
         var studioId = _currentUser.RequireStudioId();
+        // Instructor → yalnız kendi instructorProfileId'siyle eşleşen line'lar (v1.1.2 gizlilik); manager → tümü.
         var ownProfileId = await SchedulingAccess.CurrentInstructorProfileIdAsync(_db, _currentUser, studioId, cancellationToken);
-
-        var rows = await (
-            from sp in _db.StudentProfiles
-            where sp.StudioId == studioId && sp.Status != StudentStatus.Inactive
-            // Instructor → yalnız bu hocayla aktif sözleşmesi olan öğrenciler.
-            where ownProfileId == null || _db.StudentContracts.Any(c =>
-                c.StudioId == studioId && c.StudentProfileId == sp.Id
-                && c.InstructorProfileId == ownProfileId && c.Status == StudentContractStatus.Active)
-            let bal = _db.MakeupCreditTransactions
-                .Where(t => t.StudioId == studioId && t.StudentProfileId == sp.Id)
-                .Sum(t => (int?)t.Amount) ?? 0
-            let pending = _db.MakeupRequests
-                .Count(r => r.StudioId == studioId && r.StudentProfileId == sp.Id && r.Status == MakeupRequestStatus.Pending)
-            where bal - pending > 0
-            orderby sp.FullName
-            select new MakeupEligibleStudentDto(sp.Id, sp.FullName, bal - pending))
-            .ToListAsync(cancellationToken);
-
-        return rows;
+        return await MakeupEligibleLineQuery.BuildAsync(_db, _credits, studioId, ownProfileId, request.Level, cancellationToken);
     }
 }
 

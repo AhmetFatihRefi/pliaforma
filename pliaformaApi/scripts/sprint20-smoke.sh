@@ -29,7 +29,9 @@ ipid(){ curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" 
 bal(){ sql "SELECT COALESCE(SUM(\"Amount\"),0) FROM \"MakeupCreditTransactions\" WHERE \"StudioId\"='$SID' AND \"StudentProfileId\"='$1';"; }
 backdate(){ sql "UPDATE \"ClassSessions\" SET \"StartAt\"='$2', \"EndAt\"='$2'::timestamp + interval '1 hour' WHERE \"Id\"='$1';" >/dev/null; }
 book(){ body "$(post "/api/studio/class-sessions/$1/bookings" "{\"studentProfileId\":\"$2\"}" "${3:-$ATOK}")"; }
-grant(){ post "/api/studio/students/$1/makeup-credits/grant" "{\"amount\":$2,\"notes\":\"smoke\"}" "$ATOK" >/dev/null; }
+# Sprint 28C-2: grant LINE-scoped → $1=student $2=lineId $3=amount. lineof: contract → line.
+lineof(){ sql "SELECT \"Id\" FROM \"StudentContractLines\" WHERE \"StudentContractId\"='$1' LIMIT 1;"; }
+grant(){ post "/api/studio/students/$1/makeup-credits/grant" "{\"studentContractLineId\":\"$2\",\"amount\":$3,\"notes\":\"smoke\"}" "$ATOK" >/dev/null; }
 
 ATOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S20 $TS\",\"ownerFullName\":\"O\",\"email\":\"o20+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
 SID=$(sql "SELECT \"Id\" FROM \"Studios\" WHERE \"Name\"='S20 $TS';")
@@ -46,7 +48,7 @@ FUT=$(date -d "+3 days" +%Y-%m-%dT09:00:00)
 echo "--- 1) Eligible-students + strict eligibility ---"
 EL0=$(curl -s "$BASE/api/studio/makeup-eligible-students" -H "Authorization: Bearer $ATOK")
 expect "kredisiz S3 eligible listede YOK" no "$(has "$EL0" "$S3")"
-grant "$S1" 2
+grant "$S1" "$(lineof "$C1")" 2
 EL1=$(curl -s "$BASE/api/studio/makeup-eligible-students" -H "Authorization: Bearer $ATOK")
 expect "grant sonrası S1 eligible listede VAR" yes "$(has "$EL1" "$S1")"
 MS1=$(mksess "$I1P" "$FUT" Makeup)
@@ -56,7 +58,9 @@ echo "--- 2) Makeup booking Use(-1) + iptal Restore(+1) + sözleşme hakkı dü�
 MBRAW=$(post "/api/studio/class-sessions/$MS1/bookings" "{\"studentProfileId\":\"$S1\"}" "$ATOK"); MBID=$(body "$MBRAW" | jget id)
 expect "kredili S1 Makeup booking → 200" 200 "$(code "$MBRAW")"
 expect "Makeup booking sonrası bakiye 1 (Use -1)" 1 "$(bal "$S1")"
-expect "Makeup booking StudentContractId NULL (sözleşme hakkı düşmez)" 0 "$(sql "SELECT count(*) FROM \"ClassBookings\" WHERE \"Id\"='$MBID' AND \"StudentContractId\" IS NOT NULL;")"
+# Sprint 28C-2: makeup booking artık LINE'a bağlı (StudentContractLineId dolu); Regular ders hakkı düşmez (SessionKind=Makeup sayılmaz).
+expect "Makeup booking line'a bağlı (StudentContractLineId dolu)" 1 "$(sql "SELECT count(*) FROM \"ClassBookings\" WHERE \"Id\"='$MBID' AND \"StudentContractLineId\" IS NOT NULL;")"
+expect "Makeup booking SessionKind=Makeup (regular hakkı düşmez)" 1 "$(sql "SELECT count(*) FROM \"ClassBookings\" b JOIN \"ClassSessions\" s ON s.\"Id\"=b.\"ClassSessionId\" WHERE b.\"Id\"='$MBID' AND s.\"SessionKind\"='Makeup';")"
 expect "Makeup booking iptal → 200" 200 "$(pcode "/api/studio/bookings/$MBID/cancel" '{}' "$ATOK")"
 expect "iptal sonrası bakiye 2 (Restore +1)" 2 "$(bal "$S1")"
 

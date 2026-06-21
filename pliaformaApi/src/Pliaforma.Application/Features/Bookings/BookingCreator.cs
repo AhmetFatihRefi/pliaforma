@@ -114,6 +114,18 @@ public sealed class BookingCreator
             contractId = line.StudentContractId;
         }
 
+        // MAKEUP seansı (Sprint 20 + 28C-2 LINE-bazlı): yalnız Owner/StudioAdmin; telafi LINE'dan tüketilir.
+        // Line classType == session.classType olmalı (Reformer telafisi Mat dersine harcanmaz). Booking ile aynı transaction.
+        StudentContractLine? makeupLine = null;
+        if (session.SessionKind == ClassSessionKind.Makeup)
+        {
+            if (bookerRole is not (StudioRole.Owner or StudioRole.StudioAdmin))
+                throw new ForbiddenException("Telafi dersine öğrenci ekleme yetkisi yalnızca Owner/StudioAdmin'dedir.");
+            makeupLine = await ResolveMakeupLineAsync(studioId, student.Id, session.ClassTypeId, studentContractLineId, ct);
+            contractLineId = makeupLine.Id;
+            contractId = makeupLine.StudentContractId;
+        }
+
         // Atomik koltuk rezervasyonu (BookedCount < Capacity ise artırır). Doluysa reddet.
         var reserved = await _capacity.TryReserveSeatAsync(studioId, session.Id, ct);
         if (!reserved)
@@ -134,14 +146,9 @@ public sealed class BookingCreator
             PackageEligibilityStatus = null,
         };
 
-        // MAKEUP seansı (Sprint 20): yalnız Owner/StudioAdmin telafi dersine öğrenci ekleyebilir; STRICT
-        // eligibility — telafi hakkı yoksa 409 (override YOK). Booking ile aynı transaction'da.
-        if (session.SessionKind == ClassSessionKind.Makeup)
-        {
-            if (bookerRole is not (StudioRole.Owner or StudioRole.StudioAdmin))
-                throw new ForbiddenException("Telafi dersine öğrenci ekleme yetkisi yalnızca Owner/StudioAdmin'dedir.");
-            await ConsumeMakeupCreditAsync(studioId, student.Id, booking.Id, bookedByUserId, ct);
-        }
+        // Telafi tüketimi: o LINE'dan Use(−1) (kredi kilit altında serileşir; booking.Id usedFor olarak izlenir).
+        if (makeupLine is not null)
+            _credits.Use(studioId, student.Id, makeupLine.Id, 1, booking.Id, bookedByUserId);
 
         _db.ClassBookings.Add(booking);
 
@@ -159,17 +166,43 @@ public sealed class BookingCreator
         return booking;
     }
 
-    private async Task ConsumeMakeupCreditAsync(
-        Guid studioId, Guid studentProfileId, Guid bookingId, Guid bookedByUserId, CancellationToken ct)
+    /// <summary>
+    /// Telafi dersine tüketilecek LINE'ı çözer (Sprint 28C-2 — karar #3). Aday line: aynı öğrenci + Active +
+    /// <c>line.ClassTypeId == session.ClassTypeId</c> + line KULLANILABİLİR telafi hakkı > 0. lineId verildiyse
+    /// doğrula; verilmediyse uygun line'ları bul → TEK ise fallback, ÇOKLU ise 409 (line seçimi gerekli).
+    /// </summary>
+    private async Task<StudentContractLine> ResolveMakeupLineAsync(
+        Guid studioId, Guid studentProfileId, Guid classTypeId, Guid? explicitLineId, CancellationToken ct)
     {
-        // Sprint 20: STRICT — telafi hakkı yoksa kimse (Owner/Admin dâhil) telafi dersine ekleyemez.
-        // `AllowMakeupBookingWithoutCreditByAdmin` politikası DORMANT (yeni akışta kullanılmaz). Öğrenci satırı
-        // kilitli olduğundan (row-lock) son kredi iki eşzamanlı rezervasyonda iki kez harcanamaz.
-        // Sprint 27: KULLANILABİLİR bakiye (ledger − aktif Pending talep) — rezerve edilmiş kredi tekrar harcanamaz.
-        // (Approve yolu talebi önce Approved'a çevirir → flip-first; bu yüzden onaylanan talep kendini bloklamaz.)
-        var balance = await _credits.GetAvailableBalanceAsync(studioId, studentProfileId, ct);
-        if (balance <= 0)
-            throw new ConflictException("Telafi hakkı olmayan öğrenci telafi (makeup) dersine eklenemez.");
-        _credits.Use(studioId, studentProfileId, 1, bookingId, bookedByUserId);
+        if (explicitLineId is { } lid)
+        {
+            var line = await _db.StudentContractLines.Include(l => l.StudentContract)
+                .FirstOrDefaultAsync(l => l.Id == lid && l.StudioId == studioId, ct)
+                ?? throw new NotFoundException("Sözleşme satırı", lid);
+            if (line.StudentContract!.StudentProfileId != studentProfileId)
+                throw new ConflictException("Seçilen satır bu öğrenciye ait değil.");
+            if (line.Status != StudentContractLineStatus.Active)
+                throw new ConflictException("Seçilen satır aktif değil.");
+            if (line.ClassTypeId != classTypeId)
+                throw new ConflictException("Telafi satırının ders tipi bu derse uymuyor.");
+            if (await _credits.GetLineAvailableBalanceAsync(studioId, line.Id, ct) <= 0)
+                throw new ConflictException("Seçilen satırda kullanılabilir telafi hakkı yok.");
+            return line;
+        }
+
+        var candidates = await _db.StudentContractLines.Include(l => l.StudentContract)
+            .Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == studentProfileId
+                        && l.ClassTypeId == classTypeId && l.Status == StudentContractLineStatus.Active)
+            .ToListAsync(ct);
+        var eligible = new List<StudentContractLine>();
+        foreach (var l in candidates)
+            if (await _credits.GetLineAvailableBalanceAsync(studioId, l.Id, ct) > 0)
+                eligible.Add(l);
+
+        if (eligible.Count == 0)
+            throw new ConflictException("Telafi hakkı olan uygun satır yok (ders tipi/kredi). Telafi dersine eklenemez.");
+        if (eligible.Count > 1)
+            throw new ConflictException("Birden fazla uygun telafi satırı var; hangi satırdan düşüleceğini seçin.");
+        return eligible[0];
     }
 }

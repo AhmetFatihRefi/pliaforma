@@ -119,10 +119,10 @@ PAY=$(body "$(post "/api/studio/students/$SB/payments" "{\"amount\":200,\"dueDat
 pcode "/api/studio/payments/$PAY/mark-paid" '{}' "$ATOK" >/dev/null
 expectn "LB paid=200" 200 "$(gbody "/api/studio/students/$SB/contract-lines" "$ATOK" | jq2 "d.data.find(l=>l.id==='$LB')?.paid")"
 
-echo "--- 13) Regresyon: v1.2.0 makeup request eski akış 28C-1'de çalışır ---"
-pcode "/api/studio/students/$SB/makeup-credits/grant" "{\"studentProfileId\":\"$SB\",\"amount\":1,\"notes\":\"smoke\"}" "$ATOK" >/dev/null
+echo "--- 13) Regresyon: makeup request akışı (28C-2 line-based) çalışır ---"
+pcode "/api/studio/students/$SB/makeup-credits/grant" "{\"studentContractLineId\":\"$LB\",\"amount\":1,\"notes\":\"smoke\"}" "$ATOK" >/dev/null
 FUT=$(date -d "+5 days" +%F)
-expect "makeup request create (eski akış) → 200" 200 "$(pcode "/api/studio/makeup-requests" "{\"studentProfileId\":\"$SB\",\"classTypeId\":\"$CT\",\"startAt\":\"${FUT}T12:00:00\",\"requestedInstructorProfileId\":\"$I1P\"}" "$ATOK")"
+expect "makeup request create (line-based) → 200" 200 "$(pcode "/api/studio/makeup-requests" "{\"studentContractLineId\":\"$LB\",\"startAt\":\"${FUT}T12:00:00\"}" "$ATOK")"
 
 echo "--- 14) Regresyon: v1.1.2 rol hardening ---"
 expect "Instructor borç görüntüleme → 403" 403 "$(gcode "/api/studio/students/$SA/debt" "$I1TOK")"

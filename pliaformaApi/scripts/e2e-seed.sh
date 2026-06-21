@@ -123,7 +123,9 @@ PJ=$(post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"202
 post "/api/studio/payments/$PP/mark-paid" '{}' "$OTOK" >/dev/null                                                  # paid
 post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-01-01\"}" "$OTOK" >/dev/null          # overdue
 # Sprint 27: 2 kredi → telafi TALEBİ akışı (rezerve + approve consume + retry başlığı) için headroom.
-post "/api/studio/students/$GS/makeup-credits/grant" '{"amount":2,"notes":"E2E demo"}' "$OTOK" >/dev/null
+# Sprint 28C-2: manuel grant lineId zorunlu → GS'in grup line'ına (GC) yaz.
+GLINE=$(docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "SELECT \"Id\" FROM \"StudentContractLines\" WHERE \"StudentContractId\"='$GC' ORDER BY \"SequenceNo\" LIMIT 1;" 2>/dev/null)
+post "/api/studio/students/$GS/makeup-credits/grant" "{\"studentContractLineId\":\"$GLINE\",\"amount\":2,\"notes\":\"E2E demo\"}" "$OTOK" >/dev/null
 ok "due-soon/paid/overdue ödeme + telafi kredisi"
 
 echo "== 8) Bildirim üretimi (reminder trigger) =="

@@ -23,6 +23,7 @@ login(){ body "$(post /api/auth/login "{\"email\":\"$1\",\"password\":\"$PW\"}")
 PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|pliaforma-dev-postgres' | head -1)
 [ -z "$PGC" ] && { echo "Postgres container bulunamadı (backdate gerekli)."; exit 2; }
 backdate(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"ClassSessions\" SET \"StartAt\"='2020-01-15 10:00:00', \"EndAt\"='2020-01-15 11:00:00' WHERE \"Id\"='$1';" >/dev/null 2>&1; }
+sql(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "$1" 2>/dev/null; }
 
 # --- Stüdyolar + hocalar + grup ---
 ATOK=$(body "$(post /api/auth/register-studio "{\"studioName\":\"S8A $TS\",\"ownerFullName\":\"OA\",\"email\":\"s8a+$TS@pf.local\",\"password\":\"$PW\"}")" | jget accessToken)
@@ -59,7 +60,9 @@ post "/api/studio/students/$GA/packages" "{\"packagePlanId\":\"$PL\"}" "$ATOK" >
 post "/api/studio/students/$GA/payments" "{\"amount\":500,\"dueDate\":\"2020-01-20\"}" "$ATOK" >/dev/null   # geçmiş vade → Overdue
 PJ=$(post "/api/studio/students/$GB/payments" "{\"amount\":300,\"dueDate\":\"2020-01-20\"}" "$ATOK"); PID=$(body "$PJ" | jget id)
 pcode "/api/studio/payments/$PID/mark-paid" '{}' "$ATOK" >/dev/null
-post "/api/studio/students/$GA/makeup-credits/grant" "{\"amount\":1}" "$ATOK" >/dev/null
+# Sprint 28C-2: manuel grant lineId zorunlu → GA'nın line'ına yaz.
+GALINE=$(sql "SELECT l.\"Id\" FROM \"StudentContractLines\" l JOIN \"StudentContracts\" c ON c.\"Id\"=l.\"StudentContractId\" WHERE c.\"StudentProfileId\"='$GA' LIMIT 1;")
+post "/api/studio/students/$GA/makeup-credits/grant" "{\"studentContractLineId\":\"$GALINE\",\"amount\":1}" "$ATOK" >/dev/null
 
 echo "--- Studio dashboard (month=2020-01) ---"
 SD=$(get "/api/studio/dashboard?month=2020-01" "$ATOK")

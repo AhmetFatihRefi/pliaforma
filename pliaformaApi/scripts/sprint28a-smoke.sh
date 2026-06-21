@@ -82,7 +82,8 @@ expect "Regular booking (sözleşme auto-resolve) → oluştu" yes "$([ -n "$BK"
 backdate "$SB" "2024-03-04 12:00:00"
 expect "Absent yoklama → 200" 200 "$(putcode "/api/studio/bookings/$BK/attendance" '{"status":"Absent"}' "$ATOK")"
 # Manuel grant (kaynak booking YOK → backfill'de bağlanamaz → soft-delete).
-pcode "/api/studio/students/$SX/makeup-credits/grant" '{"amount":1,"notes":"manual"}' "$ATOK" >/dev/null
+# Sprint 28C-2: API grant artık lineId zorunlu; bu backfill senaryosu LEGACY lineId=NULL kredi gerektirir → SQL ile ekle.
+sql "INSERT INTO \"MakeupCreditTransactions\" (\"Id\",\"StudioId\",\"StudentProfileId\",\"Amount\",\"Type\",\"Reason\",\"CreatedByUserId\",\"CreatedAt\",\"IsDeleted\") SELECT gen_random_uuid(), \"StudioId\", \"Id\", 1, 'Granted', 'ManualByOwner', '00000000-0000-0000-0000-000000000000', now(), false FROM \"StudentProfiles\" WHERE \"Id\"='$SX';" >/dev/null
 expect "backfill öncesi bakiye = 2 (absence + manual)" yes "$(has "$(bal "$SX")" '"balance":2')"
 
 # Backfill (idempotent, global).

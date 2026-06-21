@@ -80,17 +80,21 @@ public sealed class SessionCancellationService
     /// </summary>
     private async Task<bool> RestoreConsumedMakeupCreditIfAnyAsync(Guid studioId, Guid bookingId, Guid studentProfileId, Guid byUserId, CancellationToken ct)
     {
-        var usedCredit = await _db.MakeupCreditTransactions.AnyAsync(
-            t => t.StudioId == studioId && t.UsedForBookingId == bookingId
-                 && t.Type == MakeupCreditTransactionType.Used, ct);
-        if (!usedCredit)
+        // Sprint 28C-2: iade tüketimin yapıldığı LINE'a (Used tx'in StudentContractLineId'si).
+        var usedTx = await _db.MakeupCreditTransactions
+            .Where(t => t.StudioId == studioId && t.UsedForBookingId == bookingId && t.Type == MakeupCreditTransactionType.Used)
+            .Select(t => new { t.StudentContractLineId }).FirstOrDefaultAsync(ct);
+        if (usedTx is null)
             return false;
 
-        var alreadyRestored = await _db.MakeupCreditTransactions.AnyAsync(
-            t => t.StudioId == studioId && t.SourceBookingId == bookingId
-                 && t.Type == MakeupCreditTransactionType.Restored, ct);
-        if (!alreadyRestored)
-            _credits.Restore(studioId, studentProfileId, 1, bookingId, byUserId);
+        if (usedTx.StudentContractLineId is { } restoreLineId)
+        {
+            var alreadyRestored = await _db.MakeupCreditTransactions.AnyAsync(
+                t => t.StudioId == studioId && t.SourceBookingId == bookingId
+                     && t.Type == MakeupCreditTransactionType.Restored, ct);
+            if (!alreadyRestored)
+                _credits.Restore(studioId, studentProfileId, restoreLineId, 1, bookingId, byUserId);
+        }
 
         return true;
     }
@@ -103,11 +107,15 @@ public sealed class SessionCancellationService
     private async Task<bool> GrantCreditForStudioCancellationIfEligibleAsync(
         Guid studioId, Guid sessionId, ClassBooking booking, Guid byUserId, MakeupCreditReason grantReason, DateTime? expiresAt, CancellationToken ct)
     {
+        // Sprint 28C-2: stüdyo iptali telafisi iptal edilen dersin LINE'ına yazılır. NULL-line → kredi ÜRETME (karar #2).
+        if (booking.StudentContractLineId is not { } lineId)
+            return false;
+
         var already = await _credits.HasGrantForSessionAsync(studioId, booking.StudentProfileId, sessionId, ct);
         if (already)
             return false;
 
-        _credits.Grant(studioId, booking.StudentProfileId, 1, grantReason, byUserId,
+        _credits.Grant(studioId, booking.StudentProfileId, lineId, 1, grantReason, byUserId,
             sourceSessionId: sessionId, sourceBookingId: booking.Id, expiresAt: expiresAt);
         return true;
     }

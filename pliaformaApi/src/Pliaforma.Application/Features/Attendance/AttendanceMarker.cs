@@ -60,8 +60,8 @@ public sealed class AttendanceMarker
             .ToListAsync(ct);
         var attByBooking = existing.ToDictionary(a => a.ClassBookingId);
 
-        // Batch içinde aynı sözleşmeye birden çok devamsızlık → limit aşımını önlemek için kayıt-içi sayaç.
-        var pendingByContract = new Dictionary<Guid, int>();
+        // Batch içinde aynı LINE'a birden çok devamsızlık → limit aşımını önlemek için kayıt-içi sayaç (28C-2).
+        var pendingByLine = new Dictionary<Guid, int>();
 
         var credited = 0;
         foreach (var item in items)
@@ -90,37 +90,39 @@ public sealed class AttendanceMarker
             att.MarkedAt = _clock.UtcNow;
 
             // Mazeretli/Geç iptal + grant + bu yoklamadan henüz kredi verilmediyse → +1 telafi kredisi (manuel).
+            // Sprint 28C-2: kredi LINE'a yazılır (booking.StudentContractLineId). NULL-line → kredi ÜRETİLMEZ (karar #2).
             if (item.GrantMakeupCredit
                 && (item.Status == AttendanceStatus.Excused || item.Status == AttendanceStatus.LateCancel)
-                && att.MakeupCreditTransactionId is null)
+                && att.MakeupCreditTransactionId is null
+                && booking.StudentContractLineId is { } grantLineId)
             {
                 var reason = item.Status == AttendanceStatus.Excused
                     ? MakeupCreditReason.ExcusedAbsence
                     : MakeupCreditReason.NoShowApproved;
-                var tx = _credits.Grant(studioId, booking.StudentProfileId, 1, reason, markedByUserId,
+                var tx = _credits.Grant(studioId, booking.StudentProfileId, grantLineId, 1, reason, markedByUserId,
                     sourceSessionId: session.Id, sourceBookingId: booking.Id, expiresAt: expiresAt);
                 att.MakeupCreditTransactionId = tx.Id;
                 credited++;
             }
 
-            // Devamsızlık → sözleşme limitli telafi (immutable ledger; Absent'tan çıkınca ters kayıt).
-            await SyncAbsenceCreditAsync(studioId, booking, item.Status, markedByUserId, expiresAt, pendingByContract, ct);
+            // Devamsızlık → LINE limitli telafi (immutable ledger; Absent'tan çıkınca ters kayıt).
+            await SyncAbsenceCreditAsync(studioId, booking, item.Status, markedByUserId, expiresAt, pendingByLine, ct);
         }
 
         return credited;
     }
 
     /// <summary>
-    /// Devamsızlık telafisi defter senkronu (yalnız sözleşme dersi). Booking başına net en fazla 1
-    /// <see cref="MakeupCreditReason.AbsentEarned"/>; sözleşme <c>MakeupAllowance</c> ile sınırlı; idempotent;
-    /// Absent→Present/diğer geçişte ters kayıt (Revoked), tekrar Absent'ta Restored. SourceClassSessionId
-    /// yazılmaz → (StudentProfileId, SourceClassSessionId) Granted-unique index'inden bağımsızdır.
+    /// Devamsızlık telafisi defter senkronu (Sprint 28C-2 — LINE bazlı). Booking başına net en fazla 1
+    /// <see cref="MakeupCreditReason.AbsentEarned"/>; <c>line.MakeupAllowance</c> ile sınırlı; idempotent;
+    /// Absent→Present/diğer geçişte ters kayıt (Revoked), tekrar Absent'ta Restored. Cap + sayım LINE-scoped
+    /// (line A dolunca line B etkilenmez). <b>booking.StudentContractLineId NULL → AbsentEarned ÜRETİLMEZ</b> (karar #2).
     /// </summary>
     private async Task SyncAbsenceCreditAsync(
         Guid studioId, ClassBooking booking, AttendanceStatus status, Guid byUserId, DateTime? expiresAt,
-        Dictionary<Guid, int> pendingByContract, CancellationToken ct)
+        Dictionary<Guid, int> pendingByLine, CancellationToken ct)
     {
-        if (booking.StudentContractId is not { } contractId) return; // yalnız sözleşme (Regular) dersi
+        if (booking.StudentContractLineId is not { } lineId) return; // NULL-line → kredi yazma (28C-2 karar #2)
 
         var isAbsent = status == AttendanceStatus.Absent;
 
@@ -135,32 +137,32 @@ public sealed class AttendanceMarker
         {
             if (bookingNet > 0) return; // zaten var (idempotent — çift telafi yok)
 
-            // Sözleşme limiti: bu sözleşmenin tüm booking'lerindeki net AbsentEarned (+ bu çağrıda eklenen pending).
-            var contractBookingIds = await _db.ClassBookings
-                .Where(b => b.StudioId == studioId && b.StudentContractId == contractId)
+            // LINE limiti: bu line'ın tüm booking'lerindeki net AbsentEarned (+ bu çağrıda eklenen pending).
+            var lineBookingIds = await _db.ClassBookings
+                .Where(b => b.StudioId == studioId && b.StudentContractLineId == lineId)
                 .Select(b => b.Id).ToListAsync(ct);
-            var contractNetDb = await _db.MakeupCreditTransactions
+            var lineNetDb = await _db.MakeupCreditTransactions
                 .Where(t => t.StudioId == studioId && t.Reason == MakeupCreditReason.AbsentEarned
-                            && t.SourceBookingId != null && contractBookingIds.Contains(t.SourceBookingId.Value))
+                            && t.SourceBookingId != null && lineBookingIds.Contains(t.SourceBookingId.Value))
                 .SumAsync(t => (int?)t.Amount, ct) ?? 0;
-            var allowance = await _db.StudentContracts
-                .Where(c => c.Id == contractId).Select(c => c.MakeupAllowance).FirstAsync(ct);
+            var allowance = await _db.StudentContractLines
+                .Where(l => l.Id == lineId).Select(l => l.MakeupAllowance).FirstAsync(ct);
 
-            if (contractNetDb + pendingByContract.GetValueOrDefault(contractId) >= allowance)
-                return; // limit dolu → devamsızlık kaydedilir ama telafi verilmez
+            if (lineNetDb + pendingByLine.GetValueOrDefault(lineId) >= allowance)
+                return; // line limiti dolu → devamsızlık kaydedilir ama telafi verilmez
 
             // İlk kez → Granted; daha önce Granted olup Revoked edilmişse → Restored (Granted-unique'i ihlal etmez).
-            _credits.AddAbsenceLedger(studioId, booking.StudentProfileId, +1,
+            _credits.AddAbsenceLedger(studioId, booking.StudentProfileId, lineId, +1,
                 hasGranted ? MakeupCreditTransactionType.Restored : MakeupCreditTransactionType.Granted,
                 byUserId, booking.Id, hasGranted ? null : expiresAt);
-            pendingByContract[contractId] = pendingByContract.GetValueOrDefault(contractId) + 1;
+            pendingByLine[lineId] = pendingByLine.GetValueOrDefault(lineId) + 1;
         }
         else
         {
             if (bookingNet <= 0) return; // yok (idempotent)
-            _credits.AddAbsenceLedger(studioId, booking.StudentProfileId, -1,
+            _credits.AddAbsenceLedger(studioId, booking.StudentProfileId, lineId, -1,
                 MakeupCreditTransactionType.Revoked, byUserId, booking.Id, expiresAt: null);
-            pendingByContract[contractId] = pendingByContract.GetValueOrDefault(contractId) - 1;
+            pendingByLine[lineId] = pendingByLine.GetValueOrDefault(lineId) - 1;
         }
     }
 }

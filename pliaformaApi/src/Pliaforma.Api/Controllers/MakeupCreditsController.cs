@@ -19,11 +19,11 @@ public sealed class MakeupCreditsController : ApiControllerBase
     public Task<IActionResult> GetForStudent(Guid studentId, CancellationToken ct) =>
         Send(new GetStudentMakeupCreditsQuery(studentId), ct: ct);
 
-    // Sprint 20: telafi dersine eklenebilir (kullanılabilir hak > 0) öğrenciler.
+    // Sprint 20 → 28C-2: telafi dersine eklenebilir LINE'lar (kullanılabilir line hak > 0). Opsiyonel level filtre.
     [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpGet("makeup-eligible-students")]
-    public Task<IActionResult> EligibleStudents(CancellationToken ct) =>
-        Send(new GetMakeupEligibleStudentsQuery(), ct: ct);
+    public Task<IActionResult> EligibleStudents([FromQuery] Domain.Enums.StudentLevel? level, CancellationToken ct) =>
+        Send(new GetMakeupEligibleStudentsQuery(level), ct: ct);
 
     // Sprint 26 ek (v1.1.1): telafi kredisi verme/geri alma yalnız Owner/StudioAdmin (Instructor kredi veremez).
     [Authorize(Roles = "Owner,StudioAdmin")]

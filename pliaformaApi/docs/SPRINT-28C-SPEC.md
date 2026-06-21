@@ -23,18 +23,29 @@
 - Frontend: LineCard "Programı oluştur"; StaffBookingModal line seçici/etiket; GroupChange line seçimi; level filtreler.
 - `sprint28c1-smoke.sh` + E2E güncelleme.
 
-### Sprint 28C-2 — Makeup Ledger / Makeup Request / Makeup Booking Line-Based  ← **SONRA (kod yazma)**
-- `MakeupCreditService` line-scoped (balance/available/Grant/Use/AddAbsenceLedger lineId).
-- Yeni akışta `MakeupCreditTransaction.StudentContractLineId` zorunlu.
-- `AttendanceMarker` AbsentEarned cap = `line.MakeupAllowance` (booking.StudentContractLineId ile).
-- `MakeupRequest.StudentContractLineId` zorunlu; pending reserve line-bazlı; eligible-students line-bazlı.
-- Approve: `session.IsIndividual = line.IsIndividual` (hardcode `true` kalkar); `Use(line, −1)`.
-- Staff doğrudan makeup booking: line seçimi zorunlu (çoklu uygun line varsa 409/seçim; tek ise fallback).
-- Makeup dersi `line.EndDate` sonrasına taşınabilir (line-aware).
-- Student/instructor makeup UI line etiketleri.
+### Sprint 28C-2 — Makeup Ledger / Makeup Request / Makeup Booking Line-Based  ← **UYGULANIYOR**
+- `MakeupCreditService` line-scoped: `GetLineBalanceAsync`, `GetLineAvailableBalanceAsync`, `Grant(lineId)`, `Use(lineId)`,
+  `AddAbsenceLedger(lineId)`, pending request count line-bazlı. Eski student-global metotlar **yalnız read/report**; yeni yazma/karar akışında kullanılmaz.
+- `AttendanceMarker` AbsentEarned line-based: `booking.StudentContractLineId` zorunlu kaynak; **NULL ise kredi ÜRETME** (fallback yok); cap = `line.MakeupAllowance`; sayım/cap line-scoped (line A cap dolunca line B etkilenmez).
+- Makeup request line-based: eligible **line** DTO; create body `StudentContractLineId` zorunlu; pending reserve line-bazlı; aynı line 2. pending → **409**; approve line-based.
+- Approve: `request.StudentContractLineId` okunur → `Use(line,−1)`; `booking.StudentContractLineId=line.Id`; `session.IsIndividual=line.IsIndividual`, `Capacity = line.IsIndividual ? 1 : 9999`; geçmiş-zaman engeli kalır; makeup `line.EndDate` sonrası serbest (date-range Regular'a özel).
+- Staff doğrudan makeup booking: `studentContractLineId` destekler; **classType eşleşmesi zorunlu** (line.ClassTypeId==session.ClassTypeId); uygun line = aynı öğrenci + active + available>0 + classType eşleşir; **tek uygun → fallback**, **çoklu → 409**.
+- Manuel grant **lineId zorunlu (yoksa 400)**; revoke line-scoped. Student self `byLine[]` + tx `lineLabel`.
+- Instructor/Staff eligible: **ortak internal query/service** (route'lar ayrı kalır), level filtre destekli.
 - `sprint28c2-smoke.sh`.
 
 **28C-1, makeup davranışını DEĞİŞTİRMEZ** (Sprint 27 akışı 28C-1'de aynen korunur; regresyon).
+
+---
+
+## 0.1. Sprint 28C-2 — Açık soru kararları (onaylı)
+
+1. **Manuel grant lineId ZORUNLU:** `/students/{id}/makeup-credits/grant` artık `StudentContractLineId` ister; yoksa **400**.
+   Backend tek-aktif-line fallback YOK (frontend tek uygun line'ı otomatik seçebilir ama API yine lineId alır; çoklu'da kullanıcı seçer).
+2. **AbsentEarned NULL-line booking:** `booking.StudentContractLineId==NULL` → AbsentEarned **ÜRETME** (fallback yok, sessiz kredi yok; attendance işaretleme bozulmaz, yalnız telafi kredisi yazılmaz). Yanlış line'a yazmaktansa hiç yazmamak.
+3. **Direct staff makeup booking classType ZORUNLU:** seçilen line aynı öğrenci + active + available>0 + `line.ClassTypeId==session.ClassTypeId`. Tek uygun → fallback; çoklu → 409. (Reformer telafisi Mat dersine harcanmaz.)
+4. **Student self DTO yerinde genişler:** `MyMakeupCreditsDto` mevcut toplam alanları korunur + **`byLine[]`** eklenir (`lineId, classTypeName, lineLabel, earned, used, available, isIndividual, startDate, endDate`); tx'lere `lineLabel`. Eski UI kırılmaz, yeni UI byLine kartları.
+5. **Eligible endpoint route'ları AYRI kalır, internal mantık TEK:** Sprint 20 `/makeup-eligible-students` + Sprint 27 `/makeup-requests/eligible-students` korunur; ikisi de aynı line-based internal query/service'i kullanır (DTO route bazında şekillenebilir).
 
 ---
 

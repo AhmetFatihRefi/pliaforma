@@ -33,27 +33,27 @@ CT=$(body "$(post /api/class-types "{\"name\":\"Reformer\",\"equipment\":\"Refor
 guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\":\"Phone\"}" "$ATOK")" | jget id; }
 # sözleşme (instructor "kendi bağlamı" şartı): aktif + bu hoca + bu ders tipi + tarih aralığı.
 mkc(){ body "$(post "/api/studio/students/$1/contracts" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$2\",\"startDate\":\"$(date +%F)\",\"endDate\":\"$(date -d '+30 days' +%F)\",\"totalLessonCount\":8,\"makeupAllowance\":2,\"price\":0,\"isIndividualDefault\":false}" "$ATOK")" | jget id; }
-grant(){ pcode "/api/studio/students/$1/makeup-credits/grant" "{\"amount\":$2,\"notes\":\"smoke\"}" "$ATOK" >/dev/null; }
+# Sprint 28C-2: makeup LINE-based → grant/request line-scoped. lineof: contract → line.
+lineof(){ sql "SELECT \"Id\" FROM \"StudentContractLines\" WHERE \"StudentContractId\"='$1' LIMIT 1;"; }
+grant(){ pcode "/api/studio/students/$1/makeup-credits/grant" "{\"studentContractLineId\":\"$2\",\"amount\":$3,\"notes\":\"smoke\"}" "$ATOK" >/dev/null; }  # $1=student $2=lineId $3=amount
 bal(){ gbody "/api/studio/students/$1/makeup-credits" "$ATOK" | grep -o '"balance":[0-9-]*' | head -1; }
-# talep oluştur (instructor): full post çıktısı (code+body). $3=token (default I1TOK), $4=ekstra json (örn requestedInstructorProfileId).
-mkreq(){ post /api/studio/makeup-requests "{\"studentProfileId\":\"$1\",\"classTypeId\":\"$CT\",\"startAt\":\"$2\"${4:+,$4}}" "${3:-$I1TOK}"; }
+# talep oluştur: $1=lineId $2=startAt $3=token (default I1TOK). Öğrenci/ders tipi/hoca line'dan türer.
+mkreq(){ post /api/studio/makeup-requests "{\"studentContractLineId\":\"$1\",\"startAt\":\"$2\"}" "${3:-$I1TOK}"; }
 mksess(){ post /api/studio/class-sessions "{\"instructorProfileId\":\"$1\",\"classTypeId\":\"$CT\",\"startAt\":\"$2\"}" "$ATOK"; }
 D3=$(date -d "+3 days" +%Y-%m-%d)
 
-SA=$(guest SA); mkc "$SA" "$I1P" >/dev/null; grant "$SA" 1          # I1 sözleşme + 1 kredi
-SB=$(guest SB); mkc "$SB" "$I1P" >/dev/null; grant "$SB" 1          # I1 sözleşme + 1 kredi
-SC=$(guest SC); mkc "$SC" "$I2P" >/dev/null; grant "$SC" 1          # I2 sözleşme + 1 kredi
-SNOC=$(guest SNOC); grant "$SNOC" 1                                 # sözleşme YOK + kredi (sözleşme şartı testi)
-SNOCRED=$(guest SNOCRED); mkc "$SNOCRED" "$I1P" >/dev/null          # I1 sözleşme + kredi YOK (rezerve testi)
+SA=$(guest SA); LSA=$(lineof "$(mkc "$SA" "$I1P")"); grant "$SA" "$LSA" 1        # I1 line + 1 kredi
+SB=$(guest SB); LSB=$(lineof "$(mkc "$SB" "$I1P")"); grant "$SB" "$LSB" 1        # I1 line + 1 kredi
+SC=$(guest SC); LSC=$(lineof "$(mkc "$SC" "$I2P")"); grant "$SC" "$LSC" 1        # I2 line + 1 kredi
+SNOCRED=$(guest SNOCRED); LSNOCRED=$(lineof "$(mkc "$SNOCRED" "$I1P")")          # I1 line + kredi YOK (rezerve testi)
 
-echo "--- 1) Talep create: sözleşme + kredi + 'kendi profili' kuralları ---"
-RA=$(mkreq "$SA" "${D3}T09:00:00"); expect "Instructor aktif sözleşmeli+kredili öğrenci talebi → 200" 200 "$(code "$RA")"
+echo "--- 1) Talep create: line + kredi + 'kendi line'ı' kuralları (28C-2) ---"
+RA=$(mkreq "$LSA" "${D3}T09:00:00"); expect "Instructor kendi line'ına kredili talep → 200" 200 "$(code "$RA")"
 REQ_A=$(body "$RA" | jget id)
 expect "talep durum Pending" yes "$(has "$(body "$RA")" '"status":"Pending"')"
-expect "Instructor sözleşmesiz öğrenci talebi → 403" 403 "$(code "$(mkreq "$SNOC" "${D3}T09:00:00")")"
-expect "Instructor başka hoca adına talep → 403" 403 "$(code "$(mkreq "$SA" "${D3}T20:00:00" "$I1TOK" "\"requestedInstructorProfileId\":\"$I2P\"")")"
-expect "Instructor kredisiz (rezerve=0) öğrenci talebi → 409" 409 "$(code "$(mkreq "$SNOCRED" "${D3}T09:00:00")")"
-expect "Aynı krediyle 2. pending talep → 409 (rezerve tek-kullanım)" 409 "$(code "$(mkreq "$SA" "${D3}T11:00:00")")"
+expect "Instructor BAŞKA hoca (I2) line'ına talep → 403" 403 "$(code "$(mkreq "$LSC" "${D3}T09:00:00")")"
+expect "Instructor kredisiz line talebi → 409" 409 "$(code "$(mkreq "$LSNOCRED" "${D3}T09:00:00")")"
+expect "Aynı line 2. pending talep → 409 (rezerve tek-kullanım)" 409 "$(code "$(mkreq "$LSA" "${D3}T11:00:00")")"
 
 echo "--- 2) Çift yönlü blok: pending talep gerçek hoca+öğrenci saatini bloklar ---"
 expect "Pending saatine gerçek ders (aynı hoca I1, 09:00) → 409 (hoca bloğu)" 409 "$(pcode /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${D3}T09:00:00\"}" "$ATOK")"
@@ -62,7 +62,7 @@ expect "Farklı hoca (I2) aynı saatte gerçek ders → 200" 200 "$([ -n "$SI2" 
 expect "Pending öğrencisini (SA) aynı saatteki gerçek derse booking → 409 (öğrenci bloğu)" 409 "$(pcode "/api/studio/class-sessions/$SI2/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")"
 
 echo "--- 3) Görünürlük: Instructor kendi; Owner tümü ---"
-RC=$(mkreq "$SC" "${D3}T10:00:00" "$I2TOK"); REQ_C=$(body "$RC" | jget id)
+RC=$(mkreq "$LSC" "${D3}T10:00:00" "$I2TOK"); REQ_C=$(body "$RC" | jget id)
 expect "I2 kendi talebini oluşturur → 200" 200 "$(code "$RC")"
 expect "Instructor(I1) talep listesi → 200" 200 "$(gcode /api/studio/makeup-requests "$I1TOK")"
 expect "I1 listesinde KENDİ talebi (REQ_A) var" yes "$(has "$(gbody /api/studio/makeup-requests "$I1TOK")" "$REQ_A")"
@@ -70,14 +70,14 @@ expect "I1 listesinde I2'nin talebi (REQ_C) YOK" no "$(has "$(gbody /api/studio/
 expect "Owner listesinde I2'nin talebi (REQ_C) VAR (tümü)" yes "$(has "$(gbody /api/studio/makeup-requests "$ATOK")" "$REQ_C")"
 
 echo "--- 4) Reject slotu boşaltır + ledger DOKUNMAZ ---"
-RR=$(mkreq "$SB" "${D3}T13:00:00"); REQ_R=$(body "$RR" | jget id)
+RR=$(mkreq "$LSB" "${D3}T13:00:00"); REQ_R=$(body "$RR" | jget id)
 expect "SB talebi (13:00) → 200" 200 "$(code "$RR")"
 expect "Owner reject → 200" 200 "$(pcode "/api/studio/makeup-requests/$REQ_R/reject" '{"decisionNote":"uygun degil"}' "$ATOK")"
 expect "Reject sonrası SB ledger bakiyesi DEĞİŞMEZ (1)" yes "$(has "$(bal "$SB")" '"balance":1')"
 expect "Reject sonrası slot boşaldı: I1 13:00 gerçek ders → 200" 200 "$(code "$(mksess "$I1P" "${D3}T13:00:00")")"
 
 echo "--- 5) Withdraw: kendi pending (200) / başka hoca (403) / ledger DOKUNMAZ ---"
-RW=$(mkreq "$SB" "${D3}T15:00:00"); REQ_W=$(body "$RW" | jget id)
+RW=$(mkreq "$LSB" "${D3}T15:00:00"); REQ_W=$(body "$RW" | jget id)
 expect "SB talebi (15:00) → 200" 200 "$(code "$RW")"
 expect "Instructor BAŞKA hocanın pending'ini (REQ_C) withdraw → 403" 403 "$(pcode "/api/studio/makeup-requests/$REQ_C/withdraw" '{}' "$I1TOK")"
 expect "Instructor KENDİ pending'ini withdraw → 200" 200 "$(pcode "/api/studio/makeup-requests/$REQ_W/withdraw" '{}' "$I1TOK")"
@@ -98,11 +98,12 @@ expect "Approve durum Approved" yes "$(has "$(body "$RAP")" '"status":"Approved"
 expect "Approve gerçek seansı bağladı (resultingClassSessionId dolu)" yes "$(has "$(body "$RAP")" '"resultingClassSessionId":"')"
 MS=$(body "$RAP" | jget resultingClassSessionId)
 expect "Materyalize seans Makeup tipinde" yes "$(has "$(gbody "/api/studio/class-sessions/$MS" "$ATOK")" '"sessionKind":"Makeup"')"
-expect "Materyalize seans bireysel (IsIndividual)" yes "$(has "$(gbody "/api/studio/class-sessions/$MS" "$ATOK")" '"isIndividual":true')"
+# Sprint 28C-2: makeup session IsIndividual = line.IsIndividual. SA line grup (isIndividualDefault=false) → grup makeup.
+expect "Materyalize seans grup (line grup → IsIndividual:false)" yes "$(has "$(gbody "/api/studio/class-sessions/$MS" "$ATOK")" '"isIndividual":false')"
 expect "Approve sonrası SA ledger bakiyesi = 0 (Use −1)" yes "$(has "$(bal "$SA")" '"balance":0')"
 
 echo "--- 8) Edit-approve (tarih/saat değiştirerek onayla) ---"
-RE=$(mkreq "$SB" "${D3}T16:00:00"); REQ_E=$(body "$RE" | jget id)
+RE=$(mkreq "$LSB" "${D3}T16:00:00"); REQ_E=$(body "$RE" | jget id)
 expect "SB talebi (16:00) → 200" 200 "$(code "$RE")"
 RED=$(post "/api/studio/makeup-requests/$REQ_E/approve" "{\"startAt\":\"${D3}T16:30:00\"}" "$ATOK")
 expect "Owner edit-approve (16:00 → 16:30) → 200" 200 "$(code "$RED")"
@@ -115,7 +116,7 @@ post "/api/studio/students/$SB/convert-to-user" "{\"email\":\"sb+$TS@pf.local\",
 STOK=$(login "sb+$TS@pf.local")
 expect "Student kendi telafi taleplerini görür → 200" 200 "$(gcode /api/student/makeup-requests "$STOK")"
 expect "Student görünümünde onaylı telafisi var (Approved)" yes "$(has "$(gbody /api/student/makeup-requests "$STOK")" '"status":"Approved"')"
-expect "Student talep oluşturamaz → 403" 403 "$(pcode /api/studio/makeup-requests "{\"studentProfileId\":\"$SB\",\"classTypeId\":\"$CT\",\"startAt\":\"${D3}T18:00:00\"}" "$STOK")"
+expect "Student talep oluşturamaz → 403" 403 "$(pcode /api/studio/makeup-requests "{\"studentContractLineId\":\"$LSB\",\"startAt\":\"${D3}T18:00:00\"}" "$STOK")"
 
 echo
 [ "$FAILED" = "0" ] && { printf "\033[36mSPRINT 27 SMOKE: TÜM AKIŞLAR GEÇTİ ✅\033[0m\n"; exit 0; } || { printf "\033[36mSPRINT 27 SMOKE: BAŞARISIZ ❌\033[0m\n"; exit 1; }

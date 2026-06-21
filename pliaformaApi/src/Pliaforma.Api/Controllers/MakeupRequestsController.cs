@@ -17,10 +17,10 @@ public sealed class MakeupRequestsController : ApiControllerBase
 {
     public MakeupRequestsController(IDispatcher dispatcher) : base(dispatcher) { }
 
-    // Talep açılabilecek öğrenciler (kullanılabilir telafi hakkı > 0). Instructor → kendi sözleşmeli öğrencileri.
+    // Sprint 28C-2: talep açılabilecek LINE'lar (kullanılabilir line telafi hakkı > 0). Instructor → kendi line'ları. Opsiyonel level.
     [HttpGet("makeup-requests/eligible-students")]
-    public Task<IActionResult> EligibleStudents(CancellationToken ct) =>
-        Send(new GetMakeupRequestEligibleStudentsQuery(), ct: ct);
+    public Task<IActionResult> EligibleStudents([FromQuery] Domain.Enums.StudentLevel? level, CancellationToken ct) =>
+        Send(new GetMakeupRequestEligibleStudentsQuery(level), ct: ct);
 
     [HttpGet("makeup-requests")]
     public Task<IActionResult> GetAll([FromQuery] MakeupRequestStatus? status, CancellationToken ct) =>

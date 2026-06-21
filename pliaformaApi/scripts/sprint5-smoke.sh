@@ -24,6 +24,7 @@ for n in i1 i2; do post /api/auth/register "{\"fullName\":\"$n\",\"email\":\"$n+
 # Sprint 17: davet kabulü doğrulanmış e-posta ister + profil KABULDE oluşur (invite yanıtında değil).
 PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|pliaforma-dev-postgres' | head -1)
 vrf(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='$1' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1; }
+sql(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "$1" 2>/dev/null; }
 ipid(){ curl -s "$BASE/api/studio/memberships" -H "Authorization: Bearer $ATOK" | tr '{' '\n' | grep "\"email\":\"$1\"" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/'; }
 inv(){ local e="$1+$TS@pf.local"; vrf "$e"; RR=$(post /api/studio/memberships/invite "{\"email\":\"$e\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK"); M=$(body "$RR" | jget membershipId); T=$(login "$e"); post "/api/members/$M/accept" '{}' "$T" >/dev/null; ipid "$e"; }
 I1P=$(inv i1); I2P=$(inv i2); I2TOK=$(login "i2+$TS@pf.local")
@@ -35,11 +36,14 @@ SA=$(mkactive "sa"); SATOK=$(login "sa+$TS@pf.local")
 SB=$(mkactive "sb"); SBTOK=$(login "sb+$TS@pf.local")
 # Sprint 18b: Regular booking SÖZLEŞME ister (paket yok); self-booking kapalı. mkc → öğrenciye geniş sözleşme.
 mkc(){ curl -s -o /dev/null -X POST "$BASE/api/studio/students/$1/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"; }
+# Sprint 28C-2: manuel grant/revoke lineId zorunlu → öğrencinin line'ını çöz. SA/SB/GA için önce sözleşme (line) gerekir.
+glineof(){ sql "SELECT l.\"Id\" FROM \"StudentContractLines\" l JOIN \"StudentContracts\" c ON c.\"Id\"=l.\"StudentContractId\" WHERE c.\"StudentProfileId\"='$1' LIMIT 1;"; }
+mkc "$SA"; mkc "$SB"
 
 echo "--- Makeup seansı: kredi yokken 409, grant, kredi tüket, iptalde restore (staff booking) ---"
 MS=$(mksess "$I1P" "$D" "09:00" 2 "Makeup")
 expect "kredisiz makeup staff-book → 409" 409 "$(pcode "/api/studio/class-sessions/$MS/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")"
-GR=$(post "/api/studio/students/$SA/makeup-credits/grant" "{\"amount\":1,\"notes\":\"test\"}" "$ATOK")
+GR=$(post "/api/studio/students/$SA/makeup-credits/grant" "{\"studentContractLineId\":\"$(glineof "$SA")\",\"amount\":1,\"notes\":\"test\"}" "$ATOK")
 expect "manuel grant → 200" 200 "$(code "$GR")"
 expect "grant sonrası bakiye 1" 1 "$(body "$GR" | jnum balance)"
 R=$(post "/api/studio/class-sessions/$MS/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")
@@ -49,11 +53,11 @@ expect "makeup booking iptal → 200" 200 "$(pcode "/api/studio/bookings/$MBK/ca
 expect "iptal sonrası kredi restore → bakiye 1" 1 "$(bcredit "$SA")"
 
 echo "--- Manuel grant / aylık limit / revoke ---"
-expect "SB +2 grant → 200" 200 "$(pcode "/api/studio/students/$SB/makeup-credits/grant" "{\"amount\":2}" "$ATOK")"
-expect "aylık limit (2) aşımı +1 → 409" 409 "$(pcode "/api/studio/students/$SB/makeup-credits/grant" "{\"amount\":1}" "$ATOK")"
-RV=$(post "/api/studio/students/$SB/makeup-credits/revoke" "{\"amount\":1}" "$ATOK")
+expect "SB +2 grant → 200" 200 "$(pcode "/api/studio/students/$SB/makeup-credits/grant" "{\"studentContractLineId\":\"$(glineof "$SB")\",\"amount\":2}" "$ATOK")"
+expect "aylık limit (2) aşımı +1 → 409" 409 "$(pcode "/api/studio/students/$SB/makeup-credits/grant" "{\"studentContractLineId\":\"$(glineof "$SB")\",\"amount\":1}" "$ATOK")"
+RV=$(post "/api/studio/students/$SB/makeup-credits/revoke" "{\"studentContractLineId\":\"$(glineof "$SB")\",\"amount\":1}" "$ATOK")
 expect "revoke → bakiye 1" 1 "$(body "$RV" | jnum balance)"
-expect "bakiyeden fazla revoke → 409" 409 "$(pcode "/api/studio/students/$SB/makeup-credits/revoke" "{\"amount\":5}" "$ATOK")"
+expect "bakiyeden fazla revoke → 409" 409 "$(pcode "/api/studio/students/$SB/makeup-credits/revoke" "{\"studentContractLineId\":\"$(glineof "$SB")\",\"amount\":5}" "$ATOK")"
 
 echo "--- Regular seans booking kredi tüketmez (staff + sözleşme) ---"
 RS=$(mksess "$I1P" "$D" "10:00" 2 "Regular"); mkc "$SB"
@@ -69,7 +73,7 @@ expect "aynı seans tekrar iptal → 409 (çift kredi yok)" 409 "$(pcode "/api/s
 expect "tekrar iptal sonrası bakiye hâlâ 1 (Regular grant)" 1 "$(bcredit "$GC")"
 
 echo "--- (A) Makeup cancel + grant ÇİFT KREDİ ENGELİ: sadece restore, ekstra grant yok ---"
-GA=$(guest "GA"); pcode "/api/studio/students/$GA/makeup-credits/grant" "{\"amount\":1}" "$ATOK" >/dev/null
+GA=$(guest "GA"); mkc "$GA"; pcode "/api/studio/students/$GA/makeup-credits/grant" "{\"studentContractLineId\":\"$(glineof "$GA")\",\"amount\":1}" "$ATOK" >/dev/null
 expect "(A) başlangıç bakiye 1" 1 "$(bcredit "$GA")"
 MSA=$(mksess "$I1P" "$D" "16:00" 2 "Makeup")
 pcode "/api/studio/class-sessions/$MSA/bookings" "{\"studentProfileId\":\"$GA\"}" "$ATOK" >/dev/null
@@ -78,7 +82,7 @@ pcode "/api/studio/class-sessions/$MSA/cancel" "{\"grantMakeupCredit\":true}" "$
 expect "(A) makeup session cancel+grant → bakiye 1 (2 DEĞİL)" 1 "$(bcredit "$GA")"
 
 echo "--- (B) Bulk closure makeup ÇİFT KREDİ ENGELİ: sadece restore ---"
-GBk=$(guest "GBk"); pcode "/api/studio/students/$GBk/makeup-credits/grant" "{\"amount\":1}" "$ATOK" >/dev/null
+GBk=$(guest "GBk"); mkc "$GBk"; pcode "/api/studio/students/$GBk/makeup-credits/grant" "{\"studentContractLineId\":\"$(glineof "$GBk")\",\"amount\":1}" "$ATOK" >/dev/null
 MSB=$(mksess "$I1P" "$D4" "10:00" 2 "Makeup")
 pcode "/api/studio/class-sessions/$MSB/bookings" "{\"studentProfileId\":\"$GBk\"}" "$ATOK" >/dev/null
 expect "(B) makeup booking sonrası bakiye 0" 0 "$(bcredit "$GBk")"

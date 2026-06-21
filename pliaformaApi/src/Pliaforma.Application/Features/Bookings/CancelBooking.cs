@@ -83,16 +83,17 @@ public sealed class CancelBookingHandler : ICommandHandler<CancelBookingCommand,
         // MAKEUP rezervasyonu iptal edildiyse, tüketilen krediyi geri ver (Restored). Yalnızca bu booking
         // için bir Used hareketi varsa ve henüz geri verilmediyse. Booking yeniden iptal edilemediği
         // (status guard) için çift iade oluşmaz.
-        var usedCredit = await _db.MakeupCreditTransactions.AnyAsync(
-            t => t.StudioId == studioId && t.UsedForBookingId == booking.Id
-                 && t.Type == MakeupCreditTransactionType.Used, cancellationToken);
-        if (usedCredit)
+        // Sprint 28C-2: iade tüketimin yapıldığı LINE'a yazılır (Used tx'in StudentContractLineId'si).
+        var usedTx = await _db.MakeupCreditTransactions
+            .Where(t => t.StudioId == studioId && t.UsedForBookingId == booking.Id && t.Type == MakeupCreditTransactionType.Used)
+            .Select(t => new { t.StudentContractLineId }).FirstOrDefaultAsync(cancellationToken);
+        if (usedTx is not null && usedTx.StudentContractLineId is { } restoreLineId)
         {
             var alreadyRestored = await _db.MakeupCreditTransactions.AnyAsync(
                 t => t.StudioId == studioId && t.SourceBookingId == booking.Id
                      && t.Type == MakeupCreditTransactionType.Restored, cancellationToken);
             if (!alreadyRestored)
-                _credits.Restore(studioId, booking.StudentProfileId, 1, booking.Id, userId);
+                _credits.Restore(studioId, booking.StudentProfileId, restoreLineId, 1, booking.Id, userId);
         }
 
         await _db.SaveChangesAsync(cancellationToken);
