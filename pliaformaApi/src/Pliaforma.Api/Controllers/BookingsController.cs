@@ -29,6 +29,18 @@ public sealed class BookingsController : ApiControllerBase
     public Task<IActionResult> GetForSession(Guid sessionId, CancellationToken ct) =>
         Send(new GetSessionBookingsQuery(sessionId), ct: ct);
 
+    // Sprint 29B: aday öğrenci listeleri (öğrenci ekleme operasyonunun parçası → yalnız Owner/StudioAdmin).
+    // Yanlış session kind → 400 (regular-candidates yalnız Regular; makeup-candidates yalnız Makeup).
+    [Authorize(Roles = "Owner,StudioAdmin")]
+    [HttpGet("class-sessions/{sessionId:guid}/regular-candidates")]
+    public Task<IActionResult> RegularCandidates(Guid sessionId, [FromQuery] StudentLevel? level, CancellationToken ct) =>
+        Send(new GetRegularBookingCandidatesQuery(sessionId, level), ct: ct);
+
+    [Authorize(Roles = "Owner,StudioAdmin")]
+    [HttpGet("class-sessions/{sessionId:guid}/makeup-candidates")]
+    public Task<IActionResult> MakeupCandidates(Guid sessionId, [FromQuery] StudentLevel? level, CancellationToken ct) =>
+        Send(new GetMakeupBookingCandidatesQuery(sessionId, level), ct: ct);
+
     // Vekaleten rezervasyon (öğrenci adına) — yalnız Owner/StudioAdmin.
     [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("class-sessions/{sessionId:guid}/bookings")]

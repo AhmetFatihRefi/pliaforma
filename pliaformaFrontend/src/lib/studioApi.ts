@@ -62,6 +62,8 @@ import type {
   StudentLevel,
   StudentMakeupCreditsDto,
   MakeupEligibleLineDto,
+  MakeupCandidateDto,
+  RegularCandidateDto,
   ChainShiftPreviewDto,
   GroupChangeCandidateDto,
   GroupChangePreviewDto,
@@ -246,6 +248,14 @@ export const closureService = {
 };
 
 // Telafi kredileri — personel tarafı (/api/studio)
+// Sprint 29B: seansa aday öğrenci listeleri (Owner/StudioAdmin). Regular: tercih gün/saat sıralı; Makeup: telafi bazlı.
+export const bookingCandidateService = {
+  regular: (sessionId: string, level?: StudentLevel | null) =>
+    api<RegularCandidateDto[]>(`/api/studio/class-sessions/${sessionId}/regular-candidates${level ? `?level=${level}` : ""}`),
+  makeup: (sessionId: string, level?: StudentLevel | null) =>
+    api<MakeupCandidateDto[]>(`/api/studio/class-sessions/${sessionId}/makeup-candidates${level ? `?level=${level}` : ""}`),
+};
+
 export const makeupCreditService = {
   forStudent: (studentId: string) => api<StudentMakeupCreditsDto>(`/api/studio/students/${studentId}/makeup-credits`),
   // Sprint 28C-2: telafi dersine eklenebilir LINE'lar (kullanılabilir line hak > 0). Opsiyonel level filtre.

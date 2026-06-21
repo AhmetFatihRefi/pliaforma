@@ -544,6 +544,24 @@ export interface MakeupEligibleLineDto {
   endDate: string;
 }
 
+// Sprint 29B: Regular seansa aday öğrenci (öğrenci + uygun line). Aynı öğrencinin çok uygun line'ı → çok satır.
+export interface RegularCandidateDto {
+  studentProfileId: string;
+  studentName: string;
+  studentLevel?: StudentLevel | null;
+  lineId: string;
+  lineLabel: string;
+  classTypeName: string;
+  availableForPlanning: number;
+  isIndividual: boolean;
+  matchedDay: boolean;
+  hasPreferredSlots: boolean;
+  nearestPreferredTime?: string | null; // "HH:mm:ss"
+  minutesFromSession?: number | null;
+}
+// Sprint 29B: makeup aday = mevcut MakeupEligibleLineDto (session-scoped: classType + çakışma server-side).
+export type MakeupCandidateDto = MakeupEligibleLineDto;
+
 // Sprint 27: telafi dersi talebi (Instructor Makeup Request & Pending Schedule Blocks).
 export type MakeupRequestStatus = "Pending" | "Approved" | "Rejected" | "Withdrawn";
 

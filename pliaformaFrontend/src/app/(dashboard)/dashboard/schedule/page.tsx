@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, bookingService, classSessionService, classTypeService, contractService, groupScheduleChangeService, makeupCreditService, makeupRequestService, studentService } from "@/lib/studioApi";
+import { attendanceService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupRequestService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceItemDto,
@@ -18,9 +18,9 @@ import {
   type GroupChangePreviewDto,
   type MakeupEligibleLineDto,
   type MakeupRequestDto,
+  type RegularCandidateDto,
   type SessionAttendanceDto,
   type StudentDto,
-  type StudentContractLineDto,
   type StudentLevel,
   attendanceStatusLabels,
   bookingStatusLabels,
@@ -891,72 +891,47 @@ function RescheduleModal({ session, onClose, onDone, isManager }: {
 }
 
 function StaffBookingModal({ session, onClose, onDone }: { session: ClassSessionDto; onClose: () => void; onDone: () => void }) {
-  // Sprint 20: Telafi (Makeup) seansına YALNIZCA kullanılabilir telafi hakkı olan öğrenciler eklenebilir.
+  // Sprint 29B: aday öğrenciler backend candidate uçlarından gelir (Regular: tercih gün/saat sıralı; Makeup: telafi bazlı).
   const isMakeup = session.sessionKind === "Makeup";
   const [search, setSearch] = useState("");
-  const [level, setLevel] = useState<StudentLevel | "">(""); // Sprint 28C-1/2: opsiyonel seviye filtresi (regular + makeup)
-  const [results, setResults] = useState<StudentDto[]>([]);
-  // Sprint 28C-2: makeup eligible LINE'lar (classType session ile eşleşenler).
-  const [eligible, setEligible] = useState<MakeupEligibleLineDto[]>([]);
+  const [level, setLevel] = useState<StudentLevel | "">("");
+  const [regular, setRegular] = useState<RegularCandidateDto[]>([]);
+  const [makeup, setMakeup] = useState<MakeupEligibleLineDto[]>([]);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Sprint 28C-1: Regular booking line seçimi — öğrencinin bu hoca+ders tipindeki birden çok aktif satırı varsa seçtir.
-  const [pickFor, setPickFor] = useState<StudentDto | null>(null);
-  const [pickLines, setPickLines] = useState<StudentContractLineDto[]>([]);
 
   useEffect(() => {
-    if (isMakeup) {
-      makeupCreditService.eligibleStudents(level || null).then(setEligible).catch(() => setEligible([]));
-      return;
-    }
-    const t = setTimeout(async () => {
-      try {
-        const lv = level || null;
-        setResults(search.trim() ? await studentService.search(search.trim(), lv) : await studentService.list(lv));
-      } catch {
-        setResults([]);
-      }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [search, level, isMakeup]);
+    let cancelled = false;
+    setLoading(true); setErr(null);
+    const lv = level || null;
+    const p = isMakeup
+      ? bookingCandidateService.makeup(session.id, lv).then((r) => { if (!cancelled) setMakeup(r); })
+      : bookingCandidateService.regular(session.id, lv).then((r) => { if (!cancelled) setRegular(r); });
+    p.catch((e) => { if (!cancelled) setErr(e instanceof ApiError ? e.message : "Aday listesi yüklenemedi."); })
+     .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [session.id, level, isMakeup]);
 
-  const book = async (studentProfileId: string, lineId?: string | null) => {
-    setBusyId(studentProfileId);
-    setErr(null);
-    try {
-      await bookingService.create(session.id, studentProfileId, lineId);
-      onDone();
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Rezervasyon yapılamadı.");
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  // Regular: önce öğrencinin bu hoca+ders tipindeki uygun aktif satırlarını çöz; 0/1 → otomatik, 2+ → seçtir.
-  const startBook = async (s: StudentDto) => {
-    setBusyId(s.id); setErr(null);
-    try {
-      const lines = await contractService.lines(s.id);
-      const matching = lines.filter((l) => l.status === "Active" && l.classTypeId === session.classTypeId
-        && l.instructorProfileId === session.instructorProfileId && l.availableLessonCount > 0);
-      if (matching.length > 1) { setPickFor(s); setPickLines(matching); setBusyId(null); return; }
-      await book(s.id, matching[0]?.id ?? null);
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Satırlar yüklenemedi.");
-      setBusyId(null);
-    }
+  // Her satır o satırın LineId'iyle booking yapar (line seçtirme modalı yok — her uygun line ayrı satır).
+  const book = async (studentProfileId: string, lineId: string) => {
+    setBusyId(lineId); setErr(null);
+    try { await bookingService.create(session.id, studentProfileId, lineId); onDone(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Rezervasyon yapılamadı."); setBusyId(null); }
   };
 
   const q = search.trim().toLowerCase();
-  // Makeup: line classType session ile eşleşmeli (Reformer telafisi Mat dersine harcanmaz) + isim araması.
-  const filteredEligible = eligible.filter((e) => e.classTypeId === session.classTypeId && e.studentName.toLowerCase().includes(q));
+  const fmtTime = (t?: string | null) => (t ? t.slice(0, 5) : null);
+  const filteredRegular = regular.filter((c) => c.studentName.toLowerCase().includes(q));
+  const filteredMakeup = makeup.filter((c) => c.studentName.toLowerCase().includes(q));
 
   return (
     <Modal open onClose={onClose} title={`${session.classTypeName} — ${isMakeup ? "Telafi dersine öğrenci ekle" : "Öğrenci ekle"}`}>
       <div className="space-y-3">
         {err && <Alert kind="error">{err}</Alert>}
-        {isMakeup && <Alert kind="info">Telafi dersine yalnızca kullanılabilir telafi hakkı olan öğrenciler eklenebilir.</Alert>}
+        {isMakeup
+          ? <Alert kind="info">Telafi: kullanılabilir telafi hakkı olan öğrenciler (tercih gün/saatten bağımsız).</Alert>
+          : <Alert kind="info">Adaylar tercih gün/saatine göre sıralanır; tercih günü ders gününe uymayan satırlar gelmez.</Alert>}
         <div className="flex items-center gap-2">
           <Input placeholder="Öğrenci ara…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <Select value={level} onChange={(e) => setLevel(e.target.value as StudentLevel | "")} className="w-40">
@@ -964,46 +939,50 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
             {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
           </Select>
         </div>
-        {pickFor && (
-          <div className="space-y-2 rounded-xl border border-primary bg-primary-soft/30 p-3">
-            <p className="text-sm font-medium text-foreground">{pickFor.fullName} — hangi satırdan eklensin?</p>
-            {pickLines.map((l) => (
-              <div key={l.id} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-                <span>{l.classTypeName} · {l.startDate}→{l.endDate} · kalan {l.availableLessonCount}{l.isIndividual ? " · Bireysel" : ""}</span>
-                <Button size="sm" disabled={busyId !== null} onClick={() => book(pickFor.id, l.id)}>Bu satır</Button>
-              </div>
-            ))}
-            <Button size="sm" variant="ghost" onClick={() => { setPickFor(null); setPickLines([]); }}>Vazgeç</Button>
-          </div>
-        )}
         <div className="max-h-72 space-y-2 overflow-y-auto">
-          {isMakeup ? (
-            filteredEligible.length === 0 ? (
-              <p className="text-sm text-muted">Bu ders tipinde kullanılabilir telafi hakkı olan satır yok.</p>
+          {loading ? (
+            <p className="text-sm text-muted">Yükleniyor…</p>
+          ) : isMakeup ? (
+            filteredMakeup.length === 0 ? (
+              <p className="text-sm text-muted">Bu derse uygun telafi hakkı olan öğrenci yok.</p>
             ) : (
-              // Sprint 28C-2: her satır = (öğrenci + line); kredi o line'dan düşülür.
-              filteredEligible.map((e) => (
-                <div key={e.lineId} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{e.studentName}</span>
-                    <span className="text-xs text-muted">{e.classTypeName} · {e.startDate}–{e.endDate}</span>
-                    <Badge tone="rose">{e.availableCredits} telafi</Badge>
+              filteredMakeup.map((c) => (
+                <div key={c.lineId} className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-medium text-foreground">{c.studentName}</span>
+                      <Badge tone="rose">{c.availableCredits} telafi</Badge>
+                      {c.level && <Badge tone="neutral">{studentLevelLabels[c.level]}</Badge>}
+                      <Badge tone={c.isIndividual ? "warning" : "neutral"}>{c.isIndividual ? "Bireysel" : "Grup"}</Badge>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted">{c.lineLabel}</p>
                   </div>
-                  <Button size="sm" disabled={busyId !== null} onClick={() => book(e.studentProfileId, e.lineId)}>Ekle</Button>
+                  <Button size="sm" disabled={busyId !== null} onClick={() => book(c.studentProfileId, c.lineId)}>Ekle</Button>
                 </div>
               ))
             )
-          ) : results.length === 0 ? (
-            <p className="text-sm text-muted">Öğrenci bulunamadı.</p>
+          ) : filteredRegular.length === 0 ? (
+            <p className="text-sm text-muted">Bu derse uygun aday öğrenci yok.</p>
           ) : (
-            results.map((s) => (
-              <div key={s.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
-                <div>
-                  <span className="text-sm font-medium text-foreground">{s.fullName}</span>
-                  {s.status === "Guest" && <Badge tone="warning">Misafir</Badge>}
-                  {s.status === "Inactive" && <Badge tone="neutral">Pasif</Badge>}
+            filteredRegular.map((c) => (
+              <div key={c.lineId} className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-sm font-medium text-foreground">{c.studentName}</span>
+                    <Badge tone="neutral">kalan {c.availableForPlanning}</Badge>
+                    {c.studentLevel && <Badge tone="neutral">{studentLevelLabels[c.studentLevel]}</Badge>}
+                    <Badge tone={c.isIndividual ? "warning" : "neutral"}>{c.isIndividual ? "Bireysel" : "Grup"}</Badge>
+                    {!c.hasPreferredSlots ? (
+                      <Badge tone="warning">tercih yok</Badge>
+                    ) : c.nearestPreferredTime ? (
+                      <Badge tone="success">tercih {fmtTime(c.nearestPreferredTime)} · ±{c.minutesFromSession} dk</Badge>
+                    ) : (
+                      <Badge tone="success">tercih: saat farketmez</Badge>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted">{c.lineLabel}</p>
                 </div>
-                <Button size="sm" disabled={busyId !== null || s.status === "Inactive"} onClick={() => startBook(s)}>Ekle</Button>
+                <Button size="sm" disabled={busyId !== null} onClick={() => book(c.studentProfileId, c.lineId)}>Ekle</Button>
               </div>
             ))
           )}
