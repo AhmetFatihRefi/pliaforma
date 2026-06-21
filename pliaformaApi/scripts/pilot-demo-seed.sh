@@ -84,7 +84,8 @@ post "/api/studio/contracts/$CELI/amendments" "{\"kind\":\"ExtraLessons\",\"addi
 ok "Elif: 8→12 ders, +2000 TL ek ücret"
 
 echo "== 7) Ödemeler (borçlu + ödemesi tam) =="
-pay(){ local pid; pid=$(body "$(post "/api/studio/students/$1/payments" "{\"amount\":$2,\"dueDate\":\"$3\",\"studentContractId\":\"$4\"}" "$OTOK")" | jget id); [ "${5:-}" = paid ] && post "/api/studio/payments/$pid/mark-paid" '{}' "$OTOK" >/dev/null; }
+# Sprint 29A: strict payment → ödeme line'a bağlanır ($4 contractId yerine öğrencinin ilk line'ı çözülür).
+pay(){ local lid pid; lid=$(curl -s "$BASE/api/studio/students/$1/contract-lines" -H "Authorization: Bearer $OTOK" | jget id); pid=$(body "$(post "/api/studio/students/$1/payments" "{\"amount\":$2,\"dueDate\":\"$3\",\"studentContractLineId\":\"$lid\"}" "$OTOK")" | jget id); [ "${5:-}" = paid ] && post "/api/studio/payments/$pid/mark-paid" '{}' "$OTOK" >/dev/null; }
 pay "$ZP" 5000 "$SD" "$CZP" paid                      # Zeynep: tam ödeme (borç 0)
 pay "$CAN" 2000 "$SD" "$CCAN" paid                     # Can: 6000'den 2000 ödendi → 4000 borç
 pay "$CAN" 4000 "$(date -d '+30 days' +%F)" "$CCAN"    # kalan 4000 vadeli (Pending)

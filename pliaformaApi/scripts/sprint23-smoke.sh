@@ -79,17 +79,19 @@ echo "--- 5) Negatif amendment booked altına DÜŞEMEZ (12 planlı, -5 → 7 < 
 expect "negatif amendment → 409" 409 "$(pcode "/api/studio/contracts/$C/amendments" "{\"kind\":\"Correction\",\"additionalLessonCount\":-5,\"additionalPrice\":0}" "$ATOK")"
 nexp "TotalLessonCount değişmedi (12)" 12 "$(ctot "$C")"
 
-echo "--- 6) Ödeme (contractId-only, tek-line header → legacy fallback) borç düşer ---"
-P1=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":2000,\"dueDate\":\"$SD\",\"studentContractId\":\"$C\"}" "$ATOK")" | jget id)
+echo "--- 6) Ödeme (line'a bağlı) borç düşer (Sprint 29A: strict payment → line zorunlu) ---"
+LN=$(sql "SELECT \"Id\" FROM \"StudentContractLines\" WHERE \"StudentContractId\"='$C' LIMIT 1;")
+P1=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":2000,\"dueDate\":\"$SD\",\"studentContractLineId\":\"$LN\"}" "$ATOK")" | jget id)
 pcode "/api/studio/payments/$P1/mark-paid" '{}' "$ATOK" >/dev/null
 nexp "TRY remaining 3000 (5000−2000)" 3000 "$(dval "$(debt "$St")" TRY remaining)"
-P2=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":3000,\"dueDate\":\"$SD\",\"studentContractId\":\"$C\"}" "$ATOK")" | jget id)
+P2=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":3000,\"dueDate\":\"$SD\",\"studentContractLineId\":\"$LN\"}" "$ATOK")" | jget id)
 pcode "/api/studio/payments/$P2/mark-paid" '{}' "$ATOK" >/dev/null
 nexp "TRY remaining 0" 0 "$(dval "$(debt "$St")" TRY remaining)"
 
-echo "--- 7) ETİKETSİZ ödeme contract borcunu DÜŞÜRMEZ (atanmamış) ---"
-P3=$(body "$(post "/api/studio/students/$St/payments" "{\"amount\":1000,\"dueDate\":\"$SD\"}" "$ATOK")" | jget id)
-pcode "/api/studio/payments/$P3/mark-paid" '{}' "$ATOK" >/dev/null
+echo "--- 7) Strict: etiketsiz ödeme API'dan oluşturulamaz (400); legacy etiketsiz kayıt borca SAYILMAZ ---"
+expect "etiketsiz ödeme API → 400 (strict 29A)" 400 "$(pcode "/api/studio/students/$St/payments" "{\"amount\":1000,\"dueDate\":\"$SD\"}" "$ATOK")"
+# Legacy (pre-29A) etiketsiz Paid ödeme SQL ile simüle → borca sayılmaz, unassigned'da görünür (v1.4 debt davranışı korunur).
+sql "INSERT INTO \"Payments\" (\"Id\",\"StudioId\",\"StudentProfileId\",\"Amount\",\"Currency\",\"DueDate\",\"Status\",\"CreatedByUserId\",\"CreatedAt\",\"IsDeleted\") SELECT gen_random_uuid(), \"StudioId\", \"Id\", 1000, 'TRY', CURRENT_DATE, 'Paid', '00000000-0000-0000-0000-000000000000', now(), false FROM \"StudentProfiles\" WHERE \"Id\"='$St';" >/dev/null
 D=$(debt "$St")
 nexp "TRY remaining hâlâ 0 (etiketsiz sayılmaz)" 0 "$(dval "$D" TRY remaining)"
 nexp "unassigned TRY 1000 (bilgi)" 1000 "$(unasg "$D" TRY)"

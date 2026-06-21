@@ -1371,6 +1371,58 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("StudentContractLines", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudentContractLinePreferredSlot", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DayOfWeek")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<TimeOnly?>("PreferredStartTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<int>("SequenceNo")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StudentContractLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentContractLineId");
+
+                    b.HasIndex("StudioId", "DayOfWeek");
+
+                    b.HasIndex("StudioId", "StudentContractLineId");
+
+                    b.ToTable("StudentContractLinePreferredSlots", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.StudentPackage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2480,6 +2532,25 @@ namespace Pliaforma.Persistence.Migrations
                     b.Navigation("InstructorProfile");
 
                     b.Navigation("StudentContract");
+
+                    b.Navigation("Studio");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudentContractLinePreferredSlot", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.StudentContractLine", "StudentContractLine")
+                        .WithMany()
+                        .HasForeignKey("StudentContractLineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StudentContractLine");
 
                     b.Navigation("Studio");
                 });

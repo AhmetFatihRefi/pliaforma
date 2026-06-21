@@ -49,10 +49,11 @@ STG=$(mksess "$(IST -d '+21 hours' +%Y-%m-%dT%H:%M:00)"); sbook "$STG" "$GG" >/d
 STB=$(mksess "$(IST -d '+22 hours' +%Y-%m-%dT%H:%M:00)"); BB=$(sbook "$STB" "$SB"); pcode "/api/studio/bookings/$BB/cancel" '{}' "$ATOK" >/dev/null  # iptal booking
 STD=$(mksess "$(IST -d '+23 hours' +%Y-%m-%dT%H:%M:00)"); sbook "$STD" "$SB" >/dev/null; pcode "/api/studio/class-sessions/$STD/cancel" '{}' "$ATOK" >/dev/null  # iptal session
 
-# Ödemeler (SA): due-soon (yarın), overdue (2020), paid
-post "/api/studio/students/$SA/payments" "{\"amount\":500,\"dueDate\":\"$TOMOR\"}" "$ATOK" >/dev/null
-post "/api/studio/students/$SA/payments" "{\"amount\":700,\"dueDate\":\"2020-01-01\"}" "$ATOK" >/dev/null
-PJ=$(post "/api/studio/students/$SA/payments" "{\"amount\":300,\"dueDate\":\"2020-01-01\"}" "$ATOK"); PPAID=$(body "$PJ" | jget id)
+# Ödemeler (SA): due-soon (yarın), overdue (2020), paid. Sprint 29A: strict payment → SA line'ına bağla.
+SAL=$(get "/api/studio/students/$SA/contract-lines" "$ATOK" | jget id)
+post "/api/studio/students/$SA/payments" "{\"amount\":500,\"dueDate\":\"$TOMOR\",\"studentContractLineId\":\"$SAL\"}" "$ATOK" >/dev/null
+post "/api/studio/students/$SA/payments" "{\"amount\":700,\"dueDate\":\"2020-01-01\",\"studentContractLineId\":\"$SAL\"}" "$ATOK" >/dev/null
+PJ=$(post "/api/studio/students/$SA/payments" "{\"amount\":300,\"dueDate\":\"2020-01-01\",\"studentContractLineId\":\"$SAL\"}" "$ATOK"); PPAID=$(body "$PJ" | jget id)
 pcode "/api/studio/payments/$PPAID/mark-paid" '{}' "$ATOK" >/dev/null
 
 echo "--- Manuel trigger üretimi ---"

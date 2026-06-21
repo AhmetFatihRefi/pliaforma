@@ -57,8 +57,11 @@ putcode "/api/studio/class-sessions/$S3/attendance" "{\"items\":[{\"bookingId\":
 # Paket + ödeme + makeup (GA)
 PL=$(body "$(post /api/studio/package-plans "{\"name\":\"4 Ders $TS\",\"creditCount\":4,\"price\":1000}" "$ATOK")" | jget id)
 post "/api/studio/students/$GA/packages" "{\"packagePlanId\":\"$PL\"}" "$ATOK" >/dev/null
-post "/api/studio/students/$GA/payments" "{\"amount\":500,\"dueDate\":\"2020-01-20\"}" "$ATOK" >/dev/null   # geçmiş vade → Overdue
-PJ=$(post "/api/studio/students/$GB/payments" "{\"amount\":300,\"dueDate\":\"2020-01-20\"}" "$ATOK"); PID=$(body "$PJ" | jget id)
+# Sprint 29A: strict payment → ödeme line'a bağlanır (GA/GB sözleşmeli → line var).
+GAL=$(get "/api/studio/students/$GA/contract-lines" "$ATOK" | jget id)
+GBL=$(get "/api/studio/students/$GB/contract-lines" "$ATOK" | jget id)
+post "/api/studio/students/$GA/payments" "{\"amount\":500,\"dueDate\":\"2020-01-20\",\"studentContractLineId\":\"$GAL\"}" "$ATOK" >/dev/null   # geçmiş vade → Overdue
+PJ=$(post "/api/studio/students/$GB/payments" "{\"amount\":300,\"dueDate\":\"2020-01-20\",\"studentContractLineId\":\"$GBL\"}" "$ATOK"); PID=$(body "$PJ" | jget id)
 pcode "/api/studio/payments/$PID/mark-paid" '{}' "$ATOK" >/dev/null
 # Sprint 28C-2: manuel grant lineId zorunlu → GA'nın line'ına yaz.
 GALINE=$(sql "SELECT l.\"Id\" FROM \"StudentContractLines\" l JOIN \"StudentContracts\" c ON c.\"Id\"=l.\"StudentContractId\" WHERE c.\"StudentProfileId\"='$GA' LIMIT 1;")

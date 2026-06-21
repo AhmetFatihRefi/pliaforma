@@ -12,6 +12,7 @@ import {
   type GuestInput,
   type MemberDto,
   type PaymentDto,
+  type PreferredSlotInput,
   type StudentContractDto,
   type StudentContractLineDto,
   type StudentDebtSummaryDto,
@@ -199,6 +200,19 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
   const emptyLine = { headerId: "", classTypeId: "", instructorProfileId: "", startDate: today, endDate: plus(60),
     lessonCount: 10, pricePerLesson: 0, makeupAllowance: 2, dueDate: "", isIndividual: false, currency: "TRY" };
   const [form, setForm] = useState(emptyLine);
+  // Sprint 29A: yeni line'da EN AZ 1 tercih gün/saat zorunlu (gün zorunlu, saat opsiyonel; aynı gün+saat tekrar edemez).
+  const [prefSlots, setPrefSlots] = useState<PreferredSlotInput[]>([]);
+  const [slotDay, setSlotDay] = useState<DayOfWeek>("Monday");
+  const [slotTime, setSlotTime] = useState("");
+  const addPrefSlot = () => {
+    const t = slotTime ? `${slotTime}:00` : null;
+    if (prefSlots.some((s) => s.dayOfWeek === slotDay && (s.preferredStartTime ?? null) === t)) {
+      setErr("Aynı gün ve saat tercihi zaten eklendi."); return;
+    }
+    setErr(null);
+    setPrefSlots((xs) => [...xs, { dayOfWeek: slotDay, preferredStartTime: t, notes: null }]);
+  };
+  const slotChipLabel = (s: PreferredSlotInput) => `${dayLabels[s.dayOfWeek]}${s.preferredStartTime ? ` ${s.preferredStartTime.slice(0, 5)}` : ""}`;
 
   const load = useCallback(async () => {
     try {
@@ -224,6 +238,7 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
 
   const addLine = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (prefSlots.length === 0) { setErr("En az bir tercih gün/saat ekleyin."); return; }
     setErr(null); setBusy(true);
     try {
       await contractService.addLine(student.id, {
@@ -238,8 +253,10 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
         dueDate: form.dueDate || null,
         isIndividual: form.isIndividual,
         currency: form.currency || "TRY",
+        preferredSlots: prefSlots,
       });
       setForm(emptyLine);
+      setPrefSlots([]); setSlotTime("");
       await load();
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "Satır eklenemedi.");
@@ -300,6 +317,28 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
               Bireysel dersler
             </label>
           </FormField>
+          {/* Sprint 29A: tercih gün/saatleri — en az 1 zorunlu (gün zorunlu, saat opsiyonel). */}
+          <div className="col-span-2 space-y-2 rounded-lg border border-dashed border-border p-2">
+            <p className="text-xs font-semibold text-muted">Tercih gün/saatleri (en az 1)</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <Select value={slotDay} onChange={(e) => setSlotDay(e.target.value as DayOfWeek)} className="w-36">
+                {daysOfWeek.map((d) => <option key={d} value={d}>{dayLabels[d]}</option>)}
+              </Select>
+              <Input type="time" value={slotTime} onChange={(e) => setSlotTime(e.target.value)} className="w-32" />
+              <Button type="button" variant="secondary" size="sm" onClick={addPrefSlot}>+ Tercih ekle</Button>
+              <span className="text-xs text-muted">Saat boş = farketmez</span>
+            </div>
+            {prefSlots.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {prefSlots.map((s, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-foreground">
+                    {slotChipLabel(s)}
+                    <button type="button" className="text-muted hover:text-danger" onClick={() => setPrefSlots((xs) => xs.filter((_, j) => j !== i))}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="col-span-2 flex justify-end">
             <Button type="submit" loading={busy}>Satır ekle</Button>
           </div>
@@ -338,6 +377,22 @@ function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDt
   const [time, setTime] = useState("18:00");
   const [reuse, setReuse] = useState(!l.isIndividual);
   const [genMsg, setGenMsg] = useState<string | null>(null);
+  // Sprint 29A: tercih gün/saatleri (chip + ekle/sil).
+  const [slotDay, setSlotDay] = useState<DayOfWeek>("Monday");
+  const [slotTime, setSlotTime] = useState("");
+  const [slotBusy, setSlotBusy] = useState(false);
+  const addSlot = async () => {
+    setSlotBusy(true);
+    try { await contractService.addPreferredSlot(l.id, { dayOfWeek: slotDay, preferredStartTime: slotTime ? `${slotTime}:00` : null, notes: null }); setSlotTime(""); onChanged(); }
+    catch (e) { onError(e instanceof ApiError ? e.message : "Tercih eklenemedi."); }
+    finally { setSlotBusy(false); }
+  };
+  const removeSlot = async (slotId: string) => {
+    setSlotBusy(true);
+    try { await contractService.removePreferredSlot(slotId); onChanged(); }
+    catch (e) { onError(e instanceof ApiError ? e.message : "Tercih kaldırılamadı."); }
+    finally { setSlotBusy(false); }
+  };
 
   const saveEdit = async () => {
     setBusy(true);
@@ -389,6 +444,32 @@ function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDt
         <span>Son ödeme: {l.dueDate ?? "Belirlenmedi"}</span>
         <span>Ödenen: {l.paid.toLocaleString("tr-TR")} {l.currency}</span>
         <span className={l.remaining > 0 ? "text-danger" : "text-success"}>Kalan: {l.remaining.toLocaleString("tr-TR")} {l.currency}</span>
+      </div>
+      {/* Sprint 29A: tercih gün/saatleri. */}
+      <div className="mt-2 border-t border-border pt-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted">Tercih gün/saatleri:</span>
+          {l.preferredSlots.length === 0 ? (
+            <span className="text-muted">—</span>
+          ) : (
+            l.preferredSlots.map((s) => (
+              <span key={s.id} className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-foreground">
+                {dayLabels[s.dayOfWeek]}{s.preferredStartTime ? ` ${s.preferredStartTime.slice(0, 5)}` : ""}
+                {l.status === "Active" && <button type="button" disabled={slotBusy} className="text-muted hover:text-danger" onClick={() => removeSlot(s.id)}>×</button>}
+              </span>
+            ))
+          )}
+        </div>
+        {l.status === "Active" && (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <Select value={slotDay} onChange={(e) => setSlotDay(e.target.value as DayOfWeek)} className="w-32">
+              {daysOfWeek.map((d) => <option key={d} value={d}>{dayLabels[d]}</option>)}
+            </Select>
+            <Input type="time" value={slotTime} onChange={(e) => setSlotTime(e.target.value)} className="w-28" />
+            <Button size="sm" variant="ghost" disabled={slotBusy} onClick={addSlot}>+ Tercih ekle</Button>
+            <span className="text-muted">Saat boş = farketmez</span>
+          </div>
+        )}
       </div>
       {editing && (
         <div className="mt-2 flex items-center gap-2 border-t border-border pt-2">
@@ -534,9 +615,11 @@ function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClos
 
   const createPayment = () => {
     if (!payAmount) { setErr("Tutar girin."); return; }
+    // Sprint 29A (strict payment): ödeme bir sözleşme satırına (paket) bağlanmak zorunda.
+    if (!payLineId) { setErr("Ödeme için bir sözleşme satırı (paket) seçin."); return; }
     wrap(() => paymentService.create(student.id, {
-      amount: Number(payAmount), dueDate: payDue, studentContractLineId: payLineId || null,
-    })).then(() => setPayAmount(""));
+      amount: Number(payAmount), dueDate: payDue, studentContractLineId: payLineId,
+    })).then(() => { setPayAmount(""); setPayLineId(""); });
   };
 
   const money = (n: number, cur: string) => `${n.toLocaleString("tr-TR")} ${cur}`;
@@ -600,15 +683,20 @@ function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClos
               </div>
             ))}
           </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Input type="number" min={0} step="0.01" placeholder="Tutar" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28" />
-            <Input type="date" value={payDue} onChange={(e) => setPayDue(e.target.value)} className="w-40" />
-            <Select value={payLineId} onChange={(e) => setPayLineId(e.target.value)} className="w-56">
-              <option value="">Diğer ödeme (borca sayılmaz)</option>
-              {activeLines.map((l) => <option key={l.id} value={l.id}>{l.classTypeName} · {l.startDate} ({l.currency})</option>)}
-            </Select>
-            <Button size="sm" disabled={busy} onClick={createPayment}>Ödeme ekle</Button>
-          </div>
+          {/* Sprint 29A (strict payment): ödeme bir paket (line) seçilmeden eklenemez; "Diğer ödeme" kaldırıldı. */}
+          {activeLines.length === 0 ? (
+            <p className="mt-2 text-xs text-muted">Önce bir sözleşme satırı (paket) ekleyin — ödeme bir pakete bağlanmak zorunda.</p>
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Input type="number" min={0} step="0.01" placeholder="Tutar" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28" />
+              <Input type="date" value={payDue} onChange={(e) => setPayDue(e.target.value)} className="w-40" />
+              <Select value={payLineId} onChange={(e) => setPayLineId(e.target.value)} className="w-56">
+                <option value="">Paket seçin…</option>
+                {activeLines.map((l) => <option key={l.id} value={l.id}>{l.classTypeName} · {l.startDate} ({l.currency})</option>)}
+              </Select>
+              <Button size="sm" disabled={busy} onClick={createPayment}>Ödeme ekle</Button>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end pt-2">

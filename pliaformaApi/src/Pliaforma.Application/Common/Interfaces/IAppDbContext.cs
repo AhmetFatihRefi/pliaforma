@@ -24,6 +24,7 @@ public interface IAppDbContext
     DbSet<ClassBooking> ClassBookings { get; }
     DbSet<StudentContract> StudentContracts { get; }
     DbSet<StudentContractLine> StudentContractLines { get; }
+    DbSet<StudentContractLinePreferredSlot> StudentContractLinePreferredSlots { get; }
     DbSet<ContractAmendment> ContractAmendments { get; }
     DbSet<MakeupCreditTransaction> MakeupCreditTransactions { get; }
     DbSet<MakeupRequest> MakeupRequests { get; }

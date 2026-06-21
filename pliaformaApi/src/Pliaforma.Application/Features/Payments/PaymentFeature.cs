@@ -120,6 +120,9 @@ public sealed class CreatePaymentValidator : AbstractValidator<CreatePaymentComm
     public CreatePaymentValidator()
     {
         RuleFor(x => x.StudentProfileId).NotEmpty();
+        // Sprint 29A (strict payment): ödeme artık ZORUNLU olarak bir sözleşme satırına (line) bağlanır. Line yoksa 400.
+        // Eski "Diğer ödeme" (line'sız) yeni ödemelerde üretilemez; eski unassigned kayıtlar salt-okunur korunur.
+        RuleFor(x => x.StudentContractLineId).NotEmpty().WithMessage("Ödeme bir sözleşme satırına (paket) bağlanmalı.");
         RuleFor(x => x.Amount).GreaterThanOrEqualTo(0);
         RuleFor(x => x.DueDate).NotEqual(default(DateOnly));
         RuleFor(x => x.Currency).Length(3).When(x => !string.IsNullOrWhiteSpace(x.Currency));

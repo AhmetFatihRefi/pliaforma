@@ -118,13 +118,13 @@ ok "Geçmiş seans + yoklama (Present, HTTP $ATT_CODE, kayıt doğrulandı); yak
 
 echo "== 7) Ödemeler + telafi kredisi (Sprint 18b: paket satışı kaldırıldı — paket modeli dormant) =="
 DUESOON=$(IST -d '+1 day' +%Y-%m-%d)
-post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"$DUESOON\"}" "$OTOK" >/dev/null            # due-soon
-PJ=$(post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-02-01\"}" "$OTOK"); PP=$(body "$PJ" | jget id)
-post "/api/studio/payments/$PP/mark-paid" '{}' "$OTOK" >/dev/null                                                  # paid
-post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-01-01\"}" "$OTOK" >/dev/null          # overdue
-# Sprint 27: 2 kredi → telafi TALEBİ akışı (rezerve + approve consume + retry başlığı) için headroom.
-# Sprint 28C-2: manuel grant lineId zorunlu → GS'in grup line'ına (GC) yaz.
+# Sprint 28C-2/29A: manuel grant + ödeme line zorunlu → GS'in grup line'ına (GC) bağla (dueDate NULL → LinePaymentDue tetiklemez).
 GLINE=$(docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "SELECT \"Id\" FROM \"StudentContractLines\" WHERE \"StudentContractId\"='$GC' ORDER BY \"SequenceNo\" LIMIT 1;" 2>/dev/null)
+post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"$DUESOON\",\"studentContractLineId\":\"$GLINE\"}" "$OTOK" >/dev/null            # due-soon
+PJ=$(post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-02-01\",\"studentContractLineId\":\"$GLINE\"}" "$OTOK"); PP=$(body "$PJ" | jget id)
+post "/api/studio/payments/$PP/mark-paid" '{}' "$OTOK" >/dev/null                                                  # paid
+post "/api/studio/students/$GS/payments" "{\"amount\":600,\"dueDate\":\"2020-01-01\",\"studentContractLineId\":\"$GLINE\"}" "$OTOK" >/dev/null          # overdue
+# Sprint 27: 2 kredi → telafi TALEBİ akışı (rezerve + approve consume + retry başlığı) için headroom.
 post "/api/studio/students/$GS/makeup-credits/grant" "{\"studentContractLineId\":\"$GLINE\",\"amount\":2,\"notes\":\"E2E demo\"}" "$OTOK" >/dev/null
 ok "due-soon/paid/overdue ödeme + telafi kredisi"
 

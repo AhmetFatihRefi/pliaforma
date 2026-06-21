@@ -34,8 +34,9 @@ test.describe("Sözleşme ek işlemi & borç (Sprint 23)", () => {
     await row(page).getByRole("button", { name: "Ödemeler" }).click();
     await expect(page.getByRole("heading", { name: /— Finans/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Borç özeti" })).toBeVisible();
-    // Sprint 28B: ödeme line'a bağlanır; line seçilmezse "Diğer ödeme" (borca sayılmaz).
-    await expect(page.getByRole("option", { name: /Diğer ödeme/ })).toBeAttached();
+    // Sprint 29A (strict payment): ödeme bir pakete (line) bağlanır; "Diğer ödeme" kaldırıldı, "Paket seçin…" gelir.
+    await expect(page.getByRole("option", { name: "Paket seçin…" })).toBeAttached();
+    await expect(page.getByRole("option", { name: /Diğer ödeme/ })).toHaveCount(0);
   });
 
   test("Sözleşmeler modalında 'Satır ekle' (line) akışı var; amendment yok (Sprint 28B)", async ({ page }) => {

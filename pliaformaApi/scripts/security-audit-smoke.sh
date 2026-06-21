@@ -46,11 +46,12 @@ S2=$(body "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I2P\",
 # Sprint 18b: Regular booking sözleşme ister → SA'ya geniş sözleşme (CTA).
 curl -s -o /dev/null -X POST "$BASE/api/studio/students/$SA/contracts" -H 'Content-Type: application/json' -H "Authorization: Bearer $ATOK" -d "{\"classTypeId\":\"$CTA\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":100,\"makeupAllowance\":5,\"price\":0,\"isIndividualDefault\":false}"
 BA=$(body "$(post "/api/studio/class-sessions/$S1/bookings" "{\"studentProfileId\":\"$SA\"}" "$ATOK")" | jget id)
-PA=$(body "$(post "/api/studio/students/$SA/payments" "{\"amount\":100,\"dueDate\":\"2026-12-31\"}" "$ATOK")" | jget id)
-DUE=$(body "$(post "/api/studio/students/$SA/payments" "{\"amount\":50,\"dueDate\":\"2020-01-01\"}" "$ATOK")" | jget id)
-# B öğrencisi + booking/payment
+# Sprint 29A: strict payment → SA'nın line'ına bağla (SA'nın sözleşmesi var).
+SAL=$(get "/api/studio/students/$SA/contract-lines" "$ATOK" | jget id)
+PA=$(body "$(post "/api/studio/students/$SA/payments" "{\"amount\":100,\"dueDate\":\"2026-12-31\",\"studentContractLineId\":\"$SAL\"}" "$ATOK")" | jget id)
+DUE=$(body "$(post "/api/studio/students/$SA/payments" "{\"amount\":50,\"dueDate\":\"2020-01-01\",\"studentContractLineId\":\"$SAL\"}" "$ATOK")" | jget id)
+# B öğrencisi (Sprint 29A: PB kaldırıldı — SBp'nin sözleşmesi/line'ı yok, strict payment 400 verir; izolasyon SBp by-id ile test edilir)
 SBp=$(body "$(post /api/studio/students/guest "{\"fullName\":\"sb\",\"source\":\"Phone\"}" "$BTOK")" | jget id)
-PB=$(body "$(post "/api/studio/students/$SBp/payments" "{\"amount\":100,\"dueDate\":\"2026-12-31\"}" "$BTOK")" | jget id)
 # PlatformAdmin
 post /api/auth/register "{\"fullName\":\"padmin\",\"email\":\"secp+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null
 docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "UPDATE \"Users\" SET \"GlobalRole\"='PlatformAdmin' WHERE \"Email\"='secp+$TS@pf.local';" >/dev/null 2>&1

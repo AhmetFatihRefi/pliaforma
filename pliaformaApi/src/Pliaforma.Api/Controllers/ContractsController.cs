@@ -81,4 +81,13 @@ public sealed class ContractsController : ApiControllerBase
     [HttpPost("contract-lines/{lineId:guid}/cancel")]
     public Task<IActionResult> CancelContractLine(Guid lineId, CancellationToken ct) =>
         Send(new CancelContractLineCommand(lineId), "Sözleşme satırı iptal edildi.", ct);
+
+    // Sprint 29A: line tercih gün/saatleri (ekle/sil). Owner/StudioAdmin (controller guard). Instructor/Student yazamaz.
+    [HttpPost("contract-lines/{lineId:guid}/preferred-slots")]
+    public Task<IActionResult> AddPreferredSlot(Guid lineId, AddLinePreferredSlotCommand command, CancellationToken ct) =>
+        Send(command with { LineId = lineId }, "Tercih eklendi.", ct);
+
+    [HttpDelete("contract-lines/preferred-slots/{slotId:guid}")]
+    public Task<IActionResult> RemovePreferredSlot(Guid slotId, CancellationToken ct) =>
+        Send(new RemoveLinePreferredSlotCommand(slotId), "Tercih kaldırıldı.", ct);
 }

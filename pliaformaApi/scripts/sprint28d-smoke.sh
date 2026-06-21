@@ -40,7 +40,7 @@ guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\
 # Öğrenciyi kullanıcıya çevir → bildirim alabilsin/görsün. Token döner.
 mkuser(){ local g="$1" em="$2"; post /api/auth/register "{\"fullName\":\"$1u\",\"email\":\"$em\",\"password\":\"$PW\"}" >/dev/null; vrf "$em"; post "/api/studio/students/$g/convert-to-user" "{\"email\":\"$em\",\"initialPassword\":\"$PW\"}" "$ATOK" >/dev/null; login "$em"; }
 # addline: $1=student $2=classType $3=dueDate(boş=null) $4=lessonCount $5=perLesson → line id
-addline(){ local due=""; [ -n "$3" ] && due=",\"dueDate\":\"$3\""; body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$START\",\"endDate\":\"$END\",\"lessonCount\":$4,\"pricePerLesson\":$5,\"makeupAllowance\":1,\"isIndividual\":false,\"currency\":\"TRY\"$due}" "$ATOK")" | jget id; }
+addline(){ local due=""; [ -n "$3" ] && due=",\"dueDate\":\"$3\""; body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$START\",\"endDate\":\"$END\",\"lessonCount\":$4,\"pricePerLesson\":$5,\"makeupAllowance\":1,\"isIndividual\":false,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]$due}" "$ATOK")" | jget id; }
 runrem(){ post /api/studio/notifications/run-reminders '{}' "$ATOK"; }
 # LinePaymentDue bildirim sayısı (öğrenci dedup key'iyle).
 lpd(){ sql "SELECT count(*) FROM \"Notifications\" WHERE \"Type\"='LinePaymentDue' AND \"DeduplicationKey\" LIKE 'line-payment-due:$1:%';"; }
@@ -95,13 +95,11 @@ sql "UPDATE \"Notifications\" SET \"DeduplicationKey\"='line-payment-due:$SE:$PR
 runrem >/dev/null
 expectn "SE remaining 0 sonrası bu hafta yeni YOK (hâlâ 1, eski geçen-haftaya taşındı)" 1 "$(lpd "$SE")"
 
-echo "--- 9) Unassigned ödeme remaining'i düşürmez → reminder hâlâ oluşur ---"
-SF=$(guest SF); TF=$(mkuser "$SF" "sf28d+$TS@pf.local"); LF=$(addline "$SF" "$CT" "$TODAY" 4 300)  # remaining 1200
-# line'a bağlanmamış ödeme (studentContractLineId yok)
-PF=$(body "$(post "/api/studio/students/$SF/payments" "{\"amount\":500,\"dueDate\":\"$TODAY\"}" "$ATOK")" | jget id)
-pcode "/api/studio/payments/$PF/mark-paid" '{}' "$ATOK" >/dev/null
+echo "--- 9) Strict (29A): line'sız ödeme → 400; line remaining>0 → reminder oluşur ---"
+SF=$(guest SF); TF=$(mkuser "$SF" "sf28d+$TS@pf.local"); LF=$(addline "$SF" "$CT" "$TODAY" 4 300)  # remaining 1200, dueDate bugün
+expect "SF line'sız ödeme → 400 (strict 29A)" 400 "$(pcode "/api/studio/students/$SF/payments" "{\"amount\":500,\"dueDate\":\"$TODAY\"}" "$ATOK")"
 runrem >/dev/null
-expectn "unassigned ödeme remaining'i düşürmedi → 1 LinePaymentDue" 1 "$(lpd "$SF")"
+expectn "ödeme yok → remaining 1200 → 1 LinePaymentDue" 1 "$(lpd "$SF")"
 
 echo "--- 10) Çok line aynı öğrenci → TEK özet (body 2 line listeler) ---"
 SG=$(guest SG); TG=$(mkuser "$SG" "sg28d+$TS@pf.local")
@@ -132,8 +130,8 @@ expectn "misafir SJ → LinePaymentDue YOK" 0 "$(lpd "$SJ")"
 expectn "result.skippedGuest >= 1" 1 "$([ "$(body "$RJ" | jq2 'd.data.skippedGuest')" -ge 1 ] && echo 1 || echo 0)"
 
 echo "--- 14) Regresyon: eski PaymentDueSoon (Payment-bazlı) çalışır ---"
-SK=$(guest SK); TK=$(mkuser "$SK" "sk28d+$TS@pf.local")
-post "/api/studio/students/$SK/payments" "{\"amount\":300,\"dueDate\":\"$TODAY\"}" "$ATOK" >/dev/null  # due today → PaymentDueSoon
+SK=$(guest SK); TK=$(mkuser "$SK" "sk28d+$TS@pf.local"); LK=$(addline "$SK" "$CT" "" 4 100)  # line dueDate YOK → LinePaymentDue tetiklenmez
+post "/api/studio/students/$SK/payments" "{\"amount\":300,\"dueDate\":\"$TODAY\",\"studentContractLineId\":\"$LK\"}" "$ATOK" >/dev/null  # due today → PaymentDueSoon (legacy)
 runrem >/dev/null
 expect "eski PaymentDueSoon bildirimi üretildi" yes "$(has "$(gbody /api/notifications "$TK")" 'PaymentDueSoon')"
 

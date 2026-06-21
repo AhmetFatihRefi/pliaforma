@@ -156,6 +156,21 @@ export const studentLevelLabels: Record<StudentLevel, string> = {
   Beginner: "Başlangıç", Intermediate: "Orta", Advanced: "İleri",
 };
 
+// Sprint 29A: line tercih gün/saati (gün zorunlu, saat opsiyonel). preferredStartTime "HH:mm:ss" | null.
+export interface PreferredSlotDto {
+  id: string;
+  dayOfWeek: DayOfWeek;
+  preferredStartTime?: string | null;
+  isActive: boolean;
+  sequenceNo: number;
+  notes?: string | null;
+}
+export interface PreferredSlotInput {
+  dayOfWeek: DayOfWeek;
+  preferredStartTime?: string | null;
+  notes?: string | null;
+}
+
 // Sprint 28A: sözleşme satırı (read-only). Line editör/ekleme 28B.
 export type StudentContractLineStatus = "Active" | "Completed" | "Cancelled" | "Expired";
 export interface StudentContractLineDto {
@@ -182,6 +197,8 @@ export interface StudentContractLineDto {
   status: StudentContractLineStatus;
   currency: string;
   sequenceNo: number;
+  // Sprint 29A: öğrencinin tercih ettiği gün/saatler (gün zorunlu, saat opsiyonel).
+  preferredSlots: PreferredSlotDto[];
 }
 
 // ===== Sprint 3: Ders Seansları (Sprint 26: hoca müsaitlik DTO'su kaldırıldı — modül ana üründen çıktı) =====
@@ -351,6 +368,8 @@ export interface ContractLineInput {
   isIndividual: boolean;
   currency?: string | null;
   notes?: string | null;
+  // Sprint 29A: yeni line'da EN AZ 1 tercih gün/saat zorunlu (aynı gün+saat tekrar edemez).
+  preferredSlots: PreferredSlotInput[];
 }
 
 // ===== Sprint 4: Rezervasyon =====

@@ -23,8 +23,19 @@ SID=$(sqlq "SELECT \"Id\" FROM \"Studios\" WHERE \"Name\"='TZS $TS';")
 SP=$(post "/api/studio/students/guest" '{"fullName":"S","source":"Phone"}' "$ATOK" | jget id)
 FUT=$(date -d "+5 days" +%Y-%m-%d)
 
+# Sprint 29A: strict payment → ödeme line'a bağlanır. SP'ye sözleşme (→ line) için hoca + ders grubu bootstrap.
+login(){ post /api/auth/login "{\"email\":\"$1\",\"password\":\"$PW\"}" | jget accessToken; }
+post /api/auth/register "{\"fullName\":\"tzi\",\"email\":\"tzi+$TS@pf.local\",\"password\":\"$PW\"}" >/dev/null
+sqlq "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\"='tzi+$TS@pf.local' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null
+MID=$(post /api/studio/memberships/invite "{\"email\":\"tzi+$TS@pf.local\",\"role\":\"Instructor\",\"rate\":1}" "$ATOK" | jget membershipId)
+ITOK=$(login "tzi+$TS@pf.local"); post "/api/members/$MID/accept" '{}' "$ITOK" >/dev/null
+IPID=$(get "/api/studio/memberships" "$ATOK" | tr '{' '\n' | grep "tzi+$TS@pf.local" | grep -o '"instructorProfileId":"[^"]*"' | head -1 | sed 's/.*:"\([^"]*\)"/\1/')
+CTZ=$(post /api/class-types "{\"name\":\"Mat\",\"defaultDurationMinutes\":60}" "$ATOK" | jget id)
+post "/api/studio/students/$SP/contracts" "{\"classTypeId\":\"$CTZ\",\"instructorProfileId\":\"$IPID\",\"startDate\":\"2020-01-01\",\"endDate\":\"2035-01-01\",\"totalLessonCount\":10,\"makeupAllowance\":1,\"price\":0,\"isIndividualDefault\":false}" "$ATOK" >/dev/null
+SPL=$(get "/api/studio/students/$SP/contract-lines" "$ATOK" | jget id)
+
 echo "--- 1) UTC alan (payment createdAt) → İstanbul (+3), Z yok ---"
-PAY=$(post "/api/studio/students/$SP/payments" "{\"amount\":100,\"dueDate\":\"$FUT\"}" "$ATOK")
+PAY=$(post "/api/studio/students/$SP/payments" "{\"amount\":100,\"dueDate\":\"$FUT\",\"studentContractLineId\":\"$SPL\"}" "$ATOK")
 PID=$(echo "$PAY" | jget id)
 API_CA=$(jval "$PAY" createdAt | cut -c1-16)
 DB_UTC=$(sqlq "SELECT to_char(\"CreatedAt\" AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI') FROM \"Payments\" WHERE \"Id\"='$PID';")

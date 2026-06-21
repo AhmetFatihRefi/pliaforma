@@ -23,7 +23,10 @@ public sealed record CreateStudentContractCommand(
     decimal Price,
     string? Currency,
     bool IsIndividualDefault,
-    string? Notes) : ICommand<StudentContractDto>, IStudioWriteRequest;
+    string? Notes,
+    // Sprint 29A: legacy/ilk sözleşme ucu — tercih slotları OPSIYONEL (verilirse ilk line'a yazılır; verilmezse
+    // line slotsuz/geçiş kalır). Yeni "alım" (CreateStudentContractLine) ≥1 slot ZORUNLU; bu uçta zorunlu değil.
+    IReadOnlyList<PreferredSlotInput>? PreferredSlots = null) : ICommand<StudentContractDto>, IStudioWriteRequest;
 
 public sealed class CreateStudentContractValidator : AbstractValidator<CreateStudentContractCommand>
 {
@@ -39,6 +42,10 @@ public sealed class CreateStudentContractValidator : AbstractValidator<CreateStu
         RuleFor(x => x.Price).GreaterThanOrEqualTo(0);
         RuleFor(x => x.Currency).MaximumLength(8);
         RuleFor(x => x.Notes).MaximumLength(2000);
+        // Slot verilirse iç-duplicate olamaz (boş = geçerli; bu uçta slot opsiyonel).
+        RuleFor(x => x.PreferredSlots)
+            .Must(s => !PreferredSlotRules.HasInternalDuplicates(s!)).When(x => x.PreferredSlots is { Count: > 0 })
+            .WithMessage("Aynı gün ve saat tercihi tekrar edemez.");
     }
 }
 
@@ -95,7 +102,7 @@ public sealed class CreateStudentContractHandler : ICommandHandler<CreateStudent
 
         // Sprint 28A (line modeli): her sözleşme header'dır + 1 line. Hak/ücret/telafi line üzerinde takip edilir;
         // davranış değişmez (eski akış hâlâ contract alanlarını okur). Yeni alımlar 28B'de yeni line olur.
-        _db.StudentContractLines.Add(new StudentContractLine
+        var line = new StudentContractLine
         {
             StudioId = studioId,
             StudentContractId = contract.Id,
@@ -113,7 +120,14 @@ public sealed class CreateStudentContractHandler : ICommandHandler<CreateStudent
             Currency = currency,
             SequenceNo = 1,
             CreatedByUserId = userId,
-        });
+        };
+        _db.StudentContractLines.Add(line);
+
+        // Sprint 29A: bu uçta tercih slotları OPSIYONEL — verilirse ilk line'a yazılır (verilmezse slotsuz/geçiş).
+        if (request.PreferredSlots is { Count: > 0 } prefs)
+            foreach (var s in PreferredSlotRules.Build(studioId, line.Id, userId, prefs))
+                _db.StudentContractLinePreferredSlots.Add(s);
+
         await _db.SaveChangesAsync(ct);
 
         return new StudentContractDto(

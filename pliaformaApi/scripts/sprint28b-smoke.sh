@@ -42,7 +42,7 @@ CT1=$(ctype Mat); CT2=$(ctype Reformer)
 TODAY=$(date +%F); END=$(date -d "+60 days" +%F)
 SX=$(guest SX); SY=$(guest SY)
 # addline: $1=student $2=ct $3=lessonCount $4=perLesson $5=currency $6=extra-json → full post çıktısı
-addline(){ post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$TODAY\",\"endDate\":\"$END\",\"lessonCount\":$3,\"pricePerLesson\":$4,\"makeupAllowance\":1,\"isIndividual\":false,\"currency\":\"$5\"${6:+,$6}}" "$ATOK"; }
+addline(){ post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$TODAY\",\"endDate\":\"$END\",\"lessonCount\":$3,\"pricePerLesson\":$4,\"makeupAllowance\":1,\"isIndividual\":false,\"currency\":\"$5\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]${6:+,$6}}" "$ATOK"; }
 markpaid(){ pcode "/api/studio/payments/$1/mark-paid" '{}' "$ATOK"; }
 paid(){ gbody "/api/studio/students/$1/contract-lines" "$ATOK" | jq2 "d.data.find(l=>l.id==='$2')?.paid"; }
 remaining(){ gbody "/api/studio/students/$1/contract-lines" "$ATOK" | jq2 "d.data.find(l=>l.id==='$2')?.remaining"; }
@@ -73,21 +73,15 @@ pcode "/api/studio/contracts/$H1/amendments" "{\"kind\":\"PriceAdjustment\",\"ad
 DEBT=$(gbody "/api/studio/students/$SX/debt" "$ATOK")
 expectn "TRY borç toplam=2000 (L1+L2; amendment 500 HARİÇ)" 2000 "$(echo "$DEBT" | jq2 "d.data.byCurrency.find(c=>c.currency==='TRY')?.total")"
 
-echo "--- 5) Çok-line header'da contractId-only null-line ödeme HİÇBİR line'a sayılmaz (çift sayım yok) ---"
-P2=$(body "$(post "/api/studio/students/$SX/payments" "{\"amount\":400,\"dueDate\":\"$TODAY\",\"studentContractId\":\"$H1\"}" "$ATOK")" | jget id)
-markpaid "$P2" >/dev/null
-expectn "L1 paid hâlâ 300 (400 dağılmadı)" 300 "$(paid "$SX" "$L1")"
+echo "--- 5) Çok-line header'da contractId-only ödeme → 400 (Sprint 29A strict) ---"
+expect "contractId-only ödeme (çok-line) → 400" 400 "$(pcode "/api/studio/students/$SX/payments" "{\"amount\":400,\"dueDate\":\"$TODAY\",\"studentContractId\":\"$H1\"}" "$ATOK")"
+expectn "L1 paid hâlâ 300 (değişmedi)" 300 "$(paid "$SX" "$L1")"
 expectn "L2 paid hâlâ 0" 0 "$(paid "$SX" "$L2")"
-DEBT=$(gbody "/api/studio/students/$SX/debt" "$ATOK")
-expectn "TRY ödenen=300 (yalnız L1; çok-line header null-line sayılmaz)" 300 "$(echo "$DEBT" | jq2 "d.data.byCurrency.find(c=>c.currency==='TRY')?.paid")"
-expectn "TRY atanmamış=400" 400 "$(echo "$DEBT" | jq2 "d.data.unassignedByCurrency.find(c=>c.currency==='TRY')?.paid")"
 
-echo "--- 6) Line'sız ödeme = Diğer ödeme (borca sayılmaz) ---"
-P3=$(body "$(post "/api/studio/students/$SX/payments" "{\"amount\":50,\"dueDate\":\"$TODAY\"}" "$ATOK")" | jget id)
-markpaid "$P3" >/dev/null
+echo "--- 6) Line'sız (etiketsiz) ödeme → 400 (Sprint 29A strict; eski unassigned salt-okunur) ---"
+expect "line'sız ödeme → 400" 400 "$(pcode "/api/studio/students/$SX/payments" "{\"amount\":50,\"dueDate\":\"$TODAY\"}" "$ATOK")"
 DEBT=$(gbody "/api/studio/students/$SX/debt" "$ATOK")
-expectn "TRY atanmamış=450 (400+50)" 450 "$(echo "$DEBT" | jq2 "d.data.unassignedByCurrency.find(c=>c.currency==='TRY')?.paid")"
-expectn "TRY ödenen hâlâ 300 (borca sayılmaz)" 300 "$(echo "$DEBT" | jq2 "d.data.byCurrency.find(c=>c.currency==='TRY')?.paid")"
+expectn "TRY ödenen hâlâ 300" 300 "$(echo "$DEBT" | jq2 "d.data.byCurrency.find(c=>c.currency==='TRY')?.paid")"
 
 echo "--- 7) Currency bazında ayrı (USD line); cross-currency tek toplam yok ---"
 RU=$(addline "$SX" "$CT1" 5 20 USD); LU=$(body "$RU" | jget id)
@@ -96,11 +90,9 @@ DEBT=$(gbody "/api/studio/students/$SX/debt" "$ATOK")
 expectn "byCurrency 2 blok (TRY+USD)" 2 "$(echo "$DEBT" | jq2 'd.data.byCurrency.length')"
 expectn "USD total=100 (5×20)" 100 "$(echo "$DEBT" | jq2 "d.data.byCurrency.find(c=>c.currency==='USD')?.total")"
 
-echo "--- 8) ContractId-only legacy: tek-line header'da fallback sayılır (SY) ---"
+echo "--- 8) ContractId-only ödeme → 400 (Sprint 29A strict; legacy fallback coverage sprint29a-smoke'da) ---"
 RY=$(addline "$SY" "$CT1" 8 50 TRY); LY=$(body "$RY" | jget id); HY=$(body "$RY" | jget studentContractId)
-PY=$(body "$(post "/api/studio/students/$SY/payments" "{\"amount\":200,\"dueDate\":\"$TODAY\",\"studentContractId\":\"$HY\"}" "$ATOK")" | jget id)
-markpaid "$PY" >/dev/null
-expectn "SY tek-line header → L_Y paid=200 (legacy fallback)" 200 "$(paid "$SY" "$LY")"
+expect "SY contractId-only ödeme → 400" 400 "$(pcode "/api/studio/students/$SY/payments" "{\"amount\":200,\"dueDate\":\"$TODAY\",\"studentContractId\":\"$HY\"}" "$ATOK")"
 
 echo "--- 9) DueDate/Notes edit + güvenli cancel ---"
 expect "L2 dueDate/notes edit → 200" 200 "$(code "$(put "/api/studio/contract-lines/$L2" "{\"dueDate\":\"2026-12-31\",\"notes\":\"x\"}" "$ATOK")")"

@@ -40,7 +40,9 @@ public sealed record StudentContractLineDto(
     bool IsIndividual,
     StudentContractLineStatus Status,
     string Currency,
-    int SequenceNo);
+    int SequenceNo,
+    // Sprint 29A: öğrencinin bu paket kapsamında tercih ettiği gün/saatler (gün zorunlu, saat opsiyonel).
+    IReadOnlyList<PreferredSlotDto> PreferredSlots);
 
 internal static class ContractLineQuery
 {
@@ -74,15 +76,26 @@ internal static class ContractLineQuery
             })
             .ToListAsync(ct);
 
+        // Sprint 29A: aktif tercih slotları (line bazında, SequenceNo sıralı). Tek sorgu → bellek-içi grupla.
+        var lineIds = raw.Select(r => r.Id).ToList();
+        var slotRows = await db.StudentContractLinePreferredSlots.AsNoTracking()
+            .Where(s => lineIds.Contains(s.StudentContractLineId) && s.IsActive)
+            .OrderBy(s => s.SequenceNo).ThenBy(s => s.CreatedAt)
+            .Select(s => new { s.StudentContractLineId, Dto = new PreferredSlotDto(s.Id, s.DayOfWeek, s.PreferredStartTime, s.IsActive, s.SequenceNo, s.Notes) })
+            .ToListAsync(ct);
+        var slotsByLine = slotRows.GroupBy(s => s.StudentContractLineId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<PreferredSlotDto>)g.Select(x => x.Dto).ToList());
+
         return raw.Select(r =>
         {
             var paid = r.DirectPaid + (r.HeaderLineCount == 1 ? r.LegacyCandidate : 0m);
             var scheduled = r.Scheduled + (r.HeaderLineCount == 1 ? r.LegacyScheduled : 0);
+            var slots = slotsByLine.TryGetValue(r.Id, out var sl) ? sl : (IReadOnlyList<PreferredSlotDto>)System.Array.Empty<PreferredSlotDto>();
             return new StudentContractLineDto(
                 r.Id, r.StudentContractId, r.StudentProfileId, r.StudentName, r.ClassTypeId, r.ClassTypeName,
                 r.InstructorProfileId, r.InstructorName, r.StartDate, r.EndDate, r.LessonCount, scheduled,
                 r.LessonCount - scheduled, r.PricePerLesson, r.TotalPrice, paid, r.TotalPrice - paid,
-                r.MakeupAllowance, r.DueDate, r.IsIndividual, r.Status, r.Currency, r.SequenceNo);
+                r.MakeupAllowance, r.DueDate, r.IsIndividual, r.Status, r.Currency, r.SequenceNo, slots);
         }).ToList();
     }
 
@@ -179,7 +192,9 @@ public sealed record CreateStudentContractLineCommand(
     DateOnly? DueDate,
     bool IsIndividual,
     string? Currency,
-    string? Notes) : ICommand<StudentContractLineDto>, IStudioWriteRequest;
+    string? Notes,
+    // Sprint 29A: yeni line'da EN AZ 1 tercih gün/saat zorunlu (gün zorunlu, saat opsiyonel; aynı gün+saat tekrar edemez).
+    IReadOnlyList<PreferredSlotInput>? PreferredSlots = null) : ICommand<StudentContractLineDto>, IStudioWriteRequest;
 
 public sealed class CreateStudentContractLineValidator : AbstractValidator<CreateStudentContractLineCommand>
 {
@@ -194,6 +209,11 @@ public sealed class CreateStudentContractLineValidator : AbstractValidator<Creat
         RuleFor(x => x.MakeupAllowance).GreaterThanOrEqualTo(0).LessThanOrEqualTo(1000);
         RuleFor(x => x.Currency).MaximumLength(8);
         RuleFor(x => x.Notes).MaximumLength(2000);
+        // Sprint 29A: en az 1 tercih slotu zorunlu.
+        RuleFor(x => x.PreferredSlots).NotEmpty().WithMessage("En az bir tercih gün/saat girilmeli.");
+        RuleFor(x => x.PreferredSlots)
+            .Must(s => !PreferredSlotRules.HasInternalDuplicates(s!)).When(x => x.PreferredSlots is { Count: > 0 })
+            .WithMessage("Aynı gün ve saat tercihi tekrar edemez.");
     }
 }
 
@@ -270,6 +290,12 @@ public sealed class CreateStudentContractLineHandler : ICommandHandler<CreateStu
             CreatedByUserId = userId,
         };
         _db.StudentContractLines.Add(line);
+
+        // Sprint 29A: tercih slotları (validator ≥1 + iç-duplicate garanti eder). Aynı işlemde line ile yazılır.
+        var slots = request.PreferredSlots ?? System.Array.Empty<PreferredSlotInput>();
+        foreach (var s in PreferredSlotRules.Build(studioId, line.Id, userId, slots))
+            _db.StudentContractLinePreferredSlots.Add(s);
+
         await _db.SaveChangesAsync(ct);
 
         var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), ct);

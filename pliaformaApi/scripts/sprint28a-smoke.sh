@@ -71,9 +71,9 @@ expect "line dueDate YOK (backfill/oluşturmada NULL → omit)" no "$(has "$LINE
 expect "line makeupAllowance=2" yes "$(has "$LINES" '"makeupAllowance":2')"
 
 echo "--- 5) Payment + Booking + Makeup → backfill → line'a bağlanma ---"
-# Ödeme (sözleşmeli, 150) + ödendi.
-PJ=$(post "/api/studio/students/$SX/payments" "{\"amount\":150,\"dueDate\":\"$TODAY\",\"studentContractId\":\"$CX\"}" "$ATOK"); PID=$(body "$PJ" | jget id)
-post "/api/studio/payments/$PID/mark-paid" '{}' "$ATOK" >/dev/null
+# Ödeme (sözleşmeli, 150). Sprint 29A strict: API artık line-zorunlu → legacy null-line+contractId Paid ödeme SQL ile
+# (pre-29A veri simülasyonu); backfill bunu line'a bağlar (aşağıda line.paid=150 doğrulanır).
+sql "INSERT INTO \"Payments\" (\"Id\",\"StudioId\",\"StudentProfileId\",\"StudentContractId\",\"Amount\",\"Currency\",\"DueDate\",\"Status\",\"CreatedByUserId\",\"CreatedAt\",\"IsDeleted\") SELECT gen_random_uuid(), \"StudioId\", \"Id\", '$CX', 150, 'TRY', CURRENT_DATE, 'Paid', '00000000-0000-0000-0000-000000000000', now(), false FROM \"StudentProfiles\" WHERE \"Id\"='$SX';" >/dev/null
 # Booking: seans + öğrenciyi rezerve et (Regular → sözleşme auto-resolve).
 SB=$(body "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$I1P\",\"classTypeId\":\"$CT\",\"startAt\":\"${D5}T12:00:00\"}" "$ATOK")" | jget id)
 BK=$(body "$(post "/api/studio/class-sessions/$SB/bookings" "{\"studentProfileId\":\"$SX\"}" "$ATOK")" | jget id)

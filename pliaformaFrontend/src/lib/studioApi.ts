@@ -46,6 +46,7 @@ import type {
   StudentContractDto,
   StudentContractLineDto,
   ContractLineInput,
+  PreferredSlotInput,
   ContractScheduleSlotInput,
   ContractSchedulePreviewDto,
   GenerateContractScheduleResultDto,
@@ -136,6 +137,11 @@ export const contractService = {
     api<StudentContractLineDto>(`/api/studio/contract-lines/${lineId}`, { method: "PUT", body: input }),
   cancelLine: (lineId: string) =>
     api<StudentContractLineDto>(`/api/studio/contract-lines/${lineId}/cancel`, { method: "POST", body: {} }),
+  // Sprint 29A: line tercih gün/saatleri (ekle/sil) — döner: güncel line.
+  addPreferredSlot: (lineId: string, input: PreferredSlotInput) =>
+    api<StudentContractLineDto>(`/api/studio/contract-lines/${lineId}/preferred-slots`, { method: "POST", body: input }),
+  removePreferredSlot: (slotId: string) =>
+    api<StudentContractLineDto>(`/api/studio/contract-lines/preferred-slots/${slotId}`, { method: "DELETE" }),
 };
 
 // Kullanıcı tarafı üyelik aksiyonları (/api/members)
