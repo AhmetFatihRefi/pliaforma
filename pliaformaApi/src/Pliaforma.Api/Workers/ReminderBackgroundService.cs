@@ -17,6 +17,7 @@ public sealed class ReminderBackgroundService : BackgroundService
     private readonly ILogger<ReminderBackgroundService> _logger;
     private readonly TimeSpan _interval;
     private readonly bool _enabled;
+    private readonly int _interStudioDelayMs;   // Sprint 28D: stüdyolar arası opsiyonel stagger (vars. 0)
 
     public ReminderBackgroundService(IServiceScopeFactory scopeFactory, ILogger<ReminderBackgroundService> logger, IConfiguration config)
     {
@@ -25,6 +26,7 @@ public sealed class ReminderBackgroundService : BackgroundService
         var seconds = config.GetValue<int?>("Notifications:ReminderIntervalSeconds") ?? 300;
         _interval = TimeSpan.FromSeconds(Math.Max(seconds, 15));
         _enabled = config.GetValue<bool?>("Notifications:WorkerEnabled") ?? true;
+        _interStudioDelayMs = Math.Max(0, config.GetValue<int?>("Notifications:InterStudioDelayMs") ?? 0);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -62,14 +64,18 @@ public sealed class ReminderBackgroundService : BackgroundService
             try
             {
                 var r = await scanner.RunForStudioAsync(sid, ct);
-                if (r.Total > 0)
-                    _logger.LogInformation("Stüdyo {StudioId}: {N} bildirim üretildi (ders {C}, due-soon {D}, overdue {O}).",
-                        sid, r.Total, r.ClassReminders, r.PaymentDueSoon, r.PaymentOverdue);
+                if (r.Total > 0 || r.Deferred > 0)
+                    _logger.LogInformation("Stüdyo {StudioId}: {N} bildirim (ders {C}, due-soon {D}, overdue {O}, line {L}); ertelenen {Def}, misafir-atlanan {Sg}.",
+                        sid, r.Total, r.ClassReminders, r.PaymentDueSoon, r.PaymentOverdue, r.LinePaymentDue, r.Deferred, r.SkippedGuest);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Stüdyo {StudioId} için reminder taraması başarısız; diğerlerine devam.", sid);
             }
+
+            // Sprint 28D: stüdyolar arası opsiyonel stagger (ani yük yığılmasını dağıtır).
+            if (_interStudioDelayMs > 0)
+                try { await Task.Delay(_interStudioDelayMs, ct); } catch (TaskCanceledException) { break; }
         }
     }
 }

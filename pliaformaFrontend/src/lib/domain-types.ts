@@ -937,7 +937,7 @@ export interface InstructorsReportDto { period: string; instructors: InstructorR
 export type NotificationType =
   | "ClassReminder" | "PaymentDueSoon" | "PaymentOverdue"
   | "MakeupCreditGranted" | "BookingCancelled" | "SessionRescheduled" | "System"
-  | "MembershipInvite";
+  | "MembershipInvite" | "LinePaymentDue";
 export type NotificationChannel = "InApp" | "Log" | "Email" | "Sms" | "WhatsApp";
 export type NotificationStatus = "Pending" | "Sent" | "Failed" | "Read";
 
@@ -950,6 +950,7 @@ export const notificationTypeLabels: Record<NotificationType, string> = {
   SessionRescheduled: "Ders ertelendi",
   System: "Sistem",
   MembershipInvite: "Stüdyo daveti",
+  LinePaymentDue: "Ödeme hatırlatması",
 };
 
 export interface NotificationDto {
@@ -972,6 +973,10 @@ export interface ReminderRunResultDto {
   classReminders: number;
   paymentDueSoon: number;
   paymentOverdue: number;
+  // Sprint 28D: line ödeme hatırlatması + throttle/skip sayaçları.
+  linePaymentDue: number;
+  deferred: number;
+  skippedGuest: number;
   total: number;
 }
 

@@ -14,6 +14,10 @@ public enum NotificationType
     /// <summary>Stüdyo bir kullanıcıyı üye (hoca/admin) olarak davet etti (Sprint 17). DB string saklandığı için
     /// enum sonuna eklemek migration gerektirmez.</summary>
     MembershipInvite = 7,
+
+    /// <summary>Sprint 28D: sözleşme satırı (line) ödeme hatırlatması — DueDate gelmiş/geçmiş + kalan>0. Öğrenci-bazlı
+    /// haftalık özet (nazik dil). DB string saklandığı için migration gerektirmez.</summary>
+    LinePaymentDue = 8,
 }
 
 /// <summary>

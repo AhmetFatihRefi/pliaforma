@@ -48,7 +48,7 @@ export default function NotificationsPage() {
     setBusy(true); setInfo(null); setError(null);
     try {
       const r = await notificationService.runReminders();
-      setInfo(`${r.total} bildirim üretildi (ders ${r.classReminders}, vade ${r.paymentDueSoon}, gecikmiş ${r.paymentOverdue}).`);
+      setInfo(`${r.total} bildirim üretildi (ders ${r.classReminders}, vade ${r.paymentDueSoon}, gecikmiş ${r.paymentOverdue}, ödeme hatırlatma ${r.linePaymentDue}).`);
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Çalıştırılamadı.");
