@@ -84,6 +84,44 @@ public sealed class ConfirmSessionHandler : ICommandHandler<ConfirmSessionComman
     }
 }
 
+// ---- Sprint 29C: ders onayını geri al (Unconfirm) ----
+public sealed record UnconfirmSessionCommand(Guid SessionId) : ICommand<SessionAttendanceDto>, IStudioWriteRequest;
+
+public sealed class UnconfirmSessionHandler : ICommandHandler<UnconfirmSessionCommand, SessionAttendanceDto>
+{
+    private readonly IAppDbContext _db;
+    private readonly ICurrentUserService _currentUser;
+    private readonly IDateTime _clock;
+
+    public UnconfirmSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
+    {
+        _db = db;
+        _currentUser = currentUser;
+        _clock = clock;
+    }
+
+    public async Task<SessionAttendanceDto> Handle(UnconfirmSessionCommand request, CancellationToken cancellationToken)
+    {
+        var studioId = _currentUser.RequireStudioId();
+
+        var session = await _db.ClassSessions
+            .FirstOrDefaultAsync(s => s.Id == request.SessionId && s.StudioId == studioId, cancellationToken)
+            ?? throw new NotFoundException("Ders seansı", request.SessionId);
+
+        // Yetki ConfirmSession ile AYNI (Owner/Admin tümü; Instructor planlanan/fiilî hocası kendisi olan ders).
+        await SchedulingAccess.EnsureCanConfirmSessionAsync(_db, _currentUser, studioId, session, cancellationToken);
+
+        if (session.Status != ClassSessionStatus.Completed)
+            throw new ConflictException("Yalnızca tamamlanmış ders geri alınabilir.");
+
+        // Sadece status geri al; attendance kayıtları + makeup ledger'a DOKUNMA. Delivered count türetilmiş → otomatik düşer.
+        session.Status = ClassSessionStatus.Scheduled;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return await AttendanceViews.BuildSessionViewAsync(_db, _clock, studioId, session, cancellationToken);
+    }
+}
+
 // ---- Bugünün derslerini topluca onayla ----
 public sealed record ConfirmTodayResultDto(int ConfirmedCount, int PresentMarkedCount, int SkippedFutureCount, int AlreadyCompletedCount);
 

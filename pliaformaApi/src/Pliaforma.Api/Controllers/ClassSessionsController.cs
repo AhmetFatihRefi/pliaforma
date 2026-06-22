@@ -61,6 +61,11 @@ public sealed class ClassSessionsController : ApiControllerBase
     public Task<IActionResult> Confirm(Guid id, CancellationToken ct) =>
         Send(new ConfirmSessionCommand(id), "Ders onaylandı.", ct);
 
+    // Sprint 29C: ders onayını geri al (Completed → Scheduled). Yetki confirm ile aynı (EnsureCanConfirmSessionAsync).
+    [HttpPost("{id:guid}/unconfirm")]
+    public Task<IActionResult> Unconfirm(Guid id, CancellationToken ct) =>
+        Send(new UnconfirmSessionCommand(id), "Ders onayı geri alındı.", ct);
+
     // Sprint 25: stüdyo-geneli toplu onay yalnız Owner/StudioAdmin (Instructor → 403).
     [Authorize(Roles = "Owner,StudioAdmin")]
     [HttpPost("confirm-today")]

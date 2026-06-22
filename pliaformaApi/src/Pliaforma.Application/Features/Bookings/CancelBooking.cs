@@ -44,6 +44,11 @@ public sealed class CancelBookingHandler : ICommandHandler<CancelBookingCommand,
         if (booking.Status != ClassBookingStatus.Booked)
             throw new ConflictException("Bu rezervasyon zaten iptal edilmiş.");
 
+        // Sprint 29C: işlenmiş (Completed) seanstan doğrudan öğrenci çıkarılamaz — önce onay geri alınmalı (unconfirm).
+        var session = await _db.ClassSessions.FirstAsync(s => s.Id == booking.ClassSessionId, cancellationToken);
+        if (session.Status == ClassSessionStatus.Completed)
+            throw new ConflictException("İşlenmiş dersten öğrenci çıkarılamaz. Önce ders onayını geri alın.");
+
         ClassBookingStatus newStatus;
         if (role == StudioRole.Student)
         {
@@ -60,8 +65,6 @@ public sealed class CancelBookingHandler : ICommandHandler<CancelBookingCommand,
         }
         else if (role == StudioRole.Instructor)
         {
-            var session = await _db.ClassSessions
-                .FirstAsync(s => s.Id == booking.ClassSessionId, cancellationToken);
             var ownsSession = await _db.InstructorProfiles
                 .AnyAsync(p => p.Id == session.InstructorProfileId && p.UserId == userId, cancellationToken);
             if (!ownsSession)

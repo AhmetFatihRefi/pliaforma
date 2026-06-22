@@ -437,7 +437,13 @@ function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDt
       </div>
       <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 text-muted sm:grid-cols-3">
         <span>Tarih: {l.startDate} → {l.endDate}</span>
-        <span>Ders: {l.scheduledLessonCount}/{l.lessonCount} (kalan {l.availableLessonCount})</span>
+        {/* Sprint 29C: kalan hak = işlenmiş bazlı; planlanabilir = planlanmış+işlenmiş düşülen kapasite. */}
+        <span
+          className="col-span-2 sm:col-span-3"
+          title="Kalan hak, işlenmiş derslere göre hesaplanır. Planlanabilir sayı, planlanmış ve işlenmiş dersler düşüldükten sonra kalan kapasitedir."
+        >
+          Ders: Toplam {l.lessonCount} · Planlanmış {l.plannedLessonCount} · İşlenmiş {l.deliveredLessonCount} · Kalan hak {l.remainingLessonRight} · Planlanabilir {l.availableLessonCount}
+        </span>
         <span>Telafi hakkı: {l.makeupAllowance}</span>
         <span>Ders başı: {l.pricePerLesson.toLocaleString("tr-TR")} {l.currency}</span>
         <span>Toplam: {l.totalPrice.toLocaleString("tr-TR")} {l.currency}</span>

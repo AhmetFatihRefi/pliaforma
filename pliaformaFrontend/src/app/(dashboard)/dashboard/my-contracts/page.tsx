@@ -68,10 +68,16 @@ export default function MyContractsPage() {
                 <Badge tone={statusTone(l.status)}>{studentContractStatusLabels[l.status]}</Badge>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center">
+              {/* Sprint 29C: ders hakkı kalan = işlenmiş bazlı; planlanabilir = planlanmış+işlenmiş düşülen kapasite. */}
+              <div
+                className="grid grid-cols-3 gap-2 text-center sm:grid-cols-5"
+                title="Kalan hak, işlenmiş derslere göre hesaplanır. Planlanabilir sayı, planlanmış ve işlenmiş dersler düşüldükten sonra kalan kapasitedir."
+              >
                 <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Toplam ders</p><p className="text-lg font-semibold text-foreground">{l.lessonCount}</p></div>
-                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Planlanmış</p><p className="text-lg font-semibold text-foreground">{l.scheduledLessonCount}</p></div>
-                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Kalan ders</p><p className="text-lg font-semibold text-foreground">{l.availableLessonCount}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Planlanmış</p><p className="text-lg font-semibold text-foreground">{l.plannedLessonCount}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">İşlenmiş</p><p className="text-lg font-semibold text-foreground">{l.deliveredLessonCount}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Kalan hak</p><p className="text-lg font-semibold text-foreground">{l.remainingLessonRight}</p></div>
+                <div className="rounded-lg border border-border p-2"><p className="text-xs text-muted">Planlanabilir</p><p className="text-lg font-semibold text-foreground">{l.availableLessonCount}</p></div>
               </div>
 
               <div className="rounded-lg bg-surface p-2 text-sm">

@@ -197,6 +197,11 @@ export interface StudentContractLineDto {
   status: StudentContractLineStatus;
   currency: string;
   sequenceNo: number;
+  // Sprint 29C: ders hakkı tüketimi. scheduledLessonCount = planned + delivered (reserved);
+  // availableLessonCount = AvailableForPlanning ("Planlanabilir"); remainingLessonRight = max(0, lessonCount − delivered).
+  plannedLessonCount: number;
+  deliveredLessonCount: number;
+  remainingLessonRight: number;
   // Sprint 29A: öğrencinin tercih ettiği gün/saatler (gün zorunlu, saat opsiyonel).
   preferredSlots: PreferredSlotDto[];
 }

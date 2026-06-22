@@ -40,6 +40,36 @@ internal static class ContractLineRules
     public static async Task<int> AvailableAsync(IAppDbContext db, StudentContractLine line, CancellationToken ct)
         => Math.Max(0, line.LessonCount - await ReservedRegularAsync(db, line, ct));
 
+    /// <summary>Sprint 29C: PLANLANMIŞ (Booked + Regular + seans Scheduled) ders sayısı — legacy null-line fallback yalnız tek-line header'da.</summary>
+    public static async Task<int> PlannedRegularAsync(IAppDbContext db, StudentContractLine line, CancellationToken ct)
+    {
+        var direct = await db.ClassBookings.CountAsync(b => b.StudentContractLineId == line.Id
+            && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
+            && b.ClassSession!.Status == ClassSessionStatus.Scheduled, ct);
+        var headerLineCount = await db.StudentContractLines.CountAsync(x => x.StudentContractId == line.StudentContractId, ct);
+        if (headerLineCount != 1) return direct;
+        var legacy = await db.ClassBookings.CountAsync(b => b.StudentContractLineId == null
+            && b.StudentContractId == line.StudentContractId
+            && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
+            && b.ClassSession!.Status == ClassSessionStatus.Scheduled, ct);
+        return direct + legacy;
+    }
+
+    /// <summary>Sprint 29C: İŞLENMİŞ (Booked + Regular + seans Completed) ders sayısı — D1: Absent de tüketir (booking Booked kalır).</summary>
+    public static async Task<int> DeliveredRegularAsync(IAppDbContext db, StudentContractLine line, CancellationToken ct)
+    {
+        var direct = await db.ClassBookings.CountAsync(b => b.StudentContractLineId == line.Id
+            && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
+            && b.ClassSession!.Status == ClassSessionStatus.Completed, ct);
+        var headerLineCount = await db.StudentContractLines.CountAsync(x => x.StudentContractId == line.StudentContractId, ct);
+        if (headerLineCount != 1) return direct;
+        var legacy = await db.ClassBookings.CountAsync(b => b.StudentContractLineId == null
+            && b.StudentContractId == line.StudentContractId
+            && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
+            && b.ClassSession!.Status == ClassSessionStatus.Completed, ct);
+        return direct + legacy;
+    }
+
     /// <summary>
     /// Regular seansın yeni saati, o seansa bağlı Booked booking'lerin line tarih aralığında olmalı
     /// (karar #5 — hard block). Makeup seans MUAF (28C-2'de line-aware). Line'ı NULL booking'ler atlanır (legacy/geçiş).

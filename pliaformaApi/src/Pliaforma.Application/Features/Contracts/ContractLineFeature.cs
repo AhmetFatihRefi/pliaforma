@@ -41,6 +41,12 @@ public sealed record StudentContractLineDto(
     StudentContractLineStatus Status,
     string Currency,
     int SequenceNo,
+    // Sprint 29C: ders hakkı tüketimi. ScheduledLessonCount = Planned + Delivered (Reserved); AvailableLessonCount =
+    // AvailableForPlanning (booking kapısı). Planned = Scheduled seanstaki Booked regular; Delivered = Completed
+    // seanstaki Booked regular; RemainingLessonRight = max(0, LessonCount − Delivered) (kullanıcıya görünen kalan hak).
+    int PlannedLessonCount,
+    int DeliveredLessonCount,
+    int RemainingLessonRight,
     // Sprint 29A: öğrencinin bu paket kapsamında tercih ettiği gün/saatler (gün zorunlu, saat opsiyonel).
     IReadOnlyList<PreferredSlotDto> PreferredSlots);
 
@@ -59,12 +65,22 @@ internal static class ContractLineQuery
                 l.ClassTypeId, ClassTypeName = l.ClassType!.Name,
                 l.InstructorProfileId, InstructorName = l.InstructorProfile!.DisplayName,
                 l.StartDate, l.EndDate, l.LessonCount,
-                Scheduled = db.ClassBookings.Count(b => b.StudentContractLineId == l.Id
-                    && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular),
-                // Sprint 28C-1 (karar #7): legacy null-line booking — tek-line header'da bu line'a sayılır (available fallback).
-                LegacyScheduled = db.ClassBookings.Count(b => b.StudentContractLineId == null
+                // Sprint 29C: Planned (Scheduled seans) + Delivered (Completed seans) ayrı; toplamı = eski Scheduled (Reserved).
+                Planned = db.ClassBookings.Count(b => b.StudentContractLineId == l.Id
+                    && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
+                    && b.ClassSession!.Status == ClassSessionStatus.Scheduled),
+                Delivered = db.ClassBookings.Count(b => b.StudentContractLineId == l.Id
+                    && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
+                    && b.ClassSession!.Status == ClassSessionStatus.Completed),
+                // Sprint 28C-1 (karar #7): legacy null-line booking — tek-line header'da bu line'a sayılır (Planned/Delivered ayrı).
+                LegacyPlanned = db.ClassBookings.Count(b => b.StudentContractLineId == null
                     && b.StudentContractId == l.StudentContractId
-                    && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular),
+                    && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
+                    && b.ClassSession!.Status == ClassSessionStatus.Scheduled),
+                LegacyDelivered = db.ClassBookings.Count(b => b.StudentContractLineId == null
+                    && b.StudentContractId == l.StudentContractId
+                    && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular
+                    && b.ClassSession!.Status == ClassSessionStatus.Completed),
                 l.PricePerLesson, l.TotalPrice,
                 DirectPaid = db.Payments.Where(p => p.StudentContractLineId == l.Id && p.Status == PaymentStatus.Paid)
                     .Sum(p => (decimal?)p.Amount) ?? 0m,
@@ -89,13 +105,18 @@ internal static class ContractLineQuery
         return raw.Select(r =>
         {
             var paid = r.DirectPaid + (r.HeaderLineCount == 1 ? r.LegacyCandidate : 0m);
-            var scheduled = r.Scheduled + (r.HeaderLineCount == 1 ? r.LegacyScheduled : 0);
+            // Sprint 29C: Planned/Delivered legacy-aware; ScheduledLessonCount = Planned+Delivered (Reserved); Available = LessonCount−Reserved.
+            var planned = r.Planned + (r.HeaderLineCount == 1 ? r.LegacyPlanned : 0);
+            var delivered = r.Delivered + (r.HeaderLineCount == 1 ? r.LegacyDelivered : 0);
+            var scheduled = planned + delivered;
+            var remainingRight = System.Math.Max(0, r.LessonCount - delivered);
             var slots = slotsByLine.TryGetValue(r.Id, out var sl) ? sl : (IReadOnlyList<PreferredSlotDto>)System.Array.Empty<PreferredSlotDto>();
             return new StudentContractLineDto(
                 r.Id, r.StudentContractId, r.StudentProfileId, r.StudentName, r.ClassTypeId, r.ClassTypeName,
                 r.InstructorProfileId, r.InstructorName, r.StartDate, r.EndDate, r.LessonCount, scheduled,
                 r.LessonCount - scheduled, r.PricePerLesson, r.TotalPrice, paid, r.TotalPrice - paid,
-                r.MakeupAllowance, r.DueDate, r.IsIndividual, r.Status, r.Currency, r.SequenceNo, slots);
+                r.MakeupAllowance, r.DueDate, r.IsIndividual, r.Status, r.Currency, r.SequenceNo,
+                planned, delivered, remainingRight, slots);
         }).ToList();
     }
 

@@ -200,6 +200,9 @@ export const classSessionService = {
   // Sprint 19: ders onayı + fiilî hoca.
   confirm: (id: string) =>
     api<SessionAttendanceDto>(`/api/studio/class-sessions/${id}/confirm`, { method: "POST", body: {} }),
+  // Sprint 29C: ders onayını geri al (Completed → Scheduled).
+  unconfirm: (id: string) =>
+    api<SessionAttendanceDto>(`/api/studio/class-sessions/${id}/unconfirm`, { method: "POST", body: {} }),
   confirmToday: () =>
     api<ConfirmTodayResultDto>("/api/studio/class-sessions/confirm-today", { method: "POST", body: {} }),
   setActualInstructor: (id: string, actualInstructorProfileId: string | null) =>

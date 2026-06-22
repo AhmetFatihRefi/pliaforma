@@ -143,6 +143,16 @@ export default function SchedulePage() {
     finally { setBusyId(null); }
   };
 
+  // Sprint 29C: ders onayını geri al (Completed → Scheduled). İşlenmiş ders sayımı düşer, kalan hak geri gelir.
+  const unconfirmSession = async (s: ClassSessionDto) => {
+    if (!window.confirm("Bu dersin onayı geri alınacak (Planlı durumuna döner).\nİşlenmiş ders sayımı düşer; yoklama kayıtları korunur.")) return;
+    setBusyId(s.id);
+    setError(null);
+    try { await classSessionService.unconfirm(s.id); await load(); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Onay geri alınamadı."); }
+    finally { setBusyId(null); }
+  };
+
   const confirmToday = async () => {
     if (!window.confirm("Bugünün başlamış/geçmiş dersleri onaylanacak (gelecek saatli ve iptal dersler atlanır).\nİşaretlenmemiş öğrenciler Present (Geldi) kabul edilecek.")) return;
     setBusyId("today");
@@ -290,6 +300,10 @@ export default function SchedulePage() {
                             {isManager && <Button variant="ghost" size="sm" onClick={() => markNotDelivered(s)}>İşlenmedi</Button>}
                             {canConfirm(s) && <Button size="sm" loading={busyId === s.id} onClick={() => confirmSession(s)}>Onayla</Button>}
                           </>
+                        )}
+                        {/* Sprint 29C: işlenmiş dersin onayını geri al (confirm yetkisiyle aynı). */}
+                        {s.status === "Completed" && canConfirm(s) && (
+                          <Button variant="ghost" size="sm" loading={busyId === s.id} onClick={() => unconfirmSession(s)}>Onayı geri al</Button>
                         )}
                         <Button variant="ghost" size="sm" onClick={() => setBookingsFor(s)}>Rezervasyonlar</Button>
                         <Button variant="ghost" size="sm" onClick={() => setAttendanceFor(s)}>Yoklama</Button>
