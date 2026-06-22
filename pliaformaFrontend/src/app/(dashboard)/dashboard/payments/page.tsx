@@ -1,52 +1,103 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { paymentService, studentService } from "@/lib/studioApi";
-import { ApiError } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { paymentService, studentService, contractService } from "@/lib/studioApi";
 import {
   type PaymentDto,
   type PaymentMethod,
   type PaymentStatus,
   type StudentDto,
+  type StudentContractLineDto,
   paymentMethodLabels,
   paymentStatusLabels,
 } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, useConfirm, useToast } from "@/components/ui";
+import { errorMessage } from "@/lib/errors";
 
-const tone = (s: PaymentStatus) =>
+const money = (n: number, c = "TRY") => `${n.toLocaleString("tr-TR")} ${c === "TRY" ? "₺" : c}`;
+const statusTone = (s: PaymentStatus) =>
   s === "Paid" ? "success" : s === "Overdue" ? "danger" : s === "Cancelled" || s === "Refunded" ? "neutral" : "warning";
+const isOpen = (p: PaymentDto) => p.status === "Pending" || p.status === "Overdue";
+
+// Bir öğrencinin tüm ödemeleri + türetilmiş özet (borç hesaplamasını stüdyo kendisi yapsın diye).
+interface StudentGroup {
+  studentProfileId: string;
+  studentName: string;
+  payments: PaymentDto[];
+  open: PaymentDto[];      // ödenmemiş (Pending + Overdue)
+  overdue: PaymentDto[];   // vadesi geçmiş
+  outstanding: number;     // ödenmemiş toplam
+  overdueAmount: number;   // geciken toplam
+  currency: string;
+}
 
 export default function PaymentsPage() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [items, setItems] = useState<PaymentDto[]>([]);
-  const [status, setStatus] = useState<"" | PaymentStatus>("");
+  const [onlyDebtors, setOnlyDebtors] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await paymentService.list({ status: status || undefined }));
+      setItems(await paymentService.list());
       setError(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Ödemeler yüklenemedi.");
+      setError(errorMessage(e, "Ödemeler yüklenemedi."));
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = (id: string) =>
+    setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  const groups = useMemo<StudentGroup[]>(() => {
+    const map = new Map<string, StudentGroup>();
+    for (const p of items) {
+      let g = map.get(p.studentProfileId);
+      if (!g) {
+        g = { studentProfileId: p.studentProfileId, studentName: p.studentName, payments: [], open: [], overdue: [], outstanding: 0, overdueAmount: 0, currency: p.currency };
+        map.set(p.studentProfileId, g);
+      }
+      g.payments.push(p);
+      if (isOpen(p)) { g.open.push(p); g.outstanding += p.amount; g.currency = p.currency; }
+      if (p.status === "Overdue") { g.overdue.push(p); g.overdueAmount += p.amount; }
+    }
+    let arr = [...map.values()];
+    if (onlyDebtors) arr = arr.filter((g) => g.open.length > 0);
+    // Önce gecikeni olanlar (tutarına göre), sonra borcu olanlar, sonra ada göre.
+    arr.sort((a, b) =>
+      (b.overdueAmount - a.overdueAmount) || (b.outstanding - a.outstanding) || a.studentName.localeCompare(b.studentName, "tr"));
+    return arr;
+  }, [items, onlyDebtors]);
+
+  // Tüm stüdyo özeti (üst şerit).
+  const totals = useMemo(() => {
+    const debtors = groups.filter((g) => g.open.length > 0);
+    return {
+      debtorCount: debtors.length,
+      outstanding: debtors.reduce((s, g) => s + g.outstanding, 0),
+      overdueCount: groups.reduce((s, g) => s + g.overdue.length, 0),
+      overdueAmount: groups.reduce((s, g) => s + g.overdueAmount, 0),
+      currency: groups[0]?.currency ?? "TRY",
+    };
+  }, [groups]);
 
   const markPaid = async (p: PaymentDto) => {
-    try { await paymentService.markPaid(p.id); await load(); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "İşlem başarısız."); }
+    try { await paymentService.markPaid(p.id); await load(); toast.success("Ödeme 'ödendi' olarak işaretlendi."); }
+    catch (e) { toast.error(errorMessage(e, "İşlem başarısız.")); }
   };
   const cancel = async (p: PaymentDto) => {
-    if (!confirm("Ödeme iptal edilsin mi?")) return;
-    try { await paymentService.cancel(p.id); await load(); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "İşlem başarısız."); }
+    if (!(await confirm({ title: "Ödemeyi iptal et", tone: "danger", confirmLabel: "İptal et", message: "Bu ödeme kaydı iptal edilecek." }))) return;
+    try { await paymentService.cancel(p.id); await load(); toast.success("Ödeme iptal edildi."); }
+    catch (e) { toast.error(errorMessage(e, "İşlem başarısız.")); }
   };
 
   return (
@@ -54,57 +105,138 @@ export default function PaymentsPage() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Ödemeler</h1>
-          <p className="mt-1 text-sm text-muted">Manuel ödeme takibi (online ödeme yok).</p>
+          <p className="mt-1 text-sm text-muted">Öğrenci bazlı borç takibi (manuel; online ödeme yok). Tıklayınca taksitler ve hangi sözleşmeye ait olduğu açılır.</p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>+ Yeni ödeme</Button>
       </div>
 
+      {/* Stüdyo özeti */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <SummaryStat label="Borçlu öğrenci" value={String(totals.debtorCount)} />
+        <SummaryStat label="Ödenmemiş toplam" value={money(totals.outstanding, totals.currency)} />
+        <SummaryStat label="Geciken taksit" value={String(totals.overdueCount)} tone={totals.overdueCount ? "danger" : undefined} />
+        <SummaryStat label="Geciken toplam" value={money(totals.overdueAmount, totals.currency)} tone={totals.overdueAmount ? "danger" : undefined} />
+      </div>
+
       <Card>
-        <FormField label="Durum filtresi">
-          <Select value={status} onChange={(e) => setStatus(e.target.value as PaymentStatus | "")}>
-            <option value="">Tümü</option>
-            {(["Pending", "Paid", "Overdue", "Cancelled", "Refunded"] as PaymentStatus[]).map((s) => (
-              <option key={s} value={s}>{paymentStatusLabels[s]}</option>
-            ))}
-          </Select>
-        </FormField>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+          <input type="checkbox" checked={onlyDebtors} onChange={(e) => setOnlyDebtors(e.target.checked)} className="accent-[var(--primary)]" />
+          Yalnız borcu olan öğrenciler
+        </label>
       </Card>
 
       {error && <Alert kind="error">{error}</Alert>}
 
-      <Table>
-        <THead><TR><TH>Öğrenci</TH><TH>Tutar</TH><TH>Vade</TH><TH>Durum</TH><TH>Yöntem</TH><TH className="text-right">İşlem</TH></TR></THead>
-        <tbody>
-          {loading ? (
-            <TableEmpty colSpan={6}>Yükleniyor…</TableEmpty>
-          ) : items.length === 0 ? (
-            <TableEmpty colSpan={6}>Ödeme kaydı yok.</TableEmpty>
-          ) : (
-            items.map((p) => (
-              <TR key={p.id}>
-                <TD className="font-medium">{p.studentName}</TD>
-                <TD>{p.amount.toLocaleString("tr-TR")} {p.currency}</TD>
-                <TD className="text-muted">{p.dueDate}</TD>
-                <TD><Badge tone={tone(p.status)}>{paymentStatusLabels[p.status]}</Badge></TD>
-                <TD className="text-muted">{p.method ? paymentMethodLabels[p.method] : "—"}</TD>
-                <TD className="text-right">
-                  <div className="flex justify-end gap-2">
-                    {(p.status === "Pending" || p.status === "Overdue") && (
-                      <>
-                        <Button variant="ghost" size="sm" onClick={() => markPaid(p)}>Ödendi</Button>
-                        <Button variant="ghost" size="sm" onClick={() => cancel(p)}>İptal</Button>
-                      </>
-                    )}
-                  </div>
-                </TD>
-              </TR>
-            ))
-          )}
-        </tbody>
-      </Table>
+      {loading ? (
+        <p className="text-center text-sm text-muted">Yükleniyor…</p>
+      ) : groups.length === 0 ? (
+        <p className="text-center text-sm text-muted">{onlyDebtors ? "Borcu olan öğrenci yok." : "Ödeme kaydı yok."}</p>
+      ) : (
+        <div className="space-y-2">
+          {groups.map((g) => (
+            <StudentDebtCard
+              key={g.studentProfileId}
+              group={g}
+              open={expanded.has(g.studentProfileId)}
+              onToggle={() => toggle(g.studentProfileId)}
+              onPaid={markPaid}
+              onCancel={cancel}
+            />
+          ))}
+        </div>
+      )}
 
       {createOpen && <CreatePaymentModal onClose={() => setCreateOpen(false)} onDone={() => { setCreateOpen(false); load(); }} />}
     </div>
+  );
+}
+
+function SummaryStat({ label, value, tone }: { label: string; value: string; tone?: "danger" }) {
+  return (
+    <div className={`rounded-xl border px-3 py-2 ${tone === "danger" ? "border-danger/40 bg-danger/5" : "border-border bg-surface"}`}>
+      <p className="text-xs text-muted">{label}</p>
+      <p className={`mt-0.5 text-lg font-semibold ${tone === "danger" ? "text-danger" : "text-foreground"}`}>{value}</p>
+    </div>
+  );
+}
+
+function StudentDebtCard({
+  group: g, open, onToggle, onPaid, onCancel,
+}: {
+  group: StudentGroup; open: boolean; onToggle: () => void;
+  onPaid: (p: PaymentDto) => void; onCancel: (p: PaymentDto) => void;
+}) {
+  // Detay: sözleşme/satır bazında grupla (hangi sözleşmeye ait olduğu görünsün; önceki sözleşmeler de ayrı satır).
+  const byLine = useMemo(() => {
+    const m = new Map<string, { label: string; payments: PaymentDto[] }>();
+    for (const p of g.payments) {
+      const key = p.studentContractLineId ?? "none";
+      const label = p.lineLabel ?? "Diğer (sözleşmesiz / eski kayıt)";
+      const e = m.get(key) ?? { label, payments: [] };
+      e.payments.push(p);
+      m.set(key, e);
+    }
+    // Açık (ödenmemiş) borcu olan sözleşmeler üstte; her birinde taksitler vadeye göre.
+    return [...m.values()]
+      .map((x) => ({ ...x, payments: x.payments.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate)) }))
+      .sort((a, b) => Number(b.payments.some(isOpen)) - Number(a.payments.some(isOpen)) || a.label.localeCompare(b.label, "tr"));
+  }, [g.payments]);
+
+  return (
+    <Card className="overflow-hidden p-0">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface-muted">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={`text-muted transition-transform ${open ? "rotate-90" : ""}`}>▸</span>
+          <span className="truncate font-medium text-foreground">{g.studentName}</span>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {g.open.length > 0 ? (
+            <Badge tone="warning">{g.open.length} taksit · {money(g.outstanding, g.currency)}</Badge>
+          ) : (
+            <Badge tone="success">Borç yok</Badge>
+          )}
+          {g.overdue.length > 0 && <Badge tone="danger">Geciken {g.overdue.length} · {money(g.overdueAmount, g.currency)}</Badge>}
+        </div>
+      </button>
+
+      {open && (
+        <div className="space-y-3 border-t border-border px-4 py-3">
+          {byLine.map((line, i) => {
+            const lineOpen = line.payments.filter(isOpen);
+            const lineSum = lineOpen.reduce((s, p) => s + p.amount, 0);
+            return (
+              <div key={i} className="rounded-xl border border-border">
+                <div className="flex items-center justify-between gap-2 border-b border-border bg-surface-muted px-3 py-1.5">
+                  <span className="truncate text-xs font-medium text-foreground">{line.label}</span>
+                  {lineOpen.length > 0 && <span className="shrink-0 text-xs font-semibold text-warning">{lineOpen.length} taksit · {money(lineSum, g.currency)}</span>}
+                </div>
+                <ul className="divide-y divide-border">
+                  {line.payments.map((p) => (
+                    <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Badge tone={statusTone(p.status)}>{paymentStatusLabels[p.status]}</Badge>
+                        <span className="text-muted">Vade {p.dueDate}</span>
+                        {p.method && <span className="text-muted">· {paymentMethodLabels[p.method]}</span>}
+                        {p.notes && <span className="text-muted">· {p.notes}</span>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium text-foreground">{money(p.amount, p.currency)}</span>
+                        {isOpen(p) && (
+                          <div className="flex gap-1.5">
+                            <Button variant="ghost" size="sm" onClick={() => onPaid(p)}>Ödendi</Button>
+                            <Button variant="ghost" size="sm" onClick={() => onCancel(p)}>İptal</Button>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -112,7 +244,9 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<StudentDto[]>([]);
   const [student, setStudent] = useState<StudentDto | null>(null);
-  const [form, setForm] = useState({ amount: "", dueDate: new Date().toISOString().slice(0, 10), method: "" as "" | PaymentMethod, notes: "" });
+  const [lines, setLines] = useState<StudentContractLineDto[]>([]);
+  const [linesLoading, setLinesLoading] = useState(false);
+  const [form, setForm] = useState({ lineId: "", amount: "", dueDate: new Date().toISOString().slice(0, 10), method: "" as "" | PaymentMethod, notes: "" });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -124,13 +258,33 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
     return () => clearTimeout(t);
   }, [search]);
 
+  // Öğrenci seçilince sözleşme satırlarını getir (ödeme 29A'dan beri bir satıra bağlanmalı).
+  useEffect(() => {
+    if (!student) { setLines([]); return; }
+    setLinesLoading(true);
+    contractService.lines(student.id)
+      .then((ls) => setLines(ls.filter((l) => l.status !== "Cancelled")))
+      .catch(() => setLines([]))
+      .finally(() => setLinesLoading(false));
+  }, [student]);
+
+  const lineLabel = (l: StudentContractLineDto) =>
+    `${l.classTypeName} · ${l.startDate} – ${l.endDate} · kalan borç ${money(l.remaining, l.currency)}`;
+
+  const pickLine = (id: string) => {
+    const l = lines.find((x) => x.id === id);
+    setForm((f) => ({ ...f, lineId: id, amount: l && l.remaining > 0 ? String(l.remaining) : f.amount }));
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!student) { setErr("Öğrenci seçin."); return; }
+    if (!form.lineId) { setErr("Ödemenin bağlanacağı sözleşme satırını seçin."); return; }
     setBusy(true);
     setErr(null);
     try {
       await paymentService.create(student.id, {
+        studentContractLineId: form.lineId,
         amount: Number(form.amount),
         dueDate: form.dueDate,
         method: form.method || undefined,
@@ -138,7 +292,7 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
       });
       onDone();
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : "Oluşturulamadı.");
+      setErr(errorMessage(e2, "Oluşturulamadı."));
     } finally {
       setBusy(false);
     }
@@ -151,7 +305,7 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
         {student ? (
           <div className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm">
             <span className="font-medium text-foreground">{student.fullName}</span>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setStudent(null)}>Değiştir</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setStudent(null); setForm((f) => ({ ...f, lineId: "" })); }}>Değiştir</Button>
           </div>
         ) : (
           <>
@@ -165,6 +319,22 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
             </div>
           </>
         )}
+
+        {student && (
+          <FormField label="Sözleşme satırı (paket)">
+            {linesLoading ? (
+              <p className="text-sm text-muted">Yükleniyor…</p>
+            ) : lines.length === 0 ? (
+              <Alert kind="info">Bu öğrencinin aktif sözleşme satırı yok. Önce Öğrenciler ekranından sözleşme satırı ekleyin.</Alert>
+            ) : (
+              <Select value={form.lineId} onChange={(e) => pickLine(e.target.value)} required>
+                <option value="">— Satır seçin —</option>
+                {lines.map((l) => <option key={l.id} value={l.id}>{lineLabel(l)}</option>)}
+              </Select>
+            )}
+          </FormField>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Tutar"><Input type="number" min={0} step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} required /></FormField>
           <FormField label="Vade"><Input type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} required /></FormField>
@@ -180,7 +350,7 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
-          <Button type="submit" loading={busy}>Oluştur</Button>
+          <Button type="submit" loading={busy} disabled={!student || !form.lineId}>Oluştur</Button>
         </div>
       </form>
     </Modal>
