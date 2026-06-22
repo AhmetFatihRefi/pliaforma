@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/Header";
 import { LicenseBanner } from "@/components/layout/LicenseBanner";
 import { EmailVerificationBanner } from "@/components/layout/EmailVerificationBanner";
 import { FullscreenLoader } from "@/components/layout/FullscreenLoader";
+import { ConfirmProvider, ToastProvider } from "@/components/ui";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, activeStudio, memberships, loading } = useAuth();
@@ -28,14 +29,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (loading || !user || platformOnly || needsJoin) return <FullscreenLoader />;
 
   return (
-    <div className="flex min-h-dvh bg-background">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Header />
-        <EmailVerificationBanner />
-        <LicenseBanner />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
-      </div>
-    </div>
+    <ToastProvider>
+      <ConfirmProvider>
+        <div className="flex min-h-dvh bg-background">
+          <Sidebar />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <Header />
+            <EmailVerificationBanner />
+            <LicenseBanner />
+            <main className="flex-1 overflow-y-auto p-6">{children}</main>
+          </div>
+        </div>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }

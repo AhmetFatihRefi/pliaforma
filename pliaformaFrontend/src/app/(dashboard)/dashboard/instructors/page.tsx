@@ -25,12 +25,14 @@ import {
   TH,
   THead,
   TR,
+  useConfirm,
 } from "@/components/ui";
 
 const statusTone = (s: MemberDto["status"]) =>
   s === "Active" ? "success" : s === "Pending" ? "warning" : "neutral";
 
 export default function InstructorsPage() {
+  const confirm = useConfirm();
   const { role: myRole, canManage } = useRole();
   const isOwner = myRole === "Owner";
 
@@ -114,7 +116,7 @@ export default function InstructorsPage() {
   };
 
   const remove = async (m: MemberDto) => {
-    if (!confirm(`${m.fullName} stüdyodan çıkarılsın mı?`)) return;
+    if (!(await confirm({ title: "Üyeyi çıkar", tone: "danger", confirmLabel: "Çıkar", message: `${m.fullName} stüdyodan çıkarılacak.` }))) return;
     try {
       await memberService.remove(m.membershipId);
       await load();

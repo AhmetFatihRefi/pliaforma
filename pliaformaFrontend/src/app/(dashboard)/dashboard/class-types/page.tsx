@@ -20,6 +20,7 @@ import {
   THead,
   Textarea,
   TR,
+  useConfirm,
 } from "@/components/ui";
 
 // Sprint 28A: ders tipi sadeleşti → yalnız ad + süre + açıklama (ekipman/kapasite/seviye/amaç kaldırıldı).
@@ -31,6 +32,7 @@ const empty: ClassTypeInput = {
 };
 
 export default function ClassTypesPage() {
+  const confirm = useConfirm();
   const { canManage } = useRole();
   const [items, setItems] = useState<ClassTypeDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +91,7 @@ export default function ClassTypesPage() {
   };
 
   const remove = async (c: ClassTypeDto) => {
-    if (!confirm(`"${c.name}" grubunu silmek istediğinize emin misiniz?`)) return;
+    if (!(await confirm({ title: "Grubu sil", tone: "danger", confirmLabel: "Sil", message: `"${c.name}" ders grubu silinecek.` }))) return;
     try {
       await classTypeService.remove(c.id);
       await load();

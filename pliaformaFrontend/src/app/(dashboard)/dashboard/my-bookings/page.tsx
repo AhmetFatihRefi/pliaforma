@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { studentBookingService, studentMakeupRequestService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import type { MakeupRequestDto, MyBookingDto } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card } from "@/components/ui";
+import { Alert, Badge, Button, Card, useConfirm } from "@/components/ui";
 
 const fmt = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
 
 export default function MyBookingsPage() {
+  const confirm = useConfirm();
   const [items, setItems] = useState<MyBookingDto[]>([]);
   const [makeupReqs, setMakeupReqs] = useState<MakeupRequestDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +38,7 @@ export default function MyBookingsPage() {
   }, [load]);
 
   const cancel = async (b: MyBookingDto) => {
-    if (!confirm("Rezervasyon iptal edilsin mi?")) return;
+    if (!(await confirm({ title: "Rezervasyonu iptal et", tone: "danger", confirmLabel: "İptal et", message: "Bu rezervasyon iptal edilecek." }))) return;
     try {
       await studentBookingService.cancel(b.bookingId);
       await load();

@@ -8,13 +8,14 @@ import {
   billingPeriodLabels,
   effectiveStatusLabels,
 } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card } from "@/components/ui";
+import { Alert, Badge, Button, Card, useConfirm } from "@/components/ui";
 
 const money = (n: number, c = "TRY") => `${n.toLocaleString("tr-TR")} ${c === "TRY" ? "₺" : c}`;
 const tone = (s: StudioSubscriptionViewDto["effectiveStatus"]) =>
   s === "Active" || s === "Trialing" ? "success" : s === "Expired" ? "danger" : s === "FailOpenLicensed" ? "neutral" : "warning";
 
 export default function SubscriptionPage() {
+  const confirm = useConfirm();
   const [d, setD] = useState<StudioSubscriptionViewDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -30,7 +31,7 @@ export default function SubscriptionPage() {
   useEffect(() => { load(); }, [load]);
 
   const cancel = async () => {
-    if (!confirm("Aboneliğiniz dönem sonunda iptal edilecek; o tarihe kadar erişiminiz açık kalır. Onaylıyor musunuz?")) return;
+    if (!(await confirm({ title: "Aboneliği iptal et", tone: "danger", confirmLabel: "İptal et", message: "Aboneliğiniz dönem sonunda iptal edilecek; o tarihe kadar erişiminiz açık kalır." }))) return;
     setBusy(true); setErr(null); setInfo(null);
     try { setD(await studioSubscriptionService.cancel()); setInfo("İptal talebiniz alındı (dönem sonunda)."); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "İptal edilemedi."); }

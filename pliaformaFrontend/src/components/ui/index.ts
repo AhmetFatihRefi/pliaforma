@@ -6,4 +6,8 @@ export { Badge } from "./Badge";
 export { Alert } from "./Alert";
 export { FormField } from "./FormField";
 export { Modal } from "./Modal";
+export { ConfirmProvider, useConfirm } from "./ConfirmDialog";
+export type { ConfirmOptions, ConfirmTone } from "./ConfirmDialog";
+export { ToastProvider, useToast } from "./Toast";
+export type { ToastApi, ToastTone } from "./Toast";
 export { Table, THead, TR, TH, TD, TableEmpty } from "./Table";

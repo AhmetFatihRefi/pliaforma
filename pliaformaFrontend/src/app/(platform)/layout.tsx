@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { Brand } from "@/components/layout/Brand";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { Button } from "@/components/ui";
+import { Button, ConfirmProvider, ToastProvider } from "@/components/ui";
 import { FullscreenLoader } from "@/components/layout/FullscreenLoader";
 
 const nav = [
@@ -38,7 +38,9 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   };
 
   return (
-    <div className="flex min-h-dvh bg-background">
+    <ToastProvider>
+      <ConfirmProvider>
+        <div className="flex min-h-dvh bg-background">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-surface lg:flex">
         <div className="px-6 py-5">
           <Brand />
@@ -79,6 +81,8 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
         </header>
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
-    </div>
+        </div>
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }

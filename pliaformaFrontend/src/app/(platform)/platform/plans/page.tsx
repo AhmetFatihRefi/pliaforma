@@ -9,7 +9,7 @@ import {
   type SubscriptionPlanInput,
   billingPeriodLabels,
 } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Select } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, useConfirm } from "@/components/ui";
 
 const money = (n: number, c = "TRY") => `${n.toLocaleString("tr-TR")} ${c === "TRY" ? "₺" : c}`;
 
@@ -20,6 +20,7 @@ const emptyPlan = (order: number): SubscriptionPlanInput => ({
 });
 
 export default function PlatformPlansPage() {
+  const confirm = useConfirm();
   const [plans, setPlans] = useState<SubscriptionPlanDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export default function PlatformPlansPage() {
   useEffect(() => { load(); }, [load]);
 
   const remove = async (p: SubscriptionPlanDto) => {
-    if (!confirm(`"${p.name}" planını sil?`)) return;
+    if (!(await confirm({ title: "Planı sil", tone: "danger", confirmLabel: "Sil", message: `"${p.name}" planı silinecek.` }))) return;
     try { await platformService.deletePlan(p.id); await load(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Silinemedi."); }
   };

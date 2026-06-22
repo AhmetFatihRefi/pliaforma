@@ -43,6 +43,7 @@ import {
   THead,
   Textarea,
   TR,
+  useConfirm,
 } from "@/components/ui";
 
 const emptyGuest: GuestInput = {
@@ -188,6 +189,7 @@ export default function StudentsPage() {
 // Sprint 28B: sözleşme = header + line'lar. Birincil görünüm LINE kartları (+ Yeni line ekle / edit / cancel).
 // Header'lar yalnız "Programı oluştur" (schedule gen 28C'ye kadar header-bazlı). Amendment akışı kaldırıldı.
 function ContractsModal({ student, onClose }: { student: StudentDto; onClose: () => void }) {
+  const confirm = useConfirm();
   const [contracts, setContracts] = useState<StudentContractDto[]>([]);
   const [lines, setLines] = useState<StudentContractLineDto[]>([]);
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
@@ -266,7 +268,7 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
   };
 
   const cancelHeader = async (id: string) => {
-    if (!confirm("Sözleşme (header) iptal edilsin mi?")) return;
+    if (!(await confirm({ title: "Sözleşmeyi iptal et", tone: "danger", confirmLabel: "İptal et", message: "Sözleşme (başlık) iptal edilecek." }))) return;
     try { await contractService.cancel(id); await load(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "İptal edilemedi."); }
   };
@@ -368,6 +370,7 @@ function ContractsModal({ student, onClose }: { student: StudentDto; onClose: ()
 
 // Sprint 28B: line kartı — tam alanlar + ödenen/kalan + edit (DueDate/Notes) + güvenli cancel.
 function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDto; onChanged: () => void; onError: (m: string) => void }) {
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [due, setDue] = useState(l.dueDate ?? "");
   const [busy, setBusy] = useState(false);
@@ -401,7 +404,7 @@ function LineCard({ line: l, onChanged, onError }: { line: StudentContractLineDt
     finally { setBusy(false); }
   };
   const cancelLine = async () => {
-    if (!confirm("Bu satır iptal edilsin mi? (bağlı ödeme/ders/telafi varsa engellenir)")) return;
+    if (!(await confirm({ title: "Satırı iptal et", tone: "danger", confirmLabel: "İptal et", message: "Bu sözleşme satırı iptal edilecek. (bağlı ödeme/ders/telafi varsa engellenir)" }))) return;
     setBusy(true);
     try { await contractService.cancelLine(l.id); onChanged(); }
     catch (e) { onError(e instanceof ApiError ? e.message : "İptal edilemedi."); }

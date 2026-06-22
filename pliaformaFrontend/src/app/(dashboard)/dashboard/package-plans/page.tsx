@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { packagePlanService, classTypeService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import type { PackagePlanDto, ClassTypeDto, PackagePlanInput } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Table, TableEmpty, TD, TH, THead, TR, Textarea } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Table, TableEmpty, TD, TH, THead, TR, Textarea, useConfirm } from "@/components/ui";
 
 export default function PackagePlansPage() {
+  const confirm = useConfirm();
   const [items, setItems] = useState<PackagePlanDto[]>([]);
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,7 +34,7 @@ export default function PackagePlansPage() {
   }, [load]);
 
   const remove = async (p: PackagePlanDto) => {
-    if (!confirm(`"${p.name}" planı silinsin mi?`)) return;
+    if (!(await confirm({ title: "Planı sil", tone: "danger", confirmLabel: "Sil", message: `"${p.name}" planı silinecek.` }))) return;
     try {
       await packagePlanService.remove(p.id);
       await load();
