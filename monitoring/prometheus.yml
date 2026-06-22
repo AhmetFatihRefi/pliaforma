@@ -1,0 +1,21 @@
+# Pliaforma — Prometheus scrape yapılandırması.
+# Native (dotnet run) backend :5132 üzerinden /metrics okunur. Docker Desktop'ta host.docker.internal = ana makine.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: pliaforma-api
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:5132   # native backend (dotnet run)
+        labels:
+          app: pliaforma-api
+          env: dev
+    # Tam compose modunda (docker-compose.dev.yml) backend container'ı kullanıyorsanız aşağıyı ekleyin:
+    # - targets: ['host.docker.internal:5132']  # yerine pliaforma-dev-backend:8080 (aynı ağda iseniz)
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

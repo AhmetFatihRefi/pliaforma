@@ -1,0 +1,52 @@
+# Pliaforma — İzleme yığını (Prometheus + Grafana). BAĞIMSIZ ve OPSİYONEL: uygulamaya dokunmaz.
+# Native (dotnet run) backend'i host.docker.internal:5132/metrics üzerinden izler.
+#
+#   docker compose -f docker-compose.monitoring.yml up -d      # başlat
+#   docker compose -f docker-compose.monitoring.yml down       # durdur
+#
+#   Grafana:    http://localhost:3001   (anonim Viewer; admin/admin ile giriş)
+#   Prometheus: http://localhost:9090
+#
+# Not: Grafana 3001'e map'lendi (frontend :3000 ile çakışmasın). Prometheus 9090.
+
+name: pliaforma-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: pliaforma-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Linux uyumu (Docker Desktop'ta zaten çözülür)
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: pliaforma-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      # Admin panelinde iframe ile gömülebilsin diye anonim görüntüleme + embedding açık (yalnız lokal/pilot).
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  promdata:
+  grafanadata:

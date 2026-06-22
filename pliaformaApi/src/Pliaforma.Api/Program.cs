@@ -11,6 +11,7 @@ using Pliaforma.Application;
 using Pliaforma.Infrastructure;
 using Pliaforma.Persistence;
 using Pliaforma.Persistence.Contexts;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -105,7 +106,14 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Prometheus: her HTTP isteği için süre/sayı metrikleri toplanır.
+app.UseHttpMetrics();
+
 app.MapControllers();
+
+// Prometheus scrape endpoint'i: /metrics (HTTP + .NET runtime/process metrikleri). Grafana bunu okur.
+// Not: PROD'da dışarıya kapatın (nginx ile internal'e kısıtlayın); pilot/lokalde açık.
+app.MapMetrics();
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     ResponseWriter = async (context, report) =>

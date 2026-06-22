@@ -1,0 +1,12 @@
+# Grafana — dashboard'ları dosyadan otomatik yükler.
+apiVersion: 1
+providers:
+  - name: Pliaforma
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

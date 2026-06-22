@@ -27,5 +27,7 @@
     <!-- API / OpenAPI / Health -->
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.2.0" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.2" />
+    <!-- Gözlemlenebilirlik: Prometheus metrik endpoint'i (/metrics) — Grafana ile izleme. -->
+    <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
   </ItemGroup>
 </Project>
