@@ -9,9 +9,9 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 ---
 
 ## Taşıma & web
-- [ ] **HTTPS aktif** (nginx 443 + sertifika) — ⏳31B / **P0-1**
-- [ ] **HTTP→HTTPS 301 redirect** — ⏳31B / P0-1
-- [ ] **HSTS header** aktif — ⏳31B / P0-1
+- [ ] **HTTPS aktif** (nginx 443 + sertifika) — 🟡 config hazır (31B-1); gerçek cert + canlı doğrulama pilot-deploy / **P0-1**
+- [x] **HTTP→HTTPS 301 redirect** — ✅ nginx config (31B-1) / P0-1
+- [x] **HSTS header** aktif — ✅ nginx 443 (kısa max-age; cert sonrası uzat) (31B-1) / P0-1
 - [ ] CSP header aktif (nonce) — ⏳31B / P1-6
 - [x] X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy (nginx) — ✅
 - [x] CORS allowlist (prod `https://` origin) — ⏳ prod env doğrulaması / P0-4
@@ -20,16 +20,17 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 - [x] Swagger prod'da kapalı — ✅
 
 ## Secrets & prod konfig
-- [ ] **Prod `JWT_SECRET` gerçek + ≥32 byte** (örnek değil) — ⏳31B / **P0-4**
-- [ ] **Seed admin parolası değişmiş** (örnek `Admin!2345` değil) — ⏳31B / P0-4
+- [x] **Prod `JWT_SECRET` gerçek + ≥32 byte** (örnek değil) — ✅ Production fail-fast guard "CHANGE_ME" (31B-1) + mevcut ≥32 byte / **P0-4**
+- [x] **Seed admin parolası değişmiş** (örnek `Admin!2345`/`CHANGE_ME` değil) — ✅ Production fail-fast guard (31B-1) / P0-4
 - [x] Repoda gerçek secret yok / `.gitignore` kapsamlı — ✅
 - [ ] Prod SMTP kimlikleri ayarlı (fail-fast) — ⏳ prod env
 - [x] JWT secret fail-fast (<32B → açılmaz) — ✅
 
 ## İzleme & maruziyet
-- [ ] **`/metrics` dışarı kapalı** (nginx internal kısıt) — ⏳31B / **P0-3**
-- [ ] **Grafana default parola yok + anonymous kapalı** — ⏳31B / P0-3
-- [ ] Monitoring portları (9090/3001) firewall arkasında — ⏳31B / P0-3
+- [x] **`/metrics` dışarı kapalı** (nginx defansif `location = /metrics` → 404) — ✅ (31B-1) / **P0-3**
+- [x] **Grafana default parola yok + anonymous kapalı** — ✅ env-zorunlu parola + anonymous varsayılan false (31B-1) / P0-3
+- [x] Monitoring portları (9090/3001) `127.0.0.1` loopback bind — ✅ (31B-1); pilotta yığın kapalı / P0-3
+- [x] Health page `admin/admin` metni yok + monitoring env-bazlı/prod'da gizli — ✅ (31B-1) / P0-3
 - [x] `/health` anonim (kabul edilebilir) — ✅
 
 ## Kimlik & oturum

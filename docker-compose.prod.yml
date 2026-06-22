@@ -72,11 +72,12 @@ services:
       - backend
     ports:
       - "80:80"
-      # TLS için 443'ü açın ve deploy/nginx.conf'taki HTTPS bloğunu etkinleştirin.
-      # - "443:443"
+      - "443:443"
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      # - ./deploy/certs:/etc/nginx/certs:ro
+      # TLS sertifikaları (repo'da YOK; operatör sağlar). deploy/certs/fullchain.pem + privkey.pem.
+      # Sertifikalar yoksa nginx açılmaz (HTTPS zorunlu — bilinçli). Bkz. PILOT-DEPLOY-DRY-RUN.md.
+      - ./deploy/certs:/etc/nginx/certs:ro
     restart: unless-stopped
 
 volumes:

@@ -98,39 +98,41 @@ docker compose --env-file deploy/.env -f docker-compose.prod.yml ps
 docker compose --env-file deploy/.env -f docker-compose.prod.yml logs --tail=40 backend
 ```
 
-## 8. Health check (HTTP, TLS öncesi)
+## 8. Health check
 ```bash
-curl -fsS http://<domain>/health        # {"status":"Healthy", ...}
-curl -fsS http://<domain>/ -o /dev/null -w "frontend: %{http_code}\n"
+# DİKKAT (Sprint 31B-1): HTTP/80 artık yalnız HTTPS'e 301 yönlendirir. Health'i HTTPS üzerinden doğrula:
+curl -fsS https://<domain>/health        # {"status":"Healthy", ...}
+curl -sI http://<domain>/ | grep -i location   # → 301 https://<domain>/ beklenir
+curl -fsSk https://<domain>/ -o /dev/null -w "frontend: %{http_code}\n"
 ```
 
 ## 9. TLS / HTTPS (nginx 443)
-`deploy/nginx.conf` içinde **443 + HTTP→HTTPS 301 taslağı yorum satırlarında hazır**. Adımlar:
+**Sprint 31B-1 ile config ARTIK AKTİF:** `deploy/nginx.conf`'ta 443 ssl bloğu + 80→HTTPS 301 + HSTS açık;
+`docker-compose.prod.yml`'de `443:443` portu + `./deploy/certs:/etc/nginx/certs:ro` mount açık. **Manuel iş
+yalnızca gerçek sertifikayı sağlamaktır.** nginx, cert dosyaları yoksa AÇILMAZ (HTTPS zorunlu — bilinçli) →
+**sertifikayı ilk `up`'tan ÖNCE yerleştir.**
 ```bash
-# 9a. Sertifika (Let's Encrypt — webroot veya standalone). Standalone örnek (80 boşken):
-docker compose --env-file deploy/.env -f docker-compose.prod.yml stop nginx
+# 9a. Sertifika (Let's Encrypt — standalone; 80 boşken, stack up'tan ÖNCE):
 sudo apt-get -y install certbot
 sudo certbot certonly --standalone -d <domain> --agree-tos -m admin@<domain> --no-eff-email
 # Sertifikalar: /etc/letsencrypt/live/<domain>/{fullchain.pem,privkey.pem}
 
-# 9b. Sertifikaları compose'un göreceği yere koy:
+# 9b. nginx'in beklediği yere kopyala (deploy/certs/{fullchain,privkey}.pem). Bu dosyalar repoya GİRMEZ
+#     (.gitignore: deploy/certs/* hariç README). Detay: deploy/certs/README.md
 mkdir -p /opt/pliaforma/deploy/certs
 sudo cp /etc/letsencrypt/live/<domain>/fullchain.pem /opt/pliaforma/deploy/certs/
 sudo cp /etc/letsencrypt/live/<domain>/privkey.pem  /opt/pliaforma/deploy/certs/
 sudo chown "$USER" /opt/pliaforma/deploy/certs/*.pem
-```
-**9c. `deploy/nginx.conf`**: dosyanın altındaki **HTTPS server bloğunu aç** (yorumdan çıkar): `server_name
-<domain>`, `ssl_certificate /etc/nginx/certs/fullchain.pem`, `ssl_certificate_key /etc/nginx/certs/privkey.pem`,
-yukarıdaki `location /`, `/api/`, `/health` + güvenlik başlıklarını aynen taşı; ayrıca
-`server { listen 80; server_name <domain>; return 301 https://$host$request_uri; }` redirect bloğunu aç.
-**9d. `docker-compose.prod.yml`**: nginx servisinde `- "443:443"` portunu ve `./deploy/certs:/etc/nginx/certs:ro`
-mount'unu aç (yorumdan çıkar).
-```bash
-# 9e. nginx config testi + yeniden ayağa kaldır:
+
+# 9c. (config zaten aktif — uncomment GEREKMEZ) up et ve doğrula:
 docker compose --env-file deploy/.env -f docker-compose.prod.yml up -d
 curl -fsS https://<domain>/health
 curl -sI http://<domain>/ | grep -i location     # 301 → https beklenir
 ```
+> **HSTS notu:** nginx 443'te `Strict-Transport-Security` başlangıçta **kısa `max-age=300`** (HSTS sticky'dir;
+> TLS bozuksa istemci kilitlenir). HTTPS uçtan uca doğrulandıktan sonra `deploy/nginx.conf`'ta `max-age=31536000`
+> (gerekirse `preload`) yap.
+> **Sertifika yenileme:** `certbot renew` sonrası `deploy/certs/`'i güncelle + `docker compose ... restart nginx`.
 
 ### TLS checklist (kısa)
 - [ ] Domain A kaydı VPS IP'sine yöneldi (`dig +short <domain>`).

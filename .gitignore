@@ -12,7 +12,9 @@ deploy/.env.*
 !deploy/.env.example
 
 # --- TLS sertifikaları / anahtarlar ---
-deploy/certs/
+# certs/ içeriği ignore'lanır (gerçek sertifika repoya GİRMEZ); yalnız README placeholder izlenir.
+deploy/certs/*
+!deploy/certs/README.md
 *.pem
 *.key
 *.crt

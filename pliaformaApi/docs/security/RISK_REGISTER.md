@@ -14,7 +14,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Kanıt:** `Program.cs`'te `UseHttpsRedirection` yok; `deploy/nginx.conf` 443 bloğu yorumda; HSTS yok.
 - **Çözüm:** Sertifika (certbot) + nginx 443 + HTTP→HTTPS 301 + `Strict-Transport-Security` + `PUBLIC_ORIGIN=https://…`.
 - **Acceptance:** `curl -I http://host` → 301; HTTPS yanıtında HSTS header; Secure cookie set ediliyor; smoke yeşil.
-- **Sprint:** 31B
+- **Sprint:** **31B-1 — config UYGULANDI** (nginx 443+301+HSTS, prod compose 443+cert volume, certs gitignore). Gerçek sertifika + canlı uçtan-uca doğrulama pilot-deploy'da.
 
 ### P0-2 · Hassas eylem denetim izi (audit log) yok
 - **Etki:** İhlalde "kim neyi gördü/değiştirdi" kanıtlanamaz → KVKK hesap verebilirlik (m.12) ihlali.
@@ -34,14 +34,14 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Çözüm:** nginx'te `/metrics`'i internal/IP-allowlist'e kısıtla; Grafana güçlü parola + anonymous kapat;
   monitoring portlarını (9090/3001) firewall arkasına al.
 - **Acceptance:** Dışarıdan `/metrics` ve `:3001` 403/erişilemez; Grafana default cred yok.
-- **Sprint:** 31B
+- **Sprint:** **31B-1 — UYGULANDI** (nginx defansif `/metrics`→404; monitoring portları `127.0.0.1` bind; Grafana parolası env-zorunlu + anonymous/embedding varsayılan kapalı; health page `admin/admin` kaldırıldı + monitoring env-bazlı/prod'da gizli). Smoke: `scripts/metrics-exposure-smoke.sh`.
 
 ### P0-4 · Prod secret / seed admin sertleştirme doğrulaması
 - **Etki:** Zayıf/örnek admin parolası veya zayıf JWT secret → tam erişim/oturum üretimi.
 - **Kanıt:** `deploy/.env.example` `SEED_ADMIN_PASSWORD=Admin!2345`; JWT secret env zorunlu (fail-fast var).
 - **Çözüm:** Prod'da rastgele güçlü `JWT_SECRET` (≥32B) + benzersiz admin parola; ilk girişte değiştirme; CORS origin `https://`.
 - **Acceptance:** Prod env checklist doğrulanmış ([SECURITY_BASELINE_CHECKLIST.md](SECURITY_BASELINE_CHECKLIST.md)); örnek değer yok.
-- **Sprint:** 31B
+- **Sprint:** **31B-1 — UYGULANDI** (Production'da `Jwt:Secret`/`Seed:AdminPassword` "CHANGE_ME"/"Admin!2345" içeriyorsa fail-fast; `.env.example` uyarıları güçlendirildi). Development bozulmaz; boş seed → guard atlanır.
 
 ---
 
@@ -146,7 +146,8 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 | Sprint | Riskler |
 |---|---|
 | **31A** ✅ | P1-3 (politika), P1-4, P1-5 (doküman), P1-8 (risk/karar) |
-| **31B** | **P0-1, P0-3, P0-4**, P0-2 (tasarım), P1-1, P1-2, P1-6 |
-| **31C** | P0-2 (uygulama), P1-8 (teknik), P1-9 (test) |
+| **31B-1** ✅ | **P0-1, P0-3, P0-4** (infra/config, migration yok) — uygulandı, doğrulama yeşil |
+| **31B-2** | P0-2 (tasarım+uygulama), P1-1, P1-2, P1-6 (migration var) |
+| **31C** | P0-2 (kapsam genişletme), P1-8 (teknik), P1-9 (test) |
 | **31D** | P1-3 (purge), P1-7, P1-9 (CI), P1-CI, P2-4 |
 | **31-MFA** (ayrı mini-sprint) | P1-10 (Owner/StudioAdmin TOTP MFA) |

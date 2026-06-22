@@ -28,6 +28,12 @@ public static class DependencyInjection
                 "Geliştirme: dotnet user-secrets set \"Jwt:Secret\" \"<en az 32 karakter>\". " +
                 "Üretim: Jwt__Secret ortam değişkeni.");
 
+        // Sprint 31B-1 (P0-4): Production'da bilinen placeholder/zayıf örnek değerlerle açılmayı engelle.
+        // Yalnız Production'da sert davranır → Development BOZULMAZ. Seed:AdminPassword boşsa admin
+        // tohumlanmaz, dolayısıyla guard atlanır (gereksiz false-positive üretmez).
+        if (isProduction)
+            GuardAgainstPlaceholderSecrets(jwt.Secret, configuration["Seed:AdminPassword"]);
+
         ConfigureEmail(services, configuration, isProduction);
 
         services.AddHttpContextAccessor();
@@ -71,6 +77,37 @@ public static class DependencyInjection
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Production fail-fast (Sprint 31B-1 / P0-4): JWT secret veya seed admin parolası bilinen placeholder
+    /// ("CHANGE_ME") ya da bilinen zayıf örnek ("Admin!2345") içeriyorsa uygulama AÇILMAZ. Seed parolası
+    /// boş/null ise (admin tohumlanmaz) kontrol atlanır.
+    /// </summary>
+    private static void GuardAgainstPlaceholderSecrets(string jwtSecret, string? seedAdminPassword)
+    {
+        // Bilinen örnek/placeholder parçaları (büyük/küçük harf duyarsız, alt-dize eşleşmesi).
+        string[] forbiddenFragments = { "CHANGE_ME", "Admin!2345" };
+
+        static bool ContainsForbidden(string? value, string[] fragments)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+            foreach (var fragment in fragments)
+                if (value.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            return false;
+        }
+
+        if (ContainsForbidden(jwtSecret, forbiddenFragments))
+            throw new InvalidOperationException(
+                "Jwt:Secret Production'da örnek/placeholder bir değer içeriyor (ör. 'CHANGE_ME'). " +
+                "Gerçek, rastgele en az 32 baytlık bir secret kullanın (Jwt__Secret ortam değişkeni).");
+
+        if (ContainsForbidden(seedAdminPassword, forbiddenFragments))
+            throw new InvalidOperationException(
+                "Seed:AdminPassword Production'da örnek/zayıf bir değer içeriyor (ör. 'CHANGE_ME', 'Admin!2345'). " +
+                "Güçlü ve benzersiz bir parola kullanın (Seed__AdminPassword) veya boş bırakın (admin tohumlanmaz).");
     }
 
     /// <summary>

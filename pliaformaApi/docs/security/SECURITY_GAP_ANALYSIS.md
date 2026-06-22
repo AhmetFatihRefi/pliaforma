@@ -34,8 +34,8 @@ Statü sembolleri: ✅ yeterli · ⚠️ kısmi · ❌ yok.
 
 | Konu | Mevcut | Statü | Eksik | Öneri | Risk |
 |---|---|---|---|---|---|
-| TLS/HTTPS | nginx 443 bloğu yorumda; `UseHttpsRedirection` yok | ❌ | Aktif TLS | Sertifika + 443 + 301 redirect | **P0-1** |
-| HSTS | Yok | ❌ | HSTS header | TLS sonrası `Strict-Transport-Security` | **P0-1** |
+| TLS/HTTPS | nginx 443 ssl + 80→301 **aktif** (31B-1); prod compose 443+cert volume | 🟡 | Gerçek cert + canlı doğrulama (pilot-deploy) | Operatör certbot ile cert sağlar | **P0-1** |
+| HSTS | nginx 443'te `Strict-Transport-Security` (kısa max-age) **aktif** (31B-1) | ✅ | TLS doğrulanınca max-age uzat | — | **P0-1** |
 | CSP | Yok (Next.js inline tema scripti nedeniyle bilinçli ertelenmiş) | ❌ | CSP | nonce/hash ile | P1-6 |
 | X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy | nginx'te set | ✅ | — | — | — |
 | CORS | `Cors:Origins` allowlist; AllowCredentials | ✅ | Prod origin doğrulaması | Prod env'de `https://` origin | P0-4 |
@@ -43,7 +43,7 @@ Statü sembolleri: ✅ yeterli · ⚠️ kısmi · ❌ yok.
 | Request body limit | nginx `client_max_body_size 10m` | ✅ | Kestrel explicit limit yok (default 30MB) | İsteğe bağlı Kestrel limiti | P2 |
 | Exception leakage | Sabit mesaj; stack trace yalnız sunucu logu | ✅ | — | — | — |
 | Swagger | Yalnız Development | ✅ | — | — | — |
-| `/metrics` | `MapMetrics()` anonim | ⚠️ | Prod'da dış erişim açık | nginx ile internal'e kısıtla | **P0-3** |
+| `/metrics` | `MapMetrics()` anonim ama nginx'te **defansif `location = /metrics` → 404** (31B-1) | ✅ | — (Prometheus internal/loopback'ten okur) | — | **P0-3** |
 | `/health` | Anonim | ⚠️ | (kabul edilebilir) | Ağ izolasyonu doğrula | P0-3 |
 | Dosya upload | Yok (`IFormFile` yok) | ✅ | — | İleride eklenirse ayrı denetim | — |
 
@@ -72,13 +72,13 @@ Statü sembolleri: ✅ yeterli · ⚠️ kısmi · ❌ yok.
 | Konu | Mevcut | Statü | Eksik | Öneri | Risk |
 |---|---|---|---|---|---|
 | Secret hijyeni | Repoda gerçek secret yok; `.gitignore` kapsamlı; fail-fast | ✅ | — | — | — |
-| Seed admin / JWT secret | Örnek `Admin!2345`; prod env zorunlu | ⚠️ | Prod doğrulaması | Rastgele secret + admin parola | **P0-4** |
+| Seed admin / JWT secret | **Production fail-fast guard** (CHANGE_ME/Admin!2345 → açılmaz) (31B-1) + JWT ≥32 byte fail-fast | ✅ | Operatör gerçek değer girer | — | **P0-4** |
 | Dependency scan | Yok (CI yok); `npm audit` 2 orta (dev dep) | ❌ | — | npm audit + `dotnet list package --vulnerable` | P1-CI |
 | Secret scan (CI) | Yok | ❌ | — | gitleaks/trufflehog | P1-CI |
 | SAST | Yok | ❌ | — | CodeQL/Semgrep | P2 |
 | Container scan | Yok | ❌ | — | Trivy | P2 |
 | SBOM | Yok | ❌ | — | CycloneDX | P2 |
-| Grafana | `admin/admin` + anonymous enabled | ⚠️ | Prod sertleştirme | Güçlü parola + anonymous kapat + ağ izolasyonu | **P0-3** |
+| Grafana | **env-zorunlu parola** (default admin yok) + anonymous/embedding varsayılan kapalı + `127.0.0.1` loopback bind (31B-1) | ✅ | Pilotta yığın kapalı varsayımı | — | **P0-3** |
 | Docker prod | nginx tek giriş, non-root, healthcheck, restart policy | ✅ | — | — | — |
 
 ## 7. Idari / KVKK süreç

@@ -1,11 +1,18 @@
 # Pliaforma — İzleme yığını (Prometheus + Grafana). BAĞIMSIZ ve OPSİYONEL: uygulamaya dokunmaz.
 # Native (dotnet run) backend'i host.docker.internal:5132/metrics üzerinden izler.
 #
-#   docker compose -f docker-compose.monitoring.yml up -d      # başlat
-#   docker compose -f docker-compose.monitoring.yml down       # durdur
+# GÜVENLİK (Sprint 31B-1):
+#   - Portlar yalnız LOOPBACK'e (127.0.0.1) bind edilir → host dışına AÇILMAZ.
+#   - Grafana admin parolası ENV ZORUNLU (GF_ADMIN_PASSWORD); default admin/admin YOK.
+#   - Anonim erişim ve embedding VARSAYILAN KAPALI (gerekirse env ile açın).
+#   - PROD: Bu yığın pilotta ÇALIŞTIRILMAZ (varsayım). Çalıştırılırsa loopback + reverse-proxy + auth arkasında olmalı.
 #
-#   Grafana:    http://localhost:3001   (anonim Viewer; admin/admin ile giriş)
-#   Prometheus: http://localhost:9090
+# Başlatma (parola zorunlu):
+#   GF_ADMIN_PASSWORD='guclu-bir-parola' docker compose -f docker-compose.monitoring.yml up -d
+#   docker compose -f docker-compose.monitoring.yml down
+#
+#   Grafana:    http://127.0.0.1:3001   (kullanıcı: admin, parola: GF_ADMIN_PASSWORD)
+#   Prometheus: http://127.0.0.1:9090
 #
 # Not: Grafana 3001'e map'lendi (frontend :3000 ile çakışmasın). Prometheus 9090.
 
@@ -23,7 +30,7 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - promdata:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"   # yalnız loopback — host dışına açılmaz
     extra_hosts:
       - "host.docker.internal:host-gateway"   # Linux uyumu (Docker Desktop'ta zaten çözülür)
 
@@ -32,18 +39,20 @@ services:
     container_name: pliaforma-grafana
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      # Admin panelinde iframe ile gömülebilsin diye anonim görüntüleme + embedding açık (yalnız lokal/pilot).
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_SECURITY_ADMIN_USER: ${GF_ADMIN_USER:-admin}
+      # Parola ENV ZORUNLU — tanımsızsa compose hata verir (default admin/admin YOK).
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:?GF_ADMIN_PASSWORD tanımlı olmalı (örn. GF_ADMIN_PASSWORD=... docker compose ...)}
+      # Anonim erişim + embedding VARSAYILAN KAPALI. Lokal iframe gömme için env ile açın:
+      #   GF_ANON_ENABLED=true GF_ALLOW_EMBEDDING=true docker compose -f docker-compose.monitoring.yml up -d
+      GF_AUTH_ANONYMOUS_ENABLED: ${GF_ANON_ENABLED:-false}
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: ${GF_ALLOW_EMBEDDING:-false}
       GF_USERS_DEFAULT_THEME: light
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - grafanadata:/var/lib/grafana
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"   # yalnız loopback — host dışına açılmaz
     depends_on:
       - prometheus
 
