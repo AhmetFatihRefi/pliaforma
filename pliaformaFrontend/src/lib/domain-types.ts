@@ -964,6 +964,12 @@ export interface InstructorReportRowDto {
   individualSessions: number;
   distinctStudents: number;
   substitutionSessions: number;
+  // Sprint 30: maaş/ödeme kırılımı
+  planned: number;
+  delivered: number;
+  upcoming: number;
+  notDelivered: number;
+  gaveSubstitution: number;
   classTypeBreakdown: ClassTypeCountDto[];
 }
 

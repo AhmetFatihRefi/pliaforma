@@ -100,27 +100,44 @@ function InstructorsReport({ month }: { month: string }) {
   }, [month]);
   useEffect(() => { load(); }, [load]);
 
-  // Sprint 19: parasız & operasyonel — ders sayısı, grup/bireysel, ders verilen öğrenci, hoca değişikliği.
+  // Sprint 30: maaş/ödeme hesabını stüdyo yetkilisi kendisi yapsın diye kırılım — biz para hesaplamayız, sayıları veririz.
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {err && <Alert kind="error">{err}</Alert>}
-      <Table>
-        <THead><TR><TH>Hoca</TH><TH>Ders</TH><TH>Grup</TH><TH>Bireysel</TH><TH>Öğrenci</TH><TH>Hoca değişikliği</TH></TR></THead>
-        <tbody>
-          {loading ? <TableEmpty colSpan={6}>Yükleniyor…</TableEmpty>
-            : !d || d.instructors.length === 0 ? <TableEmpty colSpan={6}>Hoca yok.</TableEmpty>
-            : d.instructors.map((i) => (
-              <TR key={i.instructorProfileId}>
-                <TD className="font-medium">{i.instructorName}</TD>
-                <TD>{i.sessions}</TD>
-                <TD>{i.groupSessions}</TD>
-                <TD>{i.individualSessions}</TD>
-                <TD>{i.distinctStudents}</TD>
-                <TD>{i.substitutionSessions > 0 ? <Badge tone="rose">{i.substitutionSessions}</Badge> : "—"}</TD>
-              </TR>
-            ))}
-        </tbody>
-      </Table>
+      <Alert kind="info">
+        <span className="font-medium">İşlenen</span> = onaylanmış (tamamlanmış) ders, ödeme temeli. <span className="font-medium">Planlanan</span> aya atanan tüm dersler;
+        <span className="font-medium"> Yaklaşan</span> henüz işlenmemiş; <span className="font-medium">İşlenmedi</span> hoca kaynaklı iptal (telafi üretmiş).
+        Devir: <span className="font-medium">+</span> başkasından devraldığı, <span className="font-medium">−</span> başkasına devrettiği ders.
+      </Alert>
+      <div className="overflow-x-auto">
+        <Table>
+          <THead><TR>
+            <TH>Hoca</TH><TH>Planlanan</TH><TH>İşlenen</TH><TH>Yaklaşan</TH><TH>İşlenmedi</TH><TH>Öğrenci</TH><TH>Devir (+/−)</TH>
+          </TR></THead>
+          <tbody>
+            {loading ? <TableEmpty colSpan={7}>Yükleniyor…</TableEmpty>
+              : !d || d.instructors.length === 0 ? <TableEmpty colSpan={7}>Hoca yok.</TableEmpty>
+              : d.instructors.map((i) => (
+                <TR key={i.instructorProfileId}>
+                  <TD className="font-medium">{i.instructorName}</TD>
+                  <TD>{i.planned}</TD>
+                  <TD><span className="font-semibold text-success">{i.delivered}</span></TD>
+                  <TD className="text-muted">{i.upcoming}</TD>
+                  <TD>{i.notDelivered > 0 ? <Badge tone="danger">{i.notDelivered}</Badge> : "—"}</TD>
+                  <TD>{i.distinctStudents}</TD>
+                  <TD>
+                    {i.substitutionSessions === 0 && i.gaveSubstitution === 0 ? "—" : (
+                      <span className="flex gap-1">
+                        {i.substitutionSessions > 0 && <Badge tone="rose">+{i.substitutionSessions}</Badge>}
+                        {i.gaveSubstitution > 0 && <Badge tone="neutral">−{i.gaveSubstitution}</Badge>}
+                      </span>
+                    )}
+                  </TD>
+                </TR>
+              ))}
+          </tbody>
+        </Table>
+      </div>
     </div>
   );
 }

@@ -21,10 +21,10 @@ test.describe("Owner dashboard", () => {
   test("/dashboard/reports açılır + hoca raporu PARASIZ (Sprint 19)", async ({ page }) => {
     await gotoAndExpectHeading(page, "/dashboard/reports", "Raporlar");
     await page.getByRole("button", { name: "Hoca iş hacmi" }).click();
-    // Sprint 19: parasal sütun yok; operasyonel sütunlar var.
+    // Parasal sütun yok; Sprint 30 maaş-hesabı kırılımı: Planlanan/İşlenen/İşlenmedi sütunları var.
     await expect(page.getByRole("columnheader", { name: "Tahmini kazanç" })).toHaveCount(0);
-    await expect(page.getByRole("columnheader", { name: "Hoca değişikliği" })).toBeVisible();
-    await expect(page.getByRole("columnheader", { name: "Grup" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "İşlenen" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Planlanan" })).toBeVisible();
   });
 
   test("/dashboard/students açılır + seed öğrenci görünür", async ({ page }) => {

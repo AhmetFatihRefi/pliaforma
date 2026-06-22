@@ -51,10 +51,17 @@ public sealed class GetInstructorsReportHandler : IQueryHandler<GetInstructorsRe
             .Where(s => s.StudioId == sid && s.StartAt >= localStart && s.StartAt < localEnd)
             .Select(s => new
             {
-                s.InstructorProfileId, s.ActualInstructorProfileId, s.Status, s.StartAt, s.IsIndividual,
+                s.Id, s.InstructorProfileId, s.ActualInstructorProfileId, s.Status, s.StartAt, s.IsIndividual,
                 s.ClassTypeId, ClassTypeName = s.ClassType!.Name,
             })
             .ToListAsync(ct);
+
+        // Hoca kaynaklı "işlenmedi" (telafi üretmiş) iptaller: InstructorNotDelivered telafisi olan kaynak seanslar.
+        var notDeliveredSessionIds = (await _db.MakeupCreditTransactions.AsNoTracking()
+            .Where(t => t.StudioId == sid && t.Reason == MakeupCreditReason.InstructorNotDelivered && t.SourceClassSessionId != null)
+            .Select(t => t.SourceClassSessionId!.Value)
+            .Distinct()
+            .ToListAsync(ct)).ToHashSet();
 
         // Present yoklamalar (öğrenci ders verildi → distinct öğrenci), seansın fiilî hocasına atfedilir.
         var presentRows = await (
@@ -85,9 +92,18 @@ public sealed class GetInstructorsReportHandler : IQueryHandler<GetInstructorsRe
             var breakdown = mine.GroupBy(s => new { s.ClassTypeId, s.ClassTypeName })
                 .Select(g => new ClassTypeCountDto(g.Key.ClassTypeId, g.Key.ClassTypeName, g.Count()))
                 .OrderByDescending(x => x.SessionCount).ToList();
-            return new InstructorReportRowDto(i.Id, i.DisplayName, mine.Count, group, individual, distinctStudents, substitution, breakdown);
+
+            // Sprint 30 — maaş/ödeme kırılımı (atfetme: Planlanan/Yaklaşan/İşlenmedi PLANLANAN hocaya; İşlenen FİİLÎ hocaya).
+            var planned = sessions.Count(s => s.InstructorProfileId == i.Id);
+            var delivered = sessions.Count(s => s.Status == ClassSessionStatus.Completed && Eff(s.InstructorProfileId, s.ActualInstructorProfileId) == i.Id);
+            var upcoming = sessions.Count(s => s.Status == ClassSessionStatus.Scheduled && s.StartAt > nowLocal && s.InstructorProfileId == i.Id);
+            var notDelivered = sessions.Count(s => s.Status == ClassSessionStatus.Cancelled && s.InstructorProfileId == i.Id && notDeliveredSessionIds.Contains(s.Id));
+            var gaveSub = sessions.Count(s => s.Status == ClassSessionStatus.Completed && s.InstructorProfileId == i.Id && s.ActualInstructorProfileId != null && s.ActualInstructorProfileId != i.Id);
+
+            return new InstructorReportRowDto(i.Id, i.DisplayName, mine.Count, group, individual, distinctStudents, substitution,
+                planned, delivered, upcoming, notDelivered, gaveSub, breakdown);
         })
-        .OrderByDescending(r => r.Sessions).ToList();
+        .OrderByDescending(r => r.Delivered).ThenByDescending(r => r.Planned).ToList();
 
         return new InstructorsReportDto(label, rows);
     }

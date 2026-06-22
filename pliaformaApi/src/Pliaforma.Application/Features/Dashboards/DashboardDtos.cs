@@ -73,5 +73,11 @@ public sealed record InstructorReportRowDto(
     int GroupSessions,        // grup dersleri
     int IndividualSessions,   // bireysel dersler
     int DistinctStudents,     // ders verilen farklı (Present) öğrenci sayısı
-    int SubstitutionSessions, // bu hocanın fiilen verdiği ama planlananın farklı olduğu dersler
+    int SubstitutionSessions, // bu hocanın fiilen verdiği ama planlananın farklı olduğu ders (devraldığı)
+    // Sprint 30: stüdyo yetkilisinin maaş/ödeme hesabı için ek kırılım (biz para hesaplamayız; sayıları veririz).
+    int Planned,              // ay içinde bu hocaya ATANAN tüm dersler (her durum)
+    int Delivered,            // İŞLENEN (Completed, fiilî hocaya göre) — ödeme temeli
+    int Upcoming,             // yaklaşan (Scheduled, gelecekte)
+    int NotDelivered,         // hoca kaynaklı iptal (işlenmedi → telafi üretmiş)
+    int GaveSubstitution,     // planlanan bu hoca ama dersi BAŞKA hoca verdi (devrettiği)
     IReadOnlyList<ClassTypeCountDto> ClassTypeBreakdown);
