@@ -16,10 +16,11 @@ function tomorrowAt(hour: number): string {
 test.describe.serial("Telafi talepleri (Sprint 27)", () => {
   test("Instructor telafi talebi oluşturur → schedule'da 'Onay bekliyor' (yoklama/onay yok)", async ({ page }, testInfo) => {
     await login(page, users.instructor);
-    await page.goto("/dashboard/schedule");
-    await expect(page.getByRole("heading", { name: "Ders Programı" })).toBeVisible();
+    // Sprint 30: talep oluşturma 'Telafi Talepleri' sayfasında (ders programından kaldırıldı); hoca da erişir.
+    await page.goto("/dashboard/makeup-requests");
+    await expect(page.getByRole("heading", { name: "Telafi Talepleri" })).toBeVisible();
 
-    await page.getByRole("button", { name: "+ Telafi talebi" }).click();
+    await page.getByRole("button", { name: "+ Yeni telafi talebi" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("heading", { name: "Telafi dersi talebi" })).toBeVisible();
 
@@ -33,26 +34,34 @@ test.describe.serial("Telafi talepleri (Sprint 27)", () => {
     await dialog.getByRole("button", { name: "Talep oluştur" }).click();
     await expect(dialog).toBeHidden({ timeout: 15_000 });
 
-    // Pending kart (dashed) — "Onay bekliyor"; instructor "Geri çek" görür; yoklama/onay AKSİYONU YOK.
+    // Schedule'da pending blok (dashed) — "Onay bekliyor"; yoklama/onay/öğrenci-ekle AKSİYONU YOK.
+    await page.goto("/dashboard/schedule");
+    await expect(page.getByRole("heading", { name: "Ders Programı" })).toBeVisible();
     const pendingCard = page.locator(".border-dashed").filter({ hasText: "Onay bekliyor" }).first();
     await expect(pendingCard).toBeVisible({ timeout: 15_000 });
-    await expect(pendingCard.getByRole("button", { name: "Geri çek" })).toBeVisible();
-    await expect(pendingCard.getByRole("button", { name: "Yoklama" })).toHaveCount(0);
-    await expect(pendingCard.getByRole("button", { name: "Onayla" })).toHaveCount(0);
-    await expect(pendingCard.getByRole("button", { name: "Öğrenci ekle" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Yoklama" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Onayla", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Öğrenci ekle" })).toHaveCount(0);
+    // Instructor pending bloğa tıklayınca geri çekme onay modalı (özgün confirm) açılır. Vazgeç → talep PENDING kalır
+    // (sonraki test owner olarak onaylar).
+    await pendingCard.click();
+    const cd = page.getByRole("alertdialog").filter({ hasText: "Telafi talebini geri çek" });
+    await expect(cd).toBeVisible();
+    await cd.getByRole("button", { name: "Vazgeç" }).click();
+    await expect(cd).toBeHidden({ timeout: 15_000 });
   });
 
   test("Owner onaylar → gerçek telafi dersi; Student programında onaylı görünür", async ({ page }) => {
-    // window.confirm (onay diyalogu) → kabul et.
-    page.on("dialog", (d) => d.accept());
-
     await login(page, users.owner);
     await page.goto("/dashboard/makeup-requests");
     await expect(page.getByRole("heading", { name: "Telafi Talepleri" })).toBeVisible();
 
-    // Pending listede E2E Student talebi (satır) + "Onayla" aksiyonu → onayla.
+    // Pending listede E2E Student talebi (satır) + "Onayla" → özgün onay modalı → modaldan "Onayla".
     await expect(page.getByRole("cell", { name: "E2E Student" }).first()).toBeVisible({ timeout: 15_000 });
     await page.getByRole("button", { name: "Onayla" }).first().click();
+    const cd = page.getByRole("alertdialog").filter({ hasText: "Telafi talebini onayla" });
+    await expect(cd).toBeVisible();
+    await cd.getByRole("button", { name: "Onayla" }).click();
     await expect(page.getByText(/telafi dersi onaylandı/i)).toBeVisible({ timeout: 15_000 });
 
     // Student kendi programında onaylı telafi dersini SALT görür.

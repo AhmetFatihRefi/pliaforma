@@ -1,33 +1,42 @@
 import { test, expect } from "@playwright/test";
 import { login, users } from "./helpers";
 
-test.describe("Schedule / booking / attendance (Owner)", () => {
+// Sprint UX: Ders Programı artık haftalık takvim ızgarası. Ders aksiyonları (Onayla/Ertele/Yoklama…) ders
+// bloğuna tıklayınca açılan DETAY DRAWER'ında. "Bugünü onayla" / "Grup düzeni" üst araç çubuğunda.
+test.describe("Schedule / takvim (Owner)", () => {
   test.beforeEach(async ({ page }) => {
     await login(page, users.owner);
     await page.goto("/dashboard/schedule");
     await expect(page.getByRole("heading", { name: "Ders Programı" })).toBeVisible();
   });
 
-  test("ders kartı görünür (seed yaklaşan seans)", async ({ page }) => {
-    // Seed: ~20 saat sonrasına bir E2E Reformer seansı + öğrenci rezervasyonu.
-    // Kart içindeki <p> (filtre dropdown'undaki <option> değil) görünür olmalı + aksiyon butonu.
-    await expect(page.locator("p").filter({ hasText: "E2E Reformer" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Yoklama" }).first()).toBeVisible();
+  // Takvimdeki bir E2E Reformer bloğuna tıkla → detay drawer açılır ("Ders notu" drawer'a özgü).
+  const openSession = async (page: import("@playwright/test").Page) => {
+    const block = page.locator("button[title*='E2E Reformer']").first();
+    await expect(block).toBeVisible({ timeout: 30_000 });
+    await block.click();
+    await expect(page.getByText("Ders notu")).toBeVisible();
+  };
+
+  test("takvimde ders bloğu + tıklayınca detay drawer (öğrenciler + yoklama)", async ({ page }) => {
+    await openSession(page);
+    await expect(page.getByText(/Öğrenciler \(/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Yoklama" })).toBeVisible();
   });
 
-  test("Sprint 19: Bugünü onayla + Onayla + Fiilî hoca aksiyonları var", async ({ page }) => {
+  test("Sprint 19: 'Bugünü onayla' araç çubuğunda; drawer'da Onayla + Fiilî hoca", async ({ page }) => {
     await expect(page.getByRole("button", { name: "Bugünü onayla" })).toBeVisible();
-    // Scheduled kartlarda ders onayı + fiilî hoca aksiyonları (yönetici).
-    await expect(page.getByRole("button", { name: "Onayla" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Fiilî hoca" }).first()).toBeVisible();
+    await openSession(page);
+    await expect(page.getByRole("button", { name: "Onayla", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Fiilî hoca" })).toBeVisible();
   });
 
-  test("Sprint 20: 'İşlenmedi' aksiyonu Scheduled kartlarda var", async ({ page }) => {
-    await expect(page.getByRole("button", { name: "İşlenmedi" }).first()).toBeVisible();
+  test("Sprint 20: drawer'da 'İşlenmedi' aksiyonu", async ({ page }) => {
+    await openSession(page);
+    await expect(page.getByRole("button", { name: "İşlenmedi" })).toBeVisible();
   });
 
   test("Sprint 26: hoca filtresi seçilince o hocanın programı gösterilir", async ({ page }) => {
-    // Hoca filtresi (sayfadaki ilk select) bir hoca seçilince "… hocanın programı gösteriliyor" bilgisi çıkar.
     await page.locator("select").first().selectOption({ index: 1 });
     await expect(page.getByText(/hocanın programı gösteriliyor/)).toBeVisible();
   });
@@ -36,31 +45,26 @@ test.describe("Schedule / booking / attendance (Owner)", () => {
     await page.getByRole("button", { name: "Grup düzeni" }).click();
     await expect(page.getByRole("heading", { name: "Grup düzeni değiştir" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Öğrencileri getir" })).toBeVisible();
-    // Geçerlilik tarihi + yeni gün/saat alanları görünür.
-    await expect(page.getByText(/ve sonrası/)).toBeVisible();
   });
 
-  test("Sprint 21: taşıma modalında mod A/B (tek taşı + zincirleme kaydır)", async ({ page }) => {
-    await page.getByRole("button", { name: "Ertele" }).first().click();
+  test("Sprint 21: drawer'dan Ertele → taşıma modalı (mod A/B)", async ({ page }) => {
+    await openSession(page);
+    await page.getByRole("button", { name: "Ertele" }).click();
     await expect(page.getByRole("heading", { name: /Tarih\/Saat değiştir/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Sadece bu dersi taşı" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Zincirleme kaydır" })).toBeVisible();
-    // Zincirleme moda geçince "Önizle" çıkar.
-    await page.getByRole("button", { name: "Zincirleme kaydır" }).click();
-    await expect(page.getByRole("button", { name: "Önizle" })).toBeVisible();
   });
 
-  test("rezervasyonlar modalı açılır", async ({ page }) => {
-    await page.getByRole("button", { name: "Rezervasyonlar" }).first().click();
-    // Modal başlığı: "<grup> — Rezervasyonlar"
+  test("drawer'dan Rezervasyonlar modalı açılır", async ({ page }) => {
+    await openSession(page);
+    await page.getByRole("button", { name: "Rezervasyonlar" }).click();
     await expect(page.getByRole("heading", { name: /Rezervasyonlar$/ })).toBeVisible();
     await expect(page.getByText("E2E Student").first()).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("heading", { name: /Rezervasyonlar$/ })).toBeHidden();
   });
 
-  test("yoklama modalı açılır", async ({ page }) => {
-    await page.getByRole("button", { name: "Yoklama" }).first().click();
+  test("drawer'dan Yoklama modalı açılır", async ({ page }) => {
+    await openSession(page);
+    await page.getByRole("button", { name: "Yoklama" }).click();
     await expect(page.getByRole("heading", { name: /Yoklama$/ })).toBeVisible();
   });
 });

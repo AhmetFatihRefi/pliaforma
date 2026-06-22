@@ -190,6 +190,9 @@ export const classSessionService = {
   },
   create: (input: { instructorProfileId: string; classTypeId: string; startAt: string; capacity?: number; notes?: string; sessionKind?: ClassSessionKind }) =>
     api<ClassSessionDto>("/api/studio/class-sessions", { method: "POST", body: input }),
+  // Ders güncelle (zaman/kapasite/not). Eğitmen/ders tipi değiştirilemez (backend kısıtı).
+  update: (id: string, input: { startAt?: string; capacity?: number | null; notes?: string | null }) =>
+    api<ClassSessionDto>(`/api/studio/class-sessions/${id}`, { method: "PUT", body: input }),
   bulkGenerate: (input: { instructorProfileId: string; classTypeId: string; date: string; rangeStart: string; rangeEnd: string; capacity?: number; breakMinutes?: number }) =>
     api<BulkGenerateResult>("/api/studio/class-sessions/bulk-generate", { method: "POST", body: input }),
   cancel: (id: string, input: { reason?: string; grantMakeupCredit?: boolean } = {}) =>

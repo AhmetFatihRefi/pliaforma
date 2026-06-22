@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupRequestService } from "@/lib/studioApi";
+import { attendanceService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceItemDto,
@@ -26,12 +26,12 @@ import {
   bookingStatusLabels,
   dayLabels,
   daysOfWeek,
-  isUnlimitedCapacity,
-  sessionKindLabels,
-  sessionStatusLabels,
   studentLevelLabels,
 } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR, useConfirm, useToast } from "@/components/ui";
+import { errorMessage } from "@/lib/errors";
+import { WeekTimetable, MobileAgenda } from "./_components/timetable";
+import { SessionDetailDrawer } from "./_components/detail-drawer";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const addDays = (d: string, n: number) => {
@@ -56,12 +56,12 @@ export default function SchedulePage() {
   const [sessions, setSessions] = useState<ClassSessionDto[]>([]);
   // Sprint 27: onay bekleyen telafi talepleri (Instructor → kendi; Owner/StudioAdmin → tümü) — programda gösterilir.
   const [pendingReqs, setPendingReqs] = useState<MakeupRequestDto[]>([]);
+  const [bookings, setBookings] = useState<ClassBookingDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [requestOpen, setRequestOpen] = useState(false);
   const [groupChangeOpen, setGroupChangeOpen] = useState(false);
   const [bookFor, setBookFor] = useState<ClassSessionDto | null>(null);
   const [bookingsFor, setBookingsFor] = useState<ClassSessionDto | null>(null);
@@ -69,8 +69,11 @@ export default function SchedulePage() {
   const [rescheduleFor, setRescheduleFor] = useState<ClassSessionDto | null>(null);
   const [attendanceFor, setAttendanceFor] = useState<ClassSessionDto | null>(null);
   const [actualFor, setActualFor] = useState<ClassSessionDto | null>(null);
+  const [detailFor, setDetailFor] = useState<ClassSessionDto | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [banner, setBanner] = useState<string | null>(null);
+  const confirm = useConfirm();
+  const toast = useToast();
   // Sprint 26: seçili hoca filtresi adı (boş/dolu programdan anlaşılır mesajı için).
   const selectedInstructorName = instructorFilter ? instructors.find((i) => i.id === instructorFilter)?.name ?? null : null;
 
@@ -81,7 +84,7 @@ export default function SchedulePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, reqs] = await Promise.all([
+      const [s, reqs, bks] = await Promise.all([
         classSessionService.list({
           from, to,
           instructorProfileId: instructorFilter || undefined,
@@ -89,9 +92,12 @@ export default function SchedulePage() {
         }),
         // Sprint 27: onay bekleyen telafi talepleri (rol-scope backend'de). Hata olursa programı bozma.
         makeupRequestService.list("Pending").catch(() => [] as MakeupRequestDto[]),
+        // Programda öğrencileri göstermek için aktif (Booked) rezervasyonlar.
+        bookingService.list({ status: "Booked" }).catch(() => [] as ClassBookingDto[]),
       ]);
       setSessions(s);
       setPendingReqs(reqs);
+      setBookings(bks);
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Program yüklenemedi.");
@@ -114,107 +120,171 @@ export default function SchedulePage() {
     return true;
   });
 
-  const grouped = sessions.reduce<Record<string, ClassSessionDto[]>>((acc, s) => {
-    (acc[fmtDate(s.startAt)] ??= []).push(s);
-    return acc;
-  }, {});
-  const reqsByDate = visibleReqs.reduce<Record<string, MakeupRequestDto[]>>((acc, r) => {
-    (acc[fmtDate(r.startAt)] ??= []).push(r);
-    return acc;
-  }, {});
-  // Sprint 27: gerçek ders + pending talep tarihlerinin birleşimi (tek zaman çizelgesi).
-  const allDates = Array.from(new Set([...Object.keys(grouped), ...Object.keys(reqsByDate)])).sort();
+  // Timetable: seçili aralıktaki TÜM günler (boş günler de satır olarak görünür).
+  const days = useMemo(() => {
+    const out: string[] = [];
+    const start = new Date(from + "T00:00:00");
+    const end = new Date(to + "T00:00:00");
+    for (let d = start; d <= end; d.setDate(d.getDate() + 1)) out.push(new Date(d).toISOString().slice(0, 10));
+    return out.length > 0 && out.length <= 62 ? out : [from];
+  }, [from, to]);
+
+  const shiftWeek = (deltaDays: number) => {
+    setFrom((f) => addDays(f, deltaDays));
+    setTo((t) => addDays(t, deltaDays));
+  };
+  const goThisWeek = () => { setFrom(todayStr()); setTo(addDays(todayStr(), 7)); };
+
+  // ---- Sürükle-bırak (taşıma) + kaydedilmemiş değişiklikler ----
+  const [moves, setMoves] = useState<Record<string, { date: string; hour: number }>>({});
+  const [quickAt, setQuickAt] = useState<string | null>(null);
+  const movedIds = useMemo(() => new Set(Object.keys(moves)), [moves]);
+
+  const isoDate = (iso: string) => iso.slice(0, 10);
+  const isoHour = (iso: string) => Number(iso.slice(11, 13));
+  const durationMin = (s: ClassSessionDto) => Math.max(0, Math.round((new Date(s.endAt).getTime() - new Date(s.startAt).getTime()) / 60000));
+  const movedStart = (s: ClassSessionDto, date: string, hour: number) => `${date}T${String(hour).padStart(2, "0")}:${s.startAt.slice(14, 16)}:00`;
+  const addMinutes = (iso: string, min: number) => {
+    const d = new Date(iso); d.setMinutes(d.getMinutes() + min);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
+  };
+
+  // Optimistik: taşınan dersleri yeni konumlarıyla göster.
+  const displaySessions = useMemo(() => sessions.map((s) => {
+    const mv = moves[s.id];
+    if (!mv) return s;
+    const start = movedStart(s, mv.date, mv.hour);
+    return { ...s, startAt: start, endAt: addMinutes(start, durationMin(s)) };
+  }), [sessions, moves]);
+
+  // Seans → kayıtlı öğrenci adları (programda + drawer'da göstermek için).
+  const studentsBySession = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const b of bookings) {
+      const arr = m.get(b.classSessionId) ?? m.set(b.classSessionId, []).get(b.classSessionId)!;
+      arr.push(b.studentName);
+    }
+    return m;
+  }, [bookings]);
+
+  const onDropSession = (id: string, date: string, hour: number) => {
+    const s = sessions.find((x) => x.id === id);
+    if (!s || s.status !== "Scheduled") return;
+    if (isoDate(s.startAt) === date && isoHour(s.startAt) === hour) {
+      setMoves((m) => { const { [id]: _drop, ...rest } = m; return rest; }); // orijinal hücreye geri → değişikliği kaldır
+    } else {
+      setMoves((m) => ({ ...m, [id]: { date, hour } }));
+    }
+  };
+
+  const discardMoves = () => setMoves({});
+  const saveMoves = async () => {
+    const entries = Object.entries(moves);
+    if (entries.length === 0) return;
+    setBusyId("save-moves");
+    const fails: string[] = [];
+    for (const [id, mv] of entries) {
+      const s = sessions.find((x) => x.id === id);
+      if (!s) continue;
+      try { await classSessionService.reschedule(id, { newStartAt: movedStart(s, mv.date, mv.hour), keepBookings: true }); }
+      catch (e) { fails.push(`${s.classTypeName} (${fmtTime(s.startAt)}): ${errorMessage(e, "taşınamadı")}`); }
+    }
+    setMoves({}); setBusyId(null);
+    await load();
+    if (fails.length) toast.error(`Bazı dersler taşınamadı — ${fails.join(" · ")}`);
+    else toast.success(`${entries.length} ders taşındı.`);
+  };
 
   const withdrawRequest = async (r: MakeupRequestDto) => {
-    if (!window.confirm("Bu telafi talebini geri çekmek istiyor musunuz? Saat boşalır, rezerve kredi serbest kalır.")) return;
+    if (!(await confirm({ title: "Telafi talebini geri çek", tone: "danger", confirmLabel: "Geri çek", message: "Bu telafi talebini geri çekmek istiyor musunuz? Saat boşalır, rezerve kredi serbest kalır." }))) return;
     setBusyId(r.id);
-    setError(null);
-    try { await makeupRequestService.withdraw(r.id); await load(); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "Geri çekilemedi."); }
+    try { await makeupRequestService.withdraw(r.id); await load(); toast.success("Telafi talebi geri çekildi."); }
+    catch (e) { toast.error(errorMessage(e, "Geri çekilemedi.")); }
     finally { setBusyId(null); }
   };
 
   const confirmSession = async (s: ClassSessionDto) => {
-    if (!window.confirm("Bu ders onaylanacak ve tamamlandı işaretlenecek.\nİşaretlenmemiş öğrenciler Present (Geldi) kabul edilecek.")) return;
+    if (!(await confirm({ title: "Dersi onayla", message: "Bu ders onaylanacak ve tamamlandı işaretlenecek. İşaretlenmemiş öğrenciler Present (Geldi) kabul edilecek.", confirmLabel: "Onayla" }))) return;
     setBusyId(s.id);
-    setError(null);
-    try { await classSessionService.confirm(s.id); await load(); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "Ders onaylanamadı."); }
+    try { await classSessionService.confirm(s.id); await load(); toast.success("Ders onaylandı."); }
+    catch (e) { toast.error(errorMessage(e, "Ders onaylanamadı.")); }
     finally { setBusyId(null); }
   };
 
   // Sprint 29C: ders onayını geri al (Completed → Scheduled). İşlenmiş ders sayımı düşer, kalan hak geri gelir.
   const unconfirmSession = async (s: ClassSessionDto) => {
-    if (!window.confirm("Bu dersin onayı geri alınacak (Planlı durumuna döner).\nİşlenmiş ders sayımı düşer; yoklama kayıtları korunur.")) return;
+    if (!(await confirm({ title: "Onayı geri al", message: "Bu dersin onayı geri alınacak (Planlı durumuna döner). İşlenmiş ders sayımı düşer; yoklama kayıtları korunur.", confirmLabel: "Geri al" }))) return;
     setBusyId(s.id);
-    setError(null);
-    try { await classSessionService.unconfirm(s.id); await load(); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "Onay geri alınamadı."); }
+    try { await classSessionService.unconfirm(s.id); await load(); toast.success("Ders onayı geri alındı."); }
+    catch (e) { toast.error(errorMessage(e, "Onay geri alınamadı.")); }
     finally { setBusyId(null); }
   };
 
   const confirmToday = async () => {
-    if (!window.confirm("Bugünün başlamış/geçmiş dersleri onaylanacak (gelecek saatli ve iptal dersler atlanır).\nİşaretlenmemiş öğrenciler Present (Geldi) kabul edilecek.")) return;
+    if (!(await confirm({ title: "Bugünü onayla", confirmLabel: "Onayla", message: "Bugünün başlamış/geçmiş dersleri onaylanacak (gelecek saatli ve iptal dersler atlanır). İşaretlenmemiş öğrenciler Present (Geldi) kabul edilecek." }))) return;
     setBusyId("today");
-    setError(null);
     try {
       const r = await classSessionService.confirmToday();
-      setBanner(`${r.confirmedCount} ders onaylandı · ${r.presentMarkedCount} öğrenci Present · ${r.skippedFutureCount} gelecek ders atlandı.`);
       await load();
-    } catch (e) { setError(e instanceof ApiError ? e.message : "Dersler onaylanamadı."); }
+      toast.success(`${r.confirmedCount} ders onaylandı · ${r.presentMarkedCount} öğrenci Present · ${r.skippedFutureCount} gelecek ders atlandı.`);
+    } catch (e) { toast.error(errorMessage(e, "Dersler onaylanamadı.")); }
     finally { setBusyId(null); }
   };
 
   const markNotDelivered = async (s: ClassSessionDto) => {
-    if (!window.confirm("Bu ders 'işlenmedi' olarak işaretlenecek: ders İPTAL edilecek ve öğrencilere telafi hakkı verilecek.\n(Ertelenecekse 'Ertele', başka hoca verdiyse 'Fiilî hoca' kullanın — onlar telafi üretmez.)")) return;
+    if (!(await confirm({ title: "Ders işlenmedi", tone: "danger", confirmLabel: "İşlenmedi olarak işaretle", message: "Bu ders 'işlenmedi' olarak işaretlenecek: ders İPTAL edilecek ve öğrencilere telafi hakkı verilecek. (Ertelenecekse 'Ertele', başka hoca verdiyse 'Fiilî hoca' kullanın — onlar telafi üretmez.)" }))) return;
     setBusyId(s.id);
-    setError(null);
-    try { await classSessionService.notDelivered(s.id); await load(); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "İşlem yapılamadı."); }
+    try { await classSessionService.notDelivered(s.id); await load(); toast.success("Ders 'işlenmedi' olarak işaretlendi; öğrencilere telafi hakkı verildi."); }
+    catch (e) { toast.error(errorMessage(e, "İşlem yapılamadı.")); }
     finally { setBusyId(null); }
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
-      <div className="flex items-center justify-between gap-4">
+    <div className="mx-auto max-w-7xl space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Ders Programı</h1>
-          <p className="mt-1 text-sm text-muted">Ders seanslarını görüntüleyin ve oluşturun.</p>
+          <p className="mt-1 text-sm text-muted">Haftalık ders planı — derse tıklayıp yönetin, sürükleyip taşıyın.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* Sprint 27: telafi dersi talebi — hoca (kendi sözleşmeli öğrencisi) + stüdyo yetkilisi oluşturabilir. */}
-          <Button variant="secondary" onClick={() => setRequestOpen(true)}>+ Telafi talebi</Button>
+          {/* Sprint 30: "+ Telafi talebi" Telafi Talepleri sayfasına taşındı (hoca + yönetici oradan oluşturur). */}
           {isManager && <Button variant="secondary" loading={busyId === "today"} onClick={confirmToday}>Bugünü onayla</Button>}
           {isManager && <Button variant="secondary" onClick={() => setGroupChangeOpen(true)}>Grup düzeni</Button>}
           {/* Sprint 26: ders atama yalnız stüdyo yetkilisi (Owner/StudioAdmin). */}
-          {isManager && <Button variant="secondary" onClick={() => setBulkOpen(true)}>Toplu slot</Button>}
+          {isManager && <Button variant="secondary" onClick={() => setBulkOpen(true)}>Toplu ders</Button>}
           {isManager && <Button onClick={() => setCreateOpen(true)}>+ Yeni seans</Button>}
         </div>
       </div>
 
+      {/* Araç çubuğu: hafta navigasyonu + tarih aralığı + filtreler + tam ekran */}
       <Card>
-        <div className="grid gap-3 sm:grid-cols-4">
-          <FormField label="Başlangıç"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></FormField>
-          <FormField label="Bitiş"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></FormField>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => shiftWeek(-7)} aria-label="Önceki hafta">‹</Button>
+            <Button variant="secondary" size="sm" onClick={goThisWeek}>Bu hafta</Button>
+            <Button variant="ghost" size="sm" onClick={() => shiftWeek(7)} aria-label="Sonraki hafta">›</Button>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+            <span className="text-muted">–</span>
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+          </div>
           {isManager && (
-            <FormField label="Hoca">
-              <Select value={instructorFilter} onChange={(e) => setInstructorFilter(e.target.value)}>
-                <option value="">Tümü</option>
-                {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-              </Select>
-            </FormField>
-          )}
-          <FormField label="Grup">
-            <Select value={classTypeFilter} onChange={(e) => setClassTypeFilter(e.target.value)}>
-              <option value="">Tümü</option>
-              {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <Select value={instructorFilter} onChange={(e) => setInstructorFilter(e.target.value)} className="w-44">
+              <option value="">Tüm hocalar</option>
+              {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
             </Select>
-          </FormField>
+          )}
+          <Select value={classTypeFilter} onChange={(e) => setClassTypeFilter(e.target.value)} className="w-44">
+            <option value="">Tüm ders tipleri</option>
+            {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setFullscreen(true)}>⛶ Tam ekran</Button>
         </div>
       </Card>
 
       {error && <Alert kind="error">{error}</Alert>}
-      {banner && <Alert kind="success">{banner}</Alert>}
 
       {/* Sprint 26: hoca filtresi seçiliyse o hocanın programı gösterilir (boş/dolu saatler buradan anlaşılır). */}
       {selectedInstructorName && (
@@ -224,99 +294,122 @@ export default function SchedulePage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-muted">Yükleniyor…</p>
-      ) : sessions.length === 0 && visibleReqs.length === 0 ? (
-        <Card><p className="text-sm text-muted">{selectedInstructorName ? `${selectedInstructorName} hocanın seçili tarihte dersi yok.` : "Bu aralıkta ders seansı yok."}</p></Card>
+        <Card><p className="text-sm text-muted">Yükleniyor…</p></Card>
       ) : (
-        <div className="space-y-4">
-          {allDates.map((date) => (
-            <div key={date}>
-              <h3 className="mb-2 text-sm font-semibold text-muted">{date}</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {/* Sprint 27: onay bekleyen telafi talepleri — soluk/dashed, "Onay bekliyor"; yoklama/onay/booking YOK. */}
-                {(reqsByDate[date] ?? []).map((r) => (
-                  <Card key={r.id} className="border-dashed opacity-80">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="flex items-center gap-2 font-medium text-foreground">
-                          {r.classTypeName}
-                          <Badge tone="rose">{sessionKindLabels.Makeup}</Badge>
-                          <Badge tone="warning">Onay bekliyor</Badge>
-                        </p>
-                        <p className="text-sm text-muted">{r.instructorName} · {fmtTime(r.startAt)}–{fmtTime(r.endAt)}</p>
-                        <p className="mt-1 text-xs text-muted">Öğrenci: {r.studentName}{r.description ? ` · ${r.description}` : ""}</p>
-                      </div>
-                      <Badge tone="warning">Talep</Badge>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-                      {/* Instructor kendi pending talebini geri çekebilir; manager onay ekranından yönetir. */}
-                      {!isManager && (
-                        <Button variant="ghost" size="sm" loading={busyId === r.id} onClick={() => withdrawRequest(r)}>Geri çek</Button>
-                      )}
-                      {isManager && <span className="text-xs text-muted">Onaylamak için “Telafi Talepleri” ekranını kullanın.</span>}
-                    </div>
-                  </Card>
-                ))}
-                {(grouped[date] ?? []).map((s) => (
-                  <Card key={s.id}>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="flex items-center gap-2 font-medium text-foreground">
-                          {s.classTypeName}
-                          {s.sessionKind === "Makeup" && <Badge tone="rose">{sessionKindLabels.Makeup}</Badge>}
-                          {(s.sessionKind === "Trial" || s.sessionKind === "Special") && (
-                            <Badge tone="neutral">{sessionKindLabels[s.sessionKind]}</Badge>
-                          )}
-                          <Badge tone={s.isIndividual ? "warning" : "neutral"}>{s.isIndividual ? "Bireysel" : "Grup"}</Badge>
-                          {s.instructorChanged && <Badge tone="rose">Hoca değişti</Badge>}
-                        </p>
-                        <p className="text-sm text-muted">{s.instructorName} · {fmtTime(s.startAt)}–{fmtTime(s.endAt)}</p>
-                        <p className="mt-1 text-xs text-muted">
-                          {s.isIndividual
-                            ? `Bireysel · Doluluk ${s.bookedCount}/1`
-                            : isUnlimitedCapacity(s.capacity)
-                              ? `Grup · ${s.bookedCount} öğrenci · limitsiz`
-                              : `Grup · Doluluk ${s.bookedCount}/${s.capacity}`}
-                          {s.isFull && !isUnlimitedCapacity(s.capacity) && <span className="ml-2 text-danger">· DOLU</span>}
-                          {s.rescheduledAt && <span className="ml-2">· ertelendi</span>}
-                        </p>
-                      </div>
-                      <Badge tone={s.status === "Scheduled" ? "success" : s.status === "Cancelled" ? "danger" : "neutral"}>
-                        {sessionStatusLabels[s.status]}
-                      </Badge>
-                    </div>
-                    {s.status !== "Cancelled" && (
-                      <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-                        {s.status === "Scheduled" && (
-                          <>
-                            {/* v1.1.2: öğrenci ekleme (booking) yalnız stüdyo yetkilisi (Instructor görmez). */}
-                            {isManager && (
-                              <Button variant="secondary" size="sm" disabled={s.isFull} onClick={() => setBookFor(s)}>
-                                {s.isFull ? "Dolu" : "Öğrenci ekle"}
-                              </Button>
-                            )}
-                            <Button variant="ghost" size="sm" onClick={() => setRescheduleFor(s)}>Ertele</Button>
-                            <Button variant="ghost" size="sm" onClick={() => setCancelFor(s)}>İptal et</Button>
-                            {isManager && <Button variant="ghost" size="sm" onClick={() => markNotDelivered(s)}>İşlenmedi</Button>}
-                            {canConfirm(s) && <Button size="sm" loading={busyId === s.id} onClick={() => confirmSession(s)}>Onayla</Button>}
-                          </>
-                        )}
-                        {/* Sprint 29C: işlenmiş dersin onayını geri al (confirm yetkisiyle aynı). */}
-                        {s.status === "Completed" && canConfirm(s) && (
-                          <Button variant="ghost" size="sm" loading={busyId === s.id} onClick={() => unconfirmSession(s)}>Onayı geri al</Button>
-                        )}
-                        <Button variant="ghost" size="sm" onClick={() => setBookingsFor(s)}>Rezervasyonlar</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setAttendanceFor(s)}>Yoklama</Button>
-                        {isManager && <Button variant="ghost" size="sm" onClick={() => setActualFor(s)}>Fiilî hoca</Button>}
-                      </div>
-                    )}
-                  </Card>
-                ))}
+        <>
+          {/* Kaydedilmemiş taşıma çubuğu */}
+          {movedIds.size > 0 && (
+            <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/60 bg-warning/10 px-3 py-2 shadow-sm">
+              <span className="text-sm font-medium text-foreground">{movedIds.size} ders taşındı — değişiklikler kaydedilmedi.</span>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={discardMoves}>Vazgeç</Button>
+                <Button size="sm" loading={busyId === "save-moves"} onClick={saveMoves}>Kaydet ({movedIds.size})</Button>
               </div>
             </div>
-          ))}
+          )}
+          {/* Masaüstü/tablet: takvim ızgarası (sürükle-bırak) */}
+          <div className="hidden md:block">
+            <WeekTimetable
+              days={days}
+              sessions={displaySessions}
+              requests={visibleReqs}
+              selectedId={detailFor?.id ?? null}
+              draggable={isManager}
+              movedIds={movedIds}
+              students={studentsBySession}
+              onSelectSession={setDetailFor}
+              onSelectRequest={(r) => { if (!isManager) withdrawRequest(r); }}
+              onDropSession={isManager ? onDropSession : undefined}
+              onEmptyClick={isManager ? (date, hour) => setQuickAt(`${date}T${String(hour).padStart(2, "0")}:00`) : undefined}
+            />
+          </div>
+          {/* Mobil: günlük ajanda */}
+          <div className="md:hidden">
+            <MobileAgenda
+              days={days}
+              sessions={displaySessions}
+              requests={visibleReqs}
+              students={studentsBySession}
+              onSelectSession={setDetailFor}
+              onSelectRequest={(r) => { if (!isManager) withdrawRequest(r); }}
+            />
+          </div>
+          {sessions.length === 0 && visibleReqs.length === 0 && (
+            <p className="text-center text-sm text-muted">
+              {selectedInstructorName ? `${selectedInstructorName} hocanın bu aralıkta dersi yok.` : "Bu aralıkta ders seansı yok."}
+              {isManager && " Üstten “+ Yeni seans” ile veya boş bir hücreye tıklayarak ekleyebilirsiniz."}
+            </p>
+          )}
+        </>
+      )}
+
+      {/* Tam ekran timetable overlay */}
+      {fullscreen && (
+        <div className="fixed inset-0 z-40 flex flex-col bg-background p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={() => shiftWeek(-7)} aria-label="Önceki hafta">‹</Button>
+              <Button variant="secondary" size="sm" onClick={goThisWeek}>Bu hafta</Button>
+              <Button variant="ghost" size="sm" onClick={() => shiftWeek(7)} aria-label="Sonraki hafta">›</Button>
+              <span className="ml-2 text-sm text-muted">{from} – {to}</span>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setFullscreen(false)}>✕ Kapat</Button>
+          </div>
+          {movedIds.size > 0 && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-warning/60 bg-warning/10 px-3 py-2">
+              <span className="text-sm font-medium text-foreground">{movedIds.size} ders taşındı — kaydedilmedi.</span>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={discardMoves}>Vazgeç</Button>
+                <Button size="sm" loading={busyId === "save-moves"} onClick={saveMoves}>Kaydet ({movedIds.size})</Button>
+              </div>
+            </div>
+          )}
+          <div className="min-h-0 flex-1">
+            <WeekTimetable
+              days={days}
+              sessions={displaySessions}
+              requests={visibleReqs}
+              selectedId={detailFor?.id ?? null}
+              draggable={isManager}
+              movedIds={movedIds}
+              students={studentsBySession}
+              maxHeight="100%"
+              onSelectSession={setDetailFor}
+              onSelectRequest={(r) => { if (!isManager) withdrawRequest(r); }}
+              onDropSession={isManager ? onDropSession : undefined}
+              onEmptyClick={isManager ? (date, hour) => setQuickAt(`${date}T${String(hour).padStart(2, "0")}:00`) : undefined}
+            />
+          </div>
         </div>
       )}
+
+      {/* Ders detay drawer'ı (tıklayınca açılır) */}
+      <SessionDetailDrawer
+        session={detailFor}
+        isManager={isManager}
+        canConfirm={detailFor ? canConfirm(detailFor) : false}
+        busy={busyId === detailFor?.id}
+        students={detailFor ? studentsBySession.get(detailFor.id) : undefined}
+        onClose={() => setDetailFor(null)}
+        actions={{
+          book: () => { const s = detailFor!; setDetailFor(null); setBookFor(s); },
+          reschedule: () => { const s = detailFor!; setDetailFor(null); setRescheduleFor(s); },
+          cancel: () => { const s = detailFor!; setDetailFor(null); setCancelFor(s); },
+          notDelivered: () => { const s = detailFor!; setDetailFor(null); markNotDelivered(s); },
+          confirm: () => { const s = detailFor!; setDetailFor(null); confirmSession(s); },
+          unconfirm: () => { const s = detailFor!; setDetailFor(null); unconfirmSession(s); },
+          bookings: () => { const s = detailFor!; setDetailFor(null); setBookingsFor(s); },
+          attendance: () => { const s = detailFor!; setDetailFor(null); setAttendanceFor(s); },
+          actual: () => { const s = detailFor!; setDetailFor(null); setActualFor(s); },
+        }}
+        onSaveNotes={async (notes) => {
+          const s = detailFor!;
+          const updated = await classSessionService.update(s.id, { notes: notes || null });
+          setDetailFor(updated);
+          toast.success("Ders notu kaydedildi.");
+          await load();
+        }}
+      />
 
       {createOpen && (
         <CreateSessionModal
@@ -324,6 +417,16 @@ export default function SchedulePage() {
           classTypes={classTypes}
           onClose={() => setCreateOpen(false)}
           onDone={() => { setCreateOpen(false); load(); }}
+        />
+      )}
+      {/* Boş hücreye tıklayınca hızlı oluşturma (gün+saat ön-dolu) */}
+      {quickAt && (
+        <CreateSessionModal
+          instructors={instructors}
+          classTypes={classTypes}
+          initialStartAt={quickAt}
+          onClose={() => setQuickAt(null)}
+          onDone={() => { setQuickAt(null); load(); }}
         />
       )}
       {bulkOpen && (
@@ -365,86 +468,7 @@ export default function SchedulePage() {
           onDone={() => { setGroupChangeOpen(false); load(); }}
         />
       )}
-      {requestOpen && (
-        <MakeupRequestModal
-          instructors={instructors}
-          classTypes={classTypes}
-          isManager={isManager}
-          myInstructorId={myInstructorId}
-          onClose={() => setRequestOpen(false)}
-          onDone={() => { setRequestOpen(false); load(); }}
-        />
-      )}
     </div>
-  );
-}
-
-// Sprint 28C-2: telafi dersi talebi LINE-bazlı. Uygun LINE listesi (öğrenci+ders tipi+hoca+kalan telafi+seviye+bireysel/grup).
-// Instructor → yalnız kendi line'ları (backend zorlar); manager → tümü. Öğrenci/ders tipi/hoca line'dan türer.
-function MakeupRequestModal({ onClose, onDone }: {
-  instructors: { id: string; name: string }[]; classTypes: ClassTypeDto[];
-  isManager: boolean; myInstructorId: string | null; onClose: () => void; onDone: () => void;
-}) {
-  const [eligible, setEligible] = useState<MakeupEligibleLineDto[]>([]);
-  const [level, setLevel] = useState<StudentLevel | "">("");
-  const [lineId, setLineId] = useState("");
-  const [startAt, setStartAt] = useState("");
-  const [description, setDescription] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    makeupRequestService.eligibleStudents(level || null).then(setEligible).catch(() => setEligible([]));
-  }, [level]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!lineId) { setErr("Satır (line) seçin."); return; }
-    setBusy(true);
-    setErr(null);
-    try {
-      await makeupRequestService.create({ studentContractLineId: lineId, startAt, description: description || undefined });
-      onDone();
-    } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : "Talep oluşturulamadı.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Modal open onClose={onClose} title="Telafi dersi talebi">
-      <form onSubmit={submit} className="space-y-4">
-        {err && <Alert kind="error">{err}</Alert>}
-        <Alert kind="info">Talep onaya gider; onaylanana kadar saat bloklanır ve seçili satırın telafi hakkı rezerve edilir.</Alert>
-        <FormField label="Seviye filtresi (ops.)">
-          <Select value={level} onChange={(e) => { setLevel(e.target.value as StudentLevel | ""); setLineId(""); }}>
-            <option value="">Tüm seviyeler</option>
-            {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
-          </Select>
-        </FormField>
-        <FormField label="Satır (öğrenci · ders tipi · tarih · kalan telafi)">
-          <Select value={lineId} onChange={(e) => setLineId(e.target.value)} required>
-            <option value="">Seçin…</option>
-            {eligible.map((l) => (
-              <option key={l.lineId} value={l.lineId}>
-                {l.studentName} · {l.classTypeName} · {l.startDate}–{l.endDate} · {l.availableCredits} telafi{l.level ? ` · ${studentLevelLabels[l.level]}` : ""}{l.isIndividual ? " · Bireysel" : " · Grup"} · {l.instructorName}
-              </option>
-            ))}
-          </Select>
-        </FormField>
-        <FormField label="Başlangıç" hint="Gelecek bir zaman olmalı (telafi satır bitişinden sonra da olabilir)">
-          <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} required />
-        </FormField>
-        <FormField label="Açıklama (ops.)">
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="örn. 12 Mart dersinin telafisi" />
-        </FormField>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
-          <Button type="submit" loading={busy} disabled={eligible.length === 0}>Talep oluştur</Button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 
@@ -507,7 +531,7 @@ function GroupChangeModal({ instructors, classTypes, onClose, onDone }: {
               {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
             </Select>
           </FormField>
-          <FormField label="Grup (ClassType)">
+          <FormField label="Ders grubu">
             <Select value={classTypeId} onChange={(e) => { setClassTypeId(e.target.value); setCandidates(null); }}>
               {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
@@ -567,7 +591,7 @@ function GroupChangeModal({ instructors, classTypes, onClose, onDone }: {
                       </span>
                     </div>
                   ))}
-                  {!preview.canApply && <p className="text-danger">Çakışma var — uygulanamaz. Slot/tarih değiştirin.</p>}
+                  {!preview.canApply && <p className="text-danger">Çakışma var — uygulanamaz. Gün/saat veya tarihi değiştirin.</p>}
                 </div>
               )}
 
@@ -920,8 +944,17 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
     setLoading(true); setErr(null);
     const lv = level || null;
     const p = isMakeup
-      ? bookingCandidateService.makeup(session.id, lv).then((r) => { if (!cancelled) setMakeup(r); })
-      : bookingCandidateService.regular(session.id, lv).then((r) => { if (!cancelled) setRegular(r); });
+      ? bookingCandidateService.makeup(session.id, lv).then((r) => { if (!cancelled) { setRegular([]); setMakeup(r); } })
+      // Regular: uygun adaylar (tercih gün/saat) + AYRICA bu ders tipinde telafi hakkı olanlar (renkli gösterilir).
+      : Promise.all([
+          bookingCandidateService.regular(session.id, lv),
+          makeupCreditService.eligibleStudents(lv).catch(() => [] as MakeupEligibleLineDto[]),
+        ]).then(([reg, elig]) => {
+          if (cancelled) return;
+          setRegular(reg);
+          const regIds = new Set(reg.map((r) => r.studentProfileId));
+          setMakeup(elig.filter((e) => e.classTypeId === session.classTypeId && !regIds.has(e.studentProfileId)));
+        });
     p.catch((e) => { if (!cancelled) setErr(e instanceof ApiError ? e.message : "Aday listesi yüklenemedi."); })
      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -945,7 +978,7 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
         {err && <Alert kind="error">{err}</Alert>}
         {isMakeup
           ? <Alert kind="info">Telafi: kullanılabilir telafi hakkı olan öğrenciler (tercih gün/saatten bağımsız).</Alert>
-          : <Alert kind="info">Adaylar tercih gün/saatine göre sıralanır; tercih günü ders gününe uymayan satırlar gelmez.</Alert>}
+          : <Alert kind="info">Üstte uygun adaylar (tercih gün/saatine göre sıralı); altta <span className="font-medium text-primary">telafi hakkıyla eklenebilecekler</span> renkli gösterilir.</Alert>}
         <div className="flex items-center gap-2">
           <Input placeholder="Öğrenci ara…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <Select value={level} onChange={(e) => setLevel(e.target.value as StudentLevel | "")} className="w-40">
@@ -975,30 +1008,52 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
                 </div>
               ))
             )
-          ) : filteredRegular.length === 0 ? (
+          ) : (filteredRegular.length === 0 && filteredMakeup.length === 0) ? (
             <p className="text-sm text-muted">Bu derse uygun aday öğrenci yok.</p>
           ) : (
-            filteredRegular.map((c) => (
-              <div key={c.lineId} className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-sm font-medium text-foreground">{c.studentName}</span>
-                    <Badge tone="neutral">kalan {c.availableForPlanning}</Badge>
-                    {c.studentLevel && <Badge tone="neutral">{studentLevelLabels[c.studentLevel]}</Badge>}
-                    <Badge tone={c.isIndividual ? "warning" : "neutral"}>{c.isIndividual ? "Bireysel" : "Grup"}</Badge>
-                    {!c.hasPreferredSlots ? (
-                      <Badge tone="warning">tercih yok</Badge>
-                    ) : c.nearestPreferredTime ? (
-                      <Badge tone="success">tercih {fmtTime(c.nearestPreferredTime)} · ±{c.minutesFromSession} dk</Badge>
-                    ) : (
-                      <Badge tone="success">tercih: saat farketmez</Badge>
-                    )}
+            <>
+              {filteredRegular.map((c) => (
+                <div key={c.lineId} className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-sm font-medium text-foreground">{c.studentName}</span>
+                      <Badge tone="neutral">kalan {c.availableForPlanning}</Badge>
+                      {c.studentLevel && <Badge tone="neutral">{studentLevelLabels[c.studentLevel]}</Badge>}
+                      <Badge tone={c.isIndividual ? "warning" : "neutral"}>{c.isIndividual ? "Bireysel" : "Grup"}</Badge>
+                      {!c.hasPreferredSlots ? (
+                        <Badge tone="warning">tercih yok</Badge>
+                      ) : c.nearestPreferredTime ? (
+                        <Badge tone="success">tercih {fmtTime(c.nearestPreferredTime)} · ±{c.minutesFromSession} dk</Badge>
+                      ) : (
+                        <Badge tone="success">tercih: saat farketmez</Badge>
+                      )}
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted">{c.lineLabel}</p>
                   </div>
-                  <p className="mt-0.5 text-xs text-muted">{c.lineLabel}</p>
+                  <Button size="sm" disabled={busyId !== null} onClick={() => book(c.studentProfileId, c.lineId)}>Ekle</Button>
                 </div>
-                <Button size="sm" disabled={busyId !== null} onClick={() => book(c.studentProfileId, c.lineId)}>Ekle</Button>
-              </div>
-            ))
+              ))}
+              {/* Telafi hakkıyla eklenebilecekler — renkli (rose) ayrı bölüm. */}
+              {filteredMakeup.length > 0 && (
+                <>
+                  <p className="px-1 pt-2 text-xs font-semibold text-primary">Telafi hakkıyla eklenebilecekler</p>
+                  {filteredMakeup.map((c) => (
+                    <div key={c.lineId} className="flex items-center justify-between gap-2 rounded-xl border border-primary/50 bg-primary-soft/50 px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-sm font-medium text-foreground">{c.studentName}</span>
+                          <Badge tone="rose">{c.availableCredits} telafi hakkı</Badge>
+                          {c.level && <Badge tone="neutral">{studentLevelLabels[c.level]}</Badge>}
+                          <Badge tone={c.isIndividual ? "warning" : "neutral"}>{c.isIndividual ? "Bireysel" : "Grup"}</Badge>
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted">{c.lineLabel}</p>
+                      </div>
+                      <Button size="sm" variant="secondary" disabled={busyId !== null} onClick={() => book(c.studentProfileId, c.lineId)}>Ekle</Button>
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1077,11 +1132,11 @@ interface ModalProps {
   onDone: () => void;
 }
 
-function CreateSessionModal({ instructors, classTypes, onClose, onDone }: ModalProps) {
+function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialStartAt }: ModalProps & { initialStartAt?: string }) {
   const [form, setForm] = useState({
     instructorProfileId: instructors[0]?.id ?? "",
     classTypeId: classTypes[0]?.id ?? "",
-    startAt: "",
+    startAt: initialStartAt ?? "",
     capacity: "",
     notes: "",
     sessionKind: "Regular" as ClassSessionKind,
@@ -1182,25 +1237,26 @@ function BulkModal({ instructors, classTypes, onClose, onDone }: ModalProps) {
       });
       setResult({ created: r.created.length, skipped: r.skipped.length });
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : "Slot üretilemedi.");
+      setErr(e2 instanceof ApiError ? e2.message : "Dersler oluşturulamadı.");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Modal open onClose={onClose} title="Toplu slot oluştur">
+    <Modal open onClose={onClose} title="Toplu ders oluştur">
       <form onSubmit={submit} className="space-y-4">
+        <p className="text-sm text-muted">Seçilen gün ve saat aralığında, mola süresine göre art arda dersler oluşturur.</p>
         {err && <Alert kind="error">{err}</Alert>}
         {result && (
-          <Alert kind="success">{result.created} seans oluşturuldu, {result.skipped} atlandı.</Alert>
+          <Alert kind="success">{result.created} ders oluşturuldu, {result.skipped} atlandı.</Alert>
         )}
         <FormField label="Hoca">
           <Select value={form.instructorProfileId} onChange={(e) => setForm((f) => ({ ...f, instructorProfileId: e.target.value }))}>
             {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </Select>
         </FormField>
-        <FormField label="Grup (ClassType)">
+        <FormField label="Ders grubu">
           <Select value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))}>
             {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk</option>)}
           </Select>
@@ -1215,7 +1271,7 @@ function BulkModal({ instructors, classTypes, onClose, onDone }: ModalProps) {
         </FormField>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Kapat</Button>
-          <Button type="submit" loading={busy}>{result ? "Tekrar üret" : "Üret"}</Button>
+          <Button type="submit" loading={busy}>{result ? "Tekrar oluştur" : "Oluştur"}</Button>
           {result && <Button type="button" onClick={onDone}>Bitti</Button>}
         </div>
       </form>
