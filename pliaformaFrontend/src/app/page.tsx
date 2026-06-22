@@ -47,7 +47,7 @@ export default function LandingPage() {
 const NAV = [
   { href: "#features", label: "Özellikler" },
   { href: "#how", label: "Nasıl Çalışır" },
-  { href: "#showcase", label: "Paket Yönetimi" },
+  { href: "#showcase", label: "Panel" },
   { href: "#faq", label: "SSS" },
 ];
 
@@ -224,7 +224,7 @@ function DashboardMock() {
         <div className="mt-4 grid grid-cols-2 gap-3">
           <MockStat label="Bugünkü Dersler" value="8" hint="5 reformer · 3 mat" />
           <MockStat label="Rezervasyon" value="37" hint="4 boş kontenjan" />
-          <MockStat label="Paket Hakkı Azalan" value="6" hint="≤ 2 ders kaldı" tone="primary" />
+          <MockStat label="Ders Hakkı Azalan" value="6" hint="≤ 2 ders kaldı" tone="primary" />
           <MockStat label="Ödeme Gerekli" value="3" hint="8.400 ₺ bekliyor" tone="warning" />
         </div>
 
@@ -302,11 +302,11 @@ function ValueCards() {
 
 const FEATURES = [
   { icon: CalendarIcon, title: "Ders Programı & Rezervasyon", text: "Kontenjan, seans, hoca ve ders grubu bazlı programınızı kolayca yönetin." },
-  { icon: PackageIcon, title: "Paket Planları", text: "Öğrencilerin aldığı paketleri, kalan haklarını ve hangi ders gruplarında geçerli olduğunu takip edin." },
-  { icon: TagIcon, title: "Fiyat Geçerlilikleri", text: "Yeni fiyatları belirli tarihten itibaren geçerli olacak şekilde planlayın; mevcut öğrencilerin paket hakları korunur." },
+  { icon: PackageIcon, title: "Sözleşme & Paketler", text: "Öğrencinin sözleşme satırlarını (ders tipi, ders sayısı, fiyat, tercih gün/saat) ve kalan ders haklarını takip edin." },
+  { icon: TagIcon, title: "Ödeme & Borç Takibi", text: "Öğrenci bazlı borçları, taksitleri ve geciken ödemeleri; her borcun hangi sözleşmeye ait olduğunu tek ekranda görün." },
   { icon: CheckCircleIcon, title: "Yoklama & Katılım", text: "Derse katılan, gelmeyen veya telafi hakkı oluşan öğrencileri takip edin." },
-  { icon: RepeatIcon, title: "Telafi Dersleri", text: "İptal, erteleme ve telafi kredilerini düzenli şekilde yönetin." },
-  { icon: UserIcon, title: "Hoca Yönetimi", text: "Hocaların ders programını ve katılım süreçlerini takip edin." },
+  { icon: RepeatIcon, title: "Telafi Dersleri", text: "Telafi taleplerini oluşturun/onaylayın; iptal, erteleme ve telafi kredilerini düzenli yönetin." },
+  { icon: UserIcon, title: "Hoca Yönetimi & İş Hacmi", text: "Hocaları yönetin; aylık planlanan/işlenen ders ve katılım kırılımıyla ödeme hesabınızı kolaylaştırın." },
   { icon: UserPlusIcon, title: "Stüdyoya Katılım İstekleri", text: "Öğrenci veya hoca kendi hesabını oluşturur, katılmak için istek gönderir; stüdyo sahibi onaylar." },
   { icon: BellIcon, title: "Bildirimler", text: "Yaklaşan dersler, ödeme durumları ve önemli aksiyonlar için sistem içi bildirimler." },
 ];
@@ -343,7 +343,7 @@ function Features() {
 const STEPS = [
   { n: "01", title: "Stüdyonuzu oluşturun", text: "Stüdyo sahibi olarak hesabınızı açın ve ilk stüdyo ayarlarınızı tamamlayın." },
   { n: "02", title: "Ders ve paketlerinizi tanımlayın", text: "Ders grupları, hocalar, paket planları ve fiyatları belirleyin." },
-  { n: "03", title: "Öğrenciler rezervasyon yapmaya başlasın", text: "Öğrenciler uygun paketleriyle derslere katılır, siz de tüm süreci panelden takip edersiniz." },
+  { n: "03", title: "Programı oluşturun ve takip edin", text: "Öğrencileri sözleşmelerine göre derslere ekleyin; yoklama, telafi ve ödemeleri tek panelden yönetin." },
 ];
 
 function HowItWorks() {
@@ -426,7 +426,7 @@ function Showcase() {
             </ShowcaseCard>
           </Reveal>
           <Reveal delay={80}>
-            <ShowcaseCard title="Paket Hakkı Azalanlar" badge="6" badgeTone="primary">
+            <ShowcaseCard title="Ders Hakkı Azalanlar" badge="6" badgeTone="primary">
               <ListRow a="Deniz Aydın" b="2 ders" bClass="font-bold text-warning" />
               <ListRow a="Ceren Öztürk" b="1 ders" bClass="font-bold text-warning" />
               <ListRow a="Burak Şahin" b="2 ders" bClass="font-bold text-warning" />
