@@ -23,7 +23,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="tr" className={`${sans.variable} h-full`} suppressHydrationWarning>
       <head>
-        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* suppressHydrationWarning: React 19 nonce'u client'ta render etmez (güvenlik) → sunucu nonce'u vs
+            boş client nonce'u hydration mismatch üretir. Next 16 "preventing-flash-before-hydration" rehberi de
+            inline flash script'e bunu ekler: DOM kazanır, script zaten parse anında çalışmıştır (nonce geçerli). */}
+        <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-full font-sans">
         <ThemeProvider>
