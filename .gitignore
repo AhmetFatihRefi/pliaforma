@@ -25,6 +25,10 @@ deploy/certs/*
 backups/
 ops/backups/
 
+# --- Güvenlik tarama çıktıları (Sprint 31D-3; CI artifact/ephemeral — repoya girmez) ---
+sbom/
+.fixture-tmp/
+
 # --- OS / editör ---
 .DS_Store
 Thumbs.db

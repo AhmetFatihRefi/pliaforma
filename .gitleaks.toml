@@ -1,0 +1,26 @@
+# Pliaforma — gitleaks config (Sprint 31D-3). CI'da BLOCKING secret-scan bu config ile koşar.
+# useDefault: gitleaks'in yerleşik kural seti kullanılır. Aşağıdaki allowlist YALNIZ bilinen, düşük-değerli
+# dev/test değerlerini (gerçek secret DEĞİL) kapsar — DAR ve exact-value; başka secret'ı gizlemez.
+# NOT: Bu config'siz baseline zaten temiz; allowlist savunma amaçlıdır (kural güncellemelerine karşı).
+# Gerçek prod secret bulunursa allowlist'e EKLENMEZ → ayrı incident/rotation/history-cleanup işi.
+
+title = "Pliaforma gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Bilinen dev/test fixture + placeholder değerleri (gerçek secret değil)"
+regexTarget = "match"
+regexes = [
+  # Local/dev PostgreSQL bağlantı parolası (appsettings + AppDbContextFactory; prod env ile override edilir).
+  '''Password=postgres''',
+  # Dev seed admin parolası (yalnız Development; prod'da güçlü değer zorunlu).
+  '''Admin!2345''',
+  # Smoke test sabit parolası.
+  '''Parola123!''',
+  # E2E test sabit parolası.
+  '''E2ePass123!''',
+  # .env.example / docs placeholder'ları (gerçek değer değil).
+  '''CHANGE_ME[_A-Za-z0-9]*''',
+]

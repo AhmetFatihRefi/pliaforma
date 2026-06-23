@@ -1,0 +1,114 @@
+name: security-scans
+
+# Sprint 31D-3 — CI güvenlik taramaları.
+# gitleaks = BLOCKING (gerçek secret leak CI'yı kırar). npm/dotnet/trivy/SBOM = advisory (rapor + artifact).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Haftalık (Pazartesi 06:00 UTC) — yeni açıklanan CVE drift'ini yakalar (advisory'ler için).
+    - cron: '0 6 * * 1'
+
+# Minimal yetki (least privilege): yalnız okuma; SARIF/code-scanning kullanılmıyor.
+permissions:
+  contents: read
+
+# Sürümler tek yerde pinli (3rd-party güvenlik araçları).
+env:
+  GITLEAKS_VERSION: v8.21.2
+  TRIVY_VERSION: '0.58.0'
+
+jobs:
+  # ---- BLOCKING: secret leak ----
+  secret-scan:
+    name: gitleaks (secret scan, blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history (gitleaks tüm commit'leri tarar)
+      - name: gitleaks detect (full history)
+        run: |
+          docker run --rm -v "$PWD:/repo" "ghcr.io/gitleaks/gitleaks:${GITLEAKS_VERSION}" \
+            detect --source /repo --config /repo/.gitleaks.toml --redact --no-banner --exit-code 1
+
+  # ---- advisory: .NET zafiyetli paket ----
+  deps-dotnet:
+    name: dotnet vulnerable packages (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: restore + vulnerable scan
+        working-directory: pliaformaApi
+        run: |
+          dotnet restore pliaformaApi.sln
+          echo "### dotnet vulnerable (transitive dahil)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          dotnet list pliaformaApi.sln package --vulnerable --include-transitive 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- advisory: npm shipped-deps audit ----
+  deps-npm:
+    name: npm audit (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: npm ci + audit (prod deps)
+        working-directory: pliaformaFrontend
+        run: |
+          npm ci
+          echo "### npm audit (--omit=dev --audit-level=high)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          npm audit --omit=dev --audit-level=high 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- advisory: Trivy filesystem (deps + misconfig + secret) — image build YOK ----
+  trivy-fs:
+    name: trivy fs (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: trivy fs scan
+        run: |
+          echo "### trivy fs (vuln + misconfig + secret)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          docker run --rm -v "$PWD:/repo" "aquasec/trivy:${TRIVY_VERSION}" \
+            fs --scanners vuln,misconfig,secret --severity HIGH,CRITICAL --no-progress /repo 2>&1 \
+            | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ---- artifact: SBOM (CycloneDX) ----
+  sbom:
+    name: SBOM (CycloneDX, artifact)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: generate SBOMs
+        run: |
+          mkdir -p sbom
+          # .NET SBOM
+          dotnet tool install --global CycloneDX || true
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet CycloneDX pliaformaApi/pliaformaApi.sln -o sbom --filename dotnet-sbom.json --json || true
+          # npm SBOM
+          (cd pliaformaFrontend && npm ci && npx --yes @cyclonedx/cyclonedx-npm@1 --omit dev --output-file ../sbom/npm-sbom.json) || true
+          ls -la sbom || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom/
+          if-no-files-found: warn

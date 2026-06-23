@@ -103,5 +103,8 @@ Hazırlayan / onaylayan:
 ---
 
 ## 7. Düzenli tatbikat
-- **Tabletop drill** (masa başı senaryo provası): **Sprint 31D**'de planlı. Senaryo örneği: "Prod DB yedeği
-  yetkisiz erişime uğradı" — ekip bu planı uçtan uca yürütür, eksikler RISK_REGISTER'a eklenir.
+- **Tabletop drill** (masa başı senaryo provası): **Sprint 31D-3'te HAZIRLANDI** →
+  [INCIDENT_TABLETOP_DRILL.md](INCIDENT_TABLETOP_DRILL.md). Senaryo: "Çalınan **şifreli** prod DB yedeği"
+  (31D-2 backup encryption bağlamı: yedek gpg-şifreli + key ayrı → maruziyet düşük, ama olay ciddiye alınır + karar kaydı).
+  Ekip bu planı uçtan uca yürütür; bulunan eksikler tarihli madde olarak [RISK_REGISTER.md](RISK_REGISTER.md)'a eklenir.
+  **Düzenli tekrar** (öneri: yılda 1–2) operatör sorumluluğudur.

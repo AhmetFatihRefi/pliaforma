@@ -74,8 +74,9 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 - [ ] Veri sorumlusu/iletişim kişileri atanmış (TBD) — ❌ ⏳ owner
 
 ## Dependency & CI
-- [ ] **Dependency scan geçti** (npm audit + dotnet vulnerable) — ⏳31D / P1-CI
-- [ ] **Secret scan geçti** (gitleaks/trufflehog) — ⏳31D / P1-CI
+- [x] **Secret scan (gitleaks) CI'da BLOCKING** — ✅ (31D-3): `.github/workflows/security.yml` + `.gitleaks.toml` (baseline temiz, dar allowlist); gerçek secret leak CI'yı kırar / P1-CI
+- [x] **Dependency/IaC scan (advisory)** — ✅ (31D-3): npm audit (`--omit=dev`) + dotnet vulnerable (transitive) + trivy fs + CycloneDX SBOM artifact; haftalık cron / P1-CI
+- [x] **Incident tabletop drill** — ✅ (31D-3): [INCIDENT_TABLETOP_DRILL.md](INCIDENT_TABLETOP_DRILL.md) ("çalınan şifreli yedek"); düzenli tekrar operatör sorumluluğu / P1-9
 
 ---
 

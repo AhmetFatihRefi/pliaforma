@@ -123,7 +123,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Etki:** Sızan secret / zafiyetli bağımlılık fark edilmez.
 - **Çözüm:** gitleaks/trufflehog + `npm audit` + `dotnet list package --vulnerable` (PR gate).
 - **Acceptance:** PR'da taramalar koşuyor; kritik bulguda kırmızı.
-- **Sprint:** 31D
+- **Sprint:** **31D-3 — UYGULANDI** (`.github/workflows/security.yml`: **gitleaks BLOCKING** full-history + `.gitleaks.toml` dar allowlist, baseline temiz; **advisory** npm audit `--omit=dev` + dotnet vulnerable transitive + trivy fs + CycloneDX SBOM artifact; push/PR/dispatch/haftalık cron; `permissions: contents:read`; `gitleaks-action` yerine pinned container; local wrapper `scripts/security-scan.sh`). Critical-CVE soft-gate → sonraki değerlendirme.
 
 ---
 
@@ -154,5 +154,5 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 | **31C-2** ✅ | P1-6 (CSP enforce + nonce + report-sink) — uygulandı (migration yok; prod report-only→enforce env-flip) |
 | **31D-1** ✅ | P1-3 (retention purge + DB-level append-only trigger) — uygulandı (migration: Sprint31D_AuditAppendOnly) |
 | **31D-2** ✅ | P1-7 (backup encryption gpg AES256 + restore drill) — uygulandı (off-site → post-pilot) |
-| **31D-3** | P1-CI (gitleaks blocking + npm/dotnet/Trivy/SBOM advisory), P1-9, incident tabletop |
+| **31D-3** ✅ | P1-CI (gitleaks blocking + npm/dotnet/Trivy/SBOM advisory CI), incident tabletop drill — uygulandı |
 | **31-MFA** ✅ (ayrı mini-sprint) | P1-10 (Owner/StudioAdmin TOTP MFA) — uygulandı (migration: Sprint31MFA_TotpMfa) |
