@@ -86,6 +86,9 @@ builder.Services.Configure<Pliaforma.Application.Common.Settings.AuthSettings>(
 // Hatırlatma worker'ı (idempotent; Notifications:WorkerEnabled ile kapatılabilir).
 builder.Services.AddHostedService<Pliaforma.Api.Workers.ReminderBackgroundService>();
 
+// Sprint 31D-1: retention purge worker (AuditPurge:Enabled ile açılır; ilk deploy DryRun=true).
+builder.Services.AddHostedService<Pliaforma.Api.Workers.AuditRetentionPurgeBackgroundService>();
+
 var app = builder.Build();
 
 app.UseForwardedHeaders();

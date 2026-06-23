@@ -57,7 +57,16 @@ veriyi uygulama görünürlüğünden çıkarır ama **fiziksel olarak DB'de tut
 ---
 
 ## 5. Teknik aksiyonlar (sprint bağlama)
-- **31D:** AuthToken/RefreshToken purge job (süresi dolanları hard-delete). Bildirim retention job.
+- **31D-1 — UYGULANDI:** in-app `AuditRetentionPurgeBackgroundService` (ReminderBackgroundService deseni). Hedefler:
+  (a) **SecurityAuditLog** `OccurredAt < now-730g` fiziksel sil; (b) **AuthToken** `ExpiresAt < now-tampon`,
+  **RefreshToken** `ExpiresAt < now-tampon OR (RevokedAt < now-tampon)` fiziksel hard-delete (BaseEntity soft-delete'i
+  bypass). **Güvenlik kapıları:** `AuditPurge:Enabled` (dev false), `DryRun` (default true; ilk deploy true → gözlem →
+  false), `AuditRetentionDays<=0` refuse, cutoff run başında sabit, batched, exception app'i düşürmez. Tur başına ≤1
+  `AuditRetentionPurge` meta event (PII yok; cutoff geçmişte → kendini silmez, sonsuz döngü yok). **Bildirim purge → post-pilot.**
+- **31D-1 — DB-level append-only:** PostgreSQL trigger (`Sprint31D_AuditAppendOnly`) SecurityAuditLogs'ta — **UPDATE her zaman**
+  engellenir, **DELETE yalnız** oturumda `app.audit_purge='on'` (yalnız purge worker set eder) ise izinli, **INSERT serbest**.
+  **Dürüst sınır:** Bu, kaza/bug/normal app update-delete akışına karşı **DB-level guard**'dır; **tam-compromised app'e karşı
+  mutlak koruma DEĞİLDİR** (uygulama GUC'u set edebilir). Daha güçlü ayrım (ayrı maint DB rolü + REVOKE) → post-pilot.
 - **31C:** Silme/anonimleştirme işlemleri SecurityAuditLog'a düşsün. **SecurityAuditLog retention = 2 yıl**:
   append-only, PII maskeli, normal kullanıcı akışında update/delete edilmez, soft-delete uygulanmaz, erişim çok
   sınırlı (yalnız PlatformAdmin / çok sınırlı Owner). 2 yıl sonrası arşivle/sil (kesin yöntem avukat/owner onayı).

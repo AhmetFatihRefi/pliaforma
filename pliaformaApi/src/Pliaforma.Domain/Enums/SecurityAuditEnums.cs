@@ -45,6 +45,9 @@ public enum SecurityAuditEventType
     // Sprint 31C-1 — öğrenci verisi / hassas alan erişimi (istek-başı tek event)
     StudentDataListed = 26,
     HealthNotesAccessed = 27,
+
+    // Sprint 31D-1 — retention purge meta olayı (tur başına ≤1; PII yok)
+    AuditRetentionPurge = 28,
 }
 
 /// <summary>Denetim olayının sonucu.</summary>

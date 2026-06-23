@@ -68,7 +68,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Kanıt:** Yalnız soft-delete; hard-delete/anonimleştirme/purge yok.
 - **Çözüm:** [RETENTION_AND_DELETION_POLICY.md](RETENTION_AND_DELETION_POLICY.md) + süresi dolan AuthToken/RefreshToken purge job.
 - **Acceptance:** Politika onaylı; purge job süresi dolan token'ları temizliyor.
-- **Sprint:** 31A (politika) → 31D (purge job)
+- **Sprint:** 31A (politika) → **31D-1 — UYGULANDI** (in-app `AuditRetentionPurgeBackgroundService`: SecurityAuditLog 2yr + AuthToken/RefreshToken expired/revoked+tampon **fiziksel hard-delete**; `AuditPurge:Enabled/DryRun/...` config, ilk deploy DryRun=true; **DB-level append-only trigger** SecurityAuditLogs'ta — UPDATE her zaman, DELETE yalnız purge GUC `app.audit_purge='on'` ile; migration `Sprint31D_AuditAppendOnly`). Business-data anonimleştirme + Notification purge → post-pilot.
 
 ### P1-4 · Veri envanteri + yetki matrisi + KVKK tedbir kanıtı
 - **Etki:** KVKK kanıtı eksik.
@@ -152,5 +152,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 | **31B-2** ✅ | P0-2 (auth events), P1-1 (lockout), P1-2 (parola politikası + change-password), P1-6 (CSP Report-Only) — uygulandı (migration: Sprint31B2_AuthHardeningAndAuditLog) |
 | **31C-1** ✅ | P0-2 (kapsam genişletme: rol/ödeme/sözleşme/export/HealthNotes + viewer), P1-9 (tenant isolation test) — uygulandı (migration yok) |
 | **31C-2** ✅ | P1-6 (CSP enforce + nonce + report-sink) — uygulandı (migration yok; prod report-only→enforce env-flip) |
-| **31D** | P1-3 (purge), P1-7, P1-9 (CI), P1-CI, P2-4 |
+| **31D-1** ✅ | P1-3 (retention purge + DB-level append-only trigger) — uygulandı (migration: Sprint31D_AuditAppendOnly) |
+| **31D-2** | P1-7 (backup encryption + restore drill) |
+| **31D-3** | P1-CI (gitleaks blocking + npm/dotnet/Trivy/SBOM advisory), P1-9, incident tabletop |
 | **31-MFA** ✅ (ayrı mini-sprint) | P1-10 (Owner/StudioAdmin TOTP MFA) — uygulandı (migration: Sprint31MFA_TotpMfa) |

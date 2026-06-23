@@ -62,7 +62,8 @@ Statü sembolleri: ✅ yeterli · ⚠️ kısmi · ❌ yok.
 | Konu | Mevcut | Statü | Eksik | Öneri | Risk |
 |---|---|---|---|---|---|
 | Soft delete | Tüm entity'lerde | ✅ | Hard-delete/anonimleştirme yok | Retention + anonimleştirme akışı | P1-3 |
-| Retention politikası | Yok | ❌ | Saklama takvimi | Politika + token purge job | P1-3 |
+| Retention politikası | Politika + **purge job UYGULANDI** (31D-1): SecurityAuditLog 2yr + AuthToken/RefreshToken hard-delete; DryRun ilk deploy | ✅ | Notification/business-data anonimleştirme | post-pilot | P1-3 |
+| Audit DB-level append-only | **Trigger** (31D-1): UPDATE her zaman, DELETE yalnız purge GUC ile blocked; INSERT serbest | ✅ | tam-compromised app'e karşı mutlak değil (dürüst not) | ayrı DB rolü → post-pilot | P1-3 |
 | Token/session temizliği | Yok | ❌ | Süresi dolan token purge | Zamanlı temizlik | P1-3 |
 | Backup | `ops/backup-postgres.sh` + restore + cron örneği | ✅ | Şifreleme yok, off-site manuel | AES/PGP + off-site + drill kanıtı | P1-7 |
 | Restore drill | Dokümante | ✅ | Periyodik kanıt | 3 ayda bir drill kaydı | P1-7 |
