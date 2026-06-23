@@ -29,6 +29,15 @@ public class User : BaseEntity
     public DateTime? LastLoginAt { get; set; }
 
     /// <summary>
+    /// Ardışık başarısız login sayısı (Sprint 31B-2 hesap kilitleme). Başarılı login / parola reset /
+    /// parola değişiminde sıfırlanır. Eşik (AuthSettings.MaxFailedAttempts) aşılınca <see cref="LockoutEnd"/> set edilir.
+    /// </summary>
+    public int FailedLoginCount { get; set; }
+
+    /// <summary>Geçici kilit bitiş anı (UTC). null → kilitli değil. Bu an geçince login tekrar denenebilir.</summary>
+    public DateTime? LockoutEnd { get; set; }
+
+    /// <summary>
     /// E-posta doğrulandığı an (UTC). null → doğrulanmamış (Sprint 16). Mevcut kullanıcılar migration
     /// backfill ile doğrulanmış sayılır. Doğrulanmamış kullanıcı login olabilir ama stüdyoya başvuramaz.
     /// </summary>

@@ -33,6 +33,12 @@ public sealed class UnauthorizedException : AppException
     public UnauthorizedException(string message) : base(message) { }
 }
 
+/// <summary>Hesap geçici olarak kilitli — çok sayıda başarısız login (HTTP 423 Locked). Sprint 31B-2.</summary>
+public sealed class LockedException : AppException
+{
+    public LockedException(string message) : base(message) { }
+}
+
 /// <summary>Çakışma — örn. e-posta zaten kayıtlı (HTTP 409).</summary>
 public sealed class ConflictException : AppException
 {

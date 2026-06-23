@@ -8,7 +8,7 @@
 # Postgres container gerekli. Kullanım: scripts/sprint27-smoke.sh [BASE]
 set -u
 BASE="${1:-http://localhost:5132}"
-TS=$(date +%s); PW="Parola123"; FAILED=0
+TS=$(date +%s); PW="Parola123!"; FAILED=0
 ok(){ printf "  \033[32mPASS\033[0m %s\n" "$1"; }
 bad(){ printf "  \033[31mFAIL\033[0m %s\n" "$1"; FAILED=1; }
 expect(){ [ "$2" = "$3" ] && ok "$1 ($3)" || bad "$1 (beklenen $2, gelen $3)"; }

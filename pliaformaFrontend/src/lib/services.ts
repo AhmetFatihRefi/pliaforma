@@ -20,6 +20,8 @@ export interface AuthService {
   resendVerification(): Promise<void>;
   forgotPassword(email: string): Promise<void>;
   resetPassword(token: string, newPassword: string): Promise<void>;
+  // Sprint 31B-2: oturum açmış kullanıcı parolasını değiştirir
+  changePassword(currentPassword: string, newPassword: string): Promise<void>;
 }
 
 const realAuthService: AuthService = {
@@ -41,6 +43,8 @@ const realAuthService: AuthService = {
     api<null>("/api/auth/forgot-password", { method: "POST", body: { email }, skipAuthRetry: true }).then(() => undefined),
   resetPassword: (token, newPassword) =>
     api<null>("/api/auth/reset-password", { method: "POST", body: { token, newPassword }, skipAuthRetry: true }).then(() => undefined),
+  changePassword: (currentPassword, newPassword) =>
+    api<null>("/api/auth/change-password", { method: "POST", body: { currentPassword, newPassword }, skipAuthRetry: true }).then(() => undefined),
 };
 
 const useMock = process.env.NEXT_PUBLIC_USE_MOCK === "true";

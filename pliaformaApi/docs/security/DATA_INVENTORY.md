@@ -62,6 +62,8 @@ ile doğrulanır (bkz. [../SECURITY-REVIEW.md](../SECURITY-REVIEW.md) §2).
 | `AuthToken` (TokenHash, Purpose, ExpiresAt, ConsumedAt, CreatedIp, UserAgent) | E-posta doğrulama/parola sıfırlama tek-kullanımlık token | ORTA | **Ham token TUTULMAZ; sadece SHA-256 hash.** IP/UserAgent saklanıyor → retention gerekir |
 | `RefreshToken` (TokenHash, ExpiresAt, RevokedAt, ReplacedByTokenHash, CreatedByIp) | Oturum yenileme | ORTA | **Sadece SHA-256 hash.** Rotasyonlu; süresi dolan kayıtlar temizlenmeli |
 | `User.LastLoginAt`, `StudioMembership.AcceptedAt`, `StudentProfile.ConvertedAt` | Aktivite zaman damgaları | ORTA | Davranışsal meta |
+| `User.FailedLoginCount`, `User.LockoutEnd` | Hesap kilitleme sayacı/kilit (Sprint 31B-2) | DÜŞÜK-ORTA | Brute-force koruması; başarı/reset/change'de sıfırlanır |
+| `SecurityAuditLog` (Sprint 31B-2) | Güvenlik denetim olayları: `EventType, Outcome, ActorUserId?, **ActorEmailMasked** (maskeli), StudioId?, Ip?, UserAgent?, Detail?` | ORTA | **Append-only**, BaseEntity değil (soft-delete yok). **PII maskeli** (ham e-posta/parola/token/secret/request-body ASLA). **Ip + UserAgent**: güvenlik/denetim amaçlı (KVKK meşru menfaat). **Retention: 2 yıl** ([RETENTION_AND_DELETION_POLICY.md](RETENTION_AND_DELETION_POLICY.md)); purge job 31D. Erişim: yalnız PlatformAdmin (viewer 31C). |
 
 ---
 

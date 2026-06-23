@@ -125,6 +125,18 @@ public sealed class AuthController : ControllerBase
         return Ok(ApiResponse<object?>.Ok(null, "Şifreniz güncellendi. Lütfen yeni şifrenizle giriş yapın."));
     }
 
+    // Sprint 31B-2: oturum açmış kullanıcı kendi parolasını değiştirir (mevcut parola doğrulanır).
+    [Authorize]
+    [HttpPost("change-password")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> ChangePassword(ChangePasswordRequest body, CancellationToken ct)
+    {
+        await _dispatcher.Send(new ChangePasswordCommand(body.CurrentPassword, body.NewPassword), ct);
+        // Tüm refresh token'lar revoke edildi → mevcut oturum cookie'si de temizlenir.
+        RefreshCookie.Clear(Response, _secureCookie);
+        return Ok(ApiResponse<object?>.Ok(null, "Parolanız güncellendi. Oturumlarınız yenilendi; lütfen tekrar giriş yapın."));
+    }
+
     /// <summary>Refresh token'ı cookie'ye yazar (varsa) ve gövdeyi refresh'siz döner.</summary>
     private IActionResult AuthOk(AuthResult result, string message)
     {

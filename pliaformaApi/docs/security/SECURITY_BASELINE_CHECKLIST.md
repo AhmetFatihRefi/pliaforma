@@ -12,7 +12,7 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 - [ ] **HTTPS aktif** (nginx 443 + sertifika) — 🟡 config hazır (31B-1); gerçek cert + canlı doğrulama pilot-deploy / **P0-1**
 - [x] **HTTP→HTTPS 301 redirect** — ✅ nginx config (31B-1) / P0-1
 - [x] **HSTS header** aktif — ✅ nginx 443 (kısa max-age; cert sonrası uzat) (31B-1) / P0-1
-- [ ] CSP header aktif (nonce) — ⏳31B / P1-6
+- [x] CSP **Report-Only** aktif — ✅ nginx 443 (31B-2); **enforce + nonce → 31C** / P1-6
 - [x] X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy (nginx) — ✅
 - [x] CORS allowlist (prod `https://` origin) — ⏳ prod env doğrulaması / P0-4
 - [x] Rate limit auth uçlarında aktif (prod 10/dk) — ✅
@@ -35,8 +35,8 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 
 ## Kimlik & oturum
 - [x] Parola BCrypt hash — ✅
-- [ ] **Parola politikası** (min 10–12 + kompleksite) — ⏳31B / P1-2
-- [ ] **Hesap kilitleme** (brute-force) — ⏳31B / P1-1
+- [x] **Parola politikası** (min 10 + 4 sınıf + yaygın parola reddi; shared rule + change-password) — ✅ (31B-2) / P1-2
+- [x] **Hesap kilitleme** (5 başarısız → 15dk; 423; success/reset/change sıfırlar) — ✅ (31B-2) / P1-1
 - [ ] MFA (Owner/StudioAdmin) — ⏳ **Sprint 31-MFA (ayrı mini-sprint)** / P1-10 (31B'ye dahil DEĞİL)
 - [x] Refresh token hash + rotasyon + revoke — ✅
 - [x] Refresh cookie HttpOnly/SameSite=Strict/Secure(prod)/Path — ✅
@@ -49,8 +49,8 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 - [x] `security-audit-smoke.sh` (21 kontrol) geçti — ✅ (mevcut)
 
 ## Audit & loglama
-- [ ] **SecurityAuditLog minimum hazır** (login/rol/ödeme/sözleşme/export/sağlık erişimi; append-only, PII maskeli, **retention 2 yıl**) — ⏳31B tasarım / 31C uygulama / **P0-2**
-- [ ] Failed-login audit'e düşüyor — ⏳31B/C / P0-2
+- [x] **SecurityAuditLog minimum hazır** (auth event'leri; append-only/BaseEntity değil, PII maskeli, IP/UserAgent, **retention 2 yıl**) — ✅ (31B-2); kapsam genişletme (rol/ödeme/sözleşme/export/sağlık) + viewer → 31C / **P0-2**
+- [x] Failed-login + lockout + login success + logout + password reset/change audit'e düşüyor — ✅ (31B-2) / P0-2
 - [x] Prod log PII/token sızdırmıyor (dev LogEmailSender prod'da kapalı) — ✅
 
 ## Yedek & süreklilik

@@ -16,6 +16,9 @@ public sealed record VerifyEmailRequest(string Token);
 public sealed record ForgotPasswordRequest(string Email);
 public sealed record ResetPasswordRequest(string Token, string NewPassword);
 
+// Sprint 31B-2: authenticated parola değiştirme
+public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
 /// <summary>
 /// İstemciye dönen auth gövdesi. Refresh token BURADA YOKTUR; httpOnly cookie ile gider.
 /// </summary>

@@ -43,5 +43,8 @@ public interface IAppDbContext
     DbSet<SubscriptionPlan> SubscriptionPlans { get; }
     DbSet<PlatformSubscriptionPayment> PlatformSubscriptionPayments { get; }
 
+    /// <summary>Güvenlik denetim kayıtları (append-only; yalnız Add). Bkz. SecurityAuditLog.</summary>
+    DbSet<SecurityAuditLog> SecurityAuditLogs { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

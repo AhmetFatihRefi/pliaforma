@@ -12,7 +12,7 @@ set -u
 BASE="${1:-http://localhost:5132}"
 JAR="$(mktemp)"
 EMAIL="smoke+$(date +%s)@pliaforma.local"
-PASS_PW="Parola123"
+PASS_PW="Parola123!"
 FAILED=0
 
 cyan() { printf "\033[36m%s\033[0m\n" "$1"; }

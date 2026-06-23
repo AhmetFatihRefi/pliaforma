@@ -1,7 +1,7 @@
 // Evrim demo — tüm öğrencileri (UserId'siz) user'a dönüştürür. Ad-soyaddan e-posta üretir (Türkçe sadeleştirilir).
 // Kullanım: node evrim-convert-users.mjs [BASE] [PW]
 const BASE = process.argv[2] || "http://localhost:5132";
-const PW = process.argv[3] || "Demo!2345";
+const PW = process.argv[3] || "Demo!2345x";
 const tr = { "ş": "s", "Ş": "s", "ç": "c", "Ç": "c", "ı": "i", "İ": "i", "ğ": "g", "Ğ": "g", "ü": "u", "Ü": "u", "ö": "o", "Ö": "o" };
 const slug = (s) => s.split("").map((c) => tr[c] ?? c).join("").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "");
 

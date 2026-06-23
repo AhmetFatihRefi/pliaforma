@@ -5,6 +5,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Yaygın parola reddi (Sprint 31B-2): embedded liste, çalışma zamanında HashSet'e yüklenir. -->
+    <EmbeddedResource Include="Resources\common-passwords.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- EF Core CORE only (DbSet<T> in IAppDbContext). Provider (Npgsql) stays in Persistence. -->
     <!-- Extensions.* abstraction'lar (DI/Logging/Configuration) EF Core'dan TRANSITIVE gelir;
          framework-sağlanan bu assembly'leri explicit referanslamak runtime load hatasına yol açıyordu. -->

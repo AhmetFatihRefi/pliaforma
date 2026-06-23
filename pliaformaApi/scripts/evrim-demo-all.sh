@@ -9,7 +9,7 @@ PGC=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|
 bash "$DIR/evrim-demo-seed.sh" "$BASE" || exit 1
 bash "$DIR/evrim-demo-extra.sh" || exit 1
 echo "== Tüm öğrencileri user yap =="
-node "$DIR/evrim-convert-users.mjs" "$BASE" "Demo!2345"
+node "$DIR/evrim-convert-users.mjs" "$BASE" "Demo!2345x"
 
 SID=$(docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "SELECT \"Id\" FROM \"Studios\" WHERE \"Name\"='Evrim Mutlu Pilates Studyo' LIMIT 1;" 2>/dev/null)
 docker exec "$PGC" psql -U postgres -d pliaforma -c "UPDATE \"Users\" SET \"EmailVerifiedAt\"=now() WHERE \"Email\" LIKE '%@demo.local' AND \"EmailVerifiedAt\" IS NULL;" >/dev/null 2>&1

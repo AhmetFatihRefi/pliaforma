@@ -16,4 +16,13 @@ public sealed class AuthSettings
     /// (<c>EmailVerifiedAt</c> set edilir, doğrulama e-postası gönderilmez).</para>
     /// </summary>
     public bool RequireEmailVerification { get; set; } = true;
+
+    /// <summary>
+    /// Hesap kilitleme eşiği (Sprint 31B-2): bu kadar ardışık başarısız login denemesinden sonra hesap
+    /// <see cref="LockoutMinutes"/> dakika geçici olarak kilitlenir. Varsayılan 5.
+    /// </summary>
+    public int MaxFailedAttempts { get; set; } = 5;
+
+    /// <summary>Geçici kilit süresi (dakika). Varsayılan 15.</summary>
+    public int LockoutMinutes { get; set; } = 15;
 }

@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<ITokenService, TokenService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
+        services.AddScoped<ISecurityAuditLogger, SecurityAuditLogger>();
         services.AddScoped<INotificationChannelSender, LoggingNotificationSender>();
         services.AddSingleton<IReminderWorkerInfo, ReminderWorkerInfo>();
 

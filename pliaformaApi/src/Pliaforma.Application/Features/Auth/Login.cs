@@ -12,6 +12,7 @@ namespace Pliaforma.Application.Features.Auth;
 /// Kimlik doğrular ve token üretir. Kullanıcının tam olarak bir aktif üyeliği varsa o
 /// stüdyo otomatik seçilir; birden fazla varsa token stüdyosuz döner ve istemci
 /// switch-studio ile seçer.
+/// <para>Sprint 31B-2: hesap kilitleme (N başarısız → geçici kilit) + güvenlik denetimi (audit).</para>
 /// </summary>
 public sealed record LoginCommand(string Email, string Password, string? Ip = null) : ICommand<AuthResult>;
 
@@ -30,30 +31,66 @@ public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthResult>
     private readonly IPasswordHasher _hasher;
     private readonly IDateTime _clock;
     private readonly AuthSessionService _session;
+    private readonly ISecurityAuditLogger _audit;
+    private readonly ILoginAttemptStore _loginAttempts;
 
-    public LoginHandler(IAppDbContext db, IPasswordHasher hasher, IDateTime clock, AuthSessionService session)
+    public LoginHandler(IAppDbContext db, IPasswordHasher hasher, IDateTime clock, AuthSessionService session,
+        ISecurityAuditLogger audit, ILoginAttemptStore loginAttempts)
     {
         _db = db;
         _hasher = hasher;
         _clock = clock;
         _session = session;
+        _audit = audit;
+        _loginAttempts = loginAttempts;
     }
 
     public async Task<AuthResult> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
         var normalizedEmail = EmailNormalizer.Normalize(request.Email);
+        var now = _clock.UtcNow;
 
         var user = await _db.Users
             .FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail, cancellationToken);
 
-        // Aynı hata mesajı: e-posta var mı yok mu sızdırmamak için.
-        if (user is null || !_hasher.Verify(request.Password, user.PasswordHash))
+        // Kullanıcı yok → generic 401 (sayaç/satır yok, enumeration minimal). Deneme yine denetlenir.
+        if (user is null)
+        {
+            await _audit.LogAsync(SecurityAuditEventType.LoginFailed, SecurityAuditOutcome.Failure,
+                actorEmail: request.Email, detail: "unknown_email", cancellationToken: cancellationToken);
             throw new UnauthorizedException("E-posta veya parola hatalı.");
+        }
+
+        // Hesap geçici kilitli → 423 (generic mesaj; hesabın var olduğunu çok açık etmez).
+        if (user.LockoutEnd is { } until && until > now)
+        {
+            await _audit.LogAsync(SecurityAuditEventType.LoginFailed, SecurityAuditOutcome.Failure,
+                actorUserId: user.Id, actorEmail: user.Email, detail: "locked", cancellationToken: cancellationToken);
+            throw new LockedException("Giriş geçici olarak kilitlendi. Lütfen bir süre sonra tekrar deneyin.");
+        }
+
+        // Parola yanlış → sayaç artır; eşikte geçici kilit. Bu yazımlar BAĞIMSIZ bağlamla yapılır (login komutu
+        // 401 fırlatıp TransactionBehavior rollback yapsa bile sayaç/kilit/audit KALICI olur).
+        if (!_hasher.Verify(request.Password, user.PasswordHash))
+        {
+            var lockedNow = await _loginAttempts.RecordFailedAttemptAsync(user.Id, cancellationToken);
+
+            await _audit.LogAsync(SecurityAuditEventType.LoginFailed, SecurityAuditOutcome.Failure,
+                actorUserId: user.Id, actorEmail: user.Email, detail: "invalid_password", cancellationToken: cancellationToken);
+            if (lockedNow)
+                await _audit.LogAsync(SecurityAuditEventType.AccountLockedOut, SecurityAuditOutcome.Failure,
+                    actorUserId: user.Id, actorEmail: user.Email, cancellationToken: cancellationToken);
+
+            throw new UnauthorizedException("E-posta veya parola hatalı.");
+        }
 
         if (!user.IsActive)
             throw new ForbiddenException("Hesabınız devre dışı bırakılmış.");
 
-        user.LastLoginAt = _clock.UtcNow;
+        // Başarılı: kilit/sayaç sıfırla, son giriş zamanı.
+        user.FailedLoginCount = 0;
+        user.LockoutEnd = null;
+        user.LastLoginAt = now;
 
         var activeMemberships = await _db.StudioMemberships
             .Where(m => m.UserId == user.Id && m.Status == MembershipStatus.Active)
@@ -62,6 +99,12 @@ public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthResult>
         // Tek aktif üyelik varsa otomatik seç; aksi halde stüdyosuz token.
         var activeMembership = activeMemberships.Count == 1 ? activeMemberships[0] : null;
 
-        return await _session.IssueAsync(user, activeMembership, request.Ip, cancellationToken);
+        var result = await _session.IssueAsync(user, activeMembership, request.Ip, cancellationToken);
+
+        await _audit.LogAsync(SecurityAuditEventType.LoginSucceeded, SecurityAuditOutcome.Success,
+            actorUserId: user.Id, actorEmail: user.Email, studioId: activeMembership?.StudioId,
+            cancellationToken: cancellationToken);
+
+        return result;
     }
 }

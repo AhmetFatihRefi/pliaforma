@@ -14,7 +14,7 @@ code(){ echo "$1" | tail -1; }
 body(){ echo "$1" | sed '$d'; }
 
 # --- Aktörler ---
-AOWNER="owner-a+$TS@pf.local"; B="instr-b+$TS@pf.local"; COWNER="owner-c+$TS@pf.local"; PW="Parola123"
+AOWNER="owner-a+$TS@pf.local"; B="instr-b+$TS@pf.local"; COWNER="owner-c+$TS@pf.local"; PW="Parola123!"
 
 # Owner A + stüdyo A
 R=$(post /api/auth/register-studio "{\"studioName\":\"Studio A $TS\",\"ownerFullName\":\"Owner A\",\"email\":\"$AOWNER\",\"password\":\"$PW\"}")

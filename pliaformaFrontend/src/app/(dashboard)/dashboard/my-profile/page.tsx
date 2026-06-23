@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { studentService } from "@/lib/studioApi";
+import { authService } from "@/lib/services";
+import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import { type StudentDto, studentSourceLabels, studentStatusLabels } from "@/lib/domain-types";
-import { Alert, Badge, Card } from "@/components/ui";
+import { Alert, Badge, Button, Card } from "@/components/ui";
 
 function Row({ label, value }: { label: string; value?: string | null }) {
   return (
@@ -12,6 +16,94 @@ function Row({ label, value }: { label: string; value?: string | null }) {
       <span className="text-sm text-muted">{label}</span>
       <span className="text-sm font-medium text-foreground">{value || "—"}</span>
     </div>
+  );
+}
+
+// Backend ile aynı politika (asıl doğrulama backend'de; bu yalnız erken/kullanıcı dostu kontrol).
+function clientPolicyError(pw: string): string | null {
+  if (pw.length < 10) return "Parola en az 10 karakter olmalı.";
+  if (!/[A-Z]/.test(pw)) return "Parola en az bir büyük harf içermeli.";
+  if (!/[a-z]/.test(pw)) return "Parola en az bir küçük harf içermeli.";
+  if (!/[0-9]/.test(pw)) return "Parola en az bir rakam içermeli.";
+  if (!/[^A-Za-z0-9]/.test(pw)) return "Parola en az bir özel karakter içermeli.";
+  return null;
+}
+
+function firstFieldError(e: unknown): string {
+  if (e instanceof ApiError && e.errors) {
+    const first = Object.values(e.errors)[0]?.[0];
+    if (first) return first;
+  }
+  return errorMessage(e);
+}
+
+function Field({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block space-y-1">
+      <span className="text-sm text-muted">{label}</span>
+      <input
+        type="password"
+        autoComplete="off"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-foreground/40"
+      />
+    </label>
+  );
+}
+
+function ChangePasswordCard() {
+  const { logout } = useAuth();
+  const router = useRouter();
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    if (!current) return setError("Mevcut parolanızı girin.");
+    const policy = clientPolicyError(next);
+    if (policy) return setError(policy);
+    if (next !== confirm) return setError("Yeni parolalar eşleşmiyor.");
+
+    setBusy(true);
+    try {
+      await authService.changePassword(current, next);
+      setDone(true);
+      // Backend tüm refresh token'ları revoke etti → tekrar giriş gerekiyor.
+      setTimeout(async () => {
+        await logout();
+        router.push("/login");
+      }, 1800);
+    } catch (e) {
+      setError(firstFieldError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <h2 className="mb-3 text-lg font-semibold text-foreground">Parola değiştir</h2>
+      {done ? (
+        <Alert kind="success">Parolanız güncellendi. Oturumlarınız yenilendi; giriş ekranına yönlendiriliyorsunuz…</Alert>
+      ) : (
+        <div className="space-y-3">
+          {error && <Alert kind="error">{error}</Alert>}
+          <Field label="Mevcut parola" value={current} onChange={setCurrent} />
+          <Field label="Yeni parola" value={next} onChange={setNext} />
+          <Field label="Yeni parola (tekrar)" value={confirm} onChange={setConfirm} />
+          <p className="text-xs text-muted">
+            En az 10 karakter; büyük/küçük harf, rakam ve özel karakter içermeli. Başarılı değişimde tüm
+            oturumlar kapatılır ve tekrar giriş yapmanız gerekir.
+          </p>
+          <Button onClick={submit} disabled={busy}>{busy ? "Güncelleniyor…" : "Parolayı güncelle"}</Button>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -54,6 +146,9 @@ export default function MyProfilePage() {
           {profile.notes && <Row label="Not" value={profile.notes} />}
         </Card>
       )}
+
+      {/* Parola değiştirme tüm oturum açmış kullanıcılar için (öğrenci profili olmasa da). */}
+      <ChangePasswordCard />
     </div>
   );
 }

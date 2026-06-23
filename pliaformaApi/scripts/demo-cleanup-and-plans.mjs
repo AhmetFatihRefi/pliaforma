@@ -4,7 +4,7 @@
 import { execFileSync } from "node:child_process";
 
 const BASE = process.env.BASE || "http://localhost:5132";
-const PW = "Parola123";
+const PW = "Parola123!";
 const PGC = "pliaforma-postgres";
 const ADMIN = "admin@pliaforma.local";
 const KEEP_USERS = [

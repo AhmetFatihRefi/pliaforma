@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 const BASE = process.env.BASE || "http://localhost:5132";
-const PW = "Parola123";
+const PW = "Parola123!";
 const PGC = "pliaforma-postgres";
 
 const sql = (q) =>

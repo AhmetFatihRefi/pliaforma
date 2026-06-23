@@ -25,7 +25,9 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
   (çok sınırlı Owner) okur, PII maskeli, request body/token/parola **asla** yazılmaz. **Retention = 2 yıl** (delil
   değeri); 2 yıl sonrası arşivle/sil (kesin yöntem avukat/owner onayı) — bkz. [RETENTION_AND_DELETION_POLICY.md](RETENTION_AND_DELETION_POLICY.md).
 - **Acceptance:** Listelenen eylemler audit'e düşüyor; normal akışta değiştirilemiyor; PII maskeli; 2 yıl retention; smoke ile kanıtlı.
-- **Sprint:** 31B (minimum tasarım) → 31C (uygulama + kapsam)
+- **Sprint:** **31B-2 — UYGULANDI** (SecurityAuditLog entity + migration; auth event producer'ları: login success/failed,
+  account lockout, logout, password reset requested/completed, password changed; append-only/BaseEntity değil;
+  PII maskeli `ActorEmailMasked`; Ip/UserAgent; **retention 2 yıl**). Kapsam genişletme (rol/ödeme/sözleşme/export/HealthNotes + viewer) → 31C.
 
 ### P0-3 · `/metrics` ve Grafana prod'da dışa açık
 - **Etki:** Operasyonel/iç metrik ifşası; Grafana default `admin/admin` + anonymous → yetkisiz erişim.
@@ -52,14 +54,14 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Kanıt:** Yalnız auth uçları IP rate limit; hesap kilidi yok.
 - **Çözüm:** N başarısız denemede geçici kilit + üstel bekleme; olay audit'e.
 - **Acceptance:** 5 hatadan sonra hesap geçici kilit; kilit/açılma audit'e düşüyor.
-- **Sprint:** 31B
+- **Sprint:** **31B-2 — UYGULANDI** (5 başarısız → 15dk kilit; 423; başarılı login + reset/change → sayaç sıfırlar; AuthSettings configurable; lockout audit).
 
 ### P1-2 · Parola politikası zayıf
 - **Etki:** Zayıf parolalar tahmin/sözlük saldırısına açık.
 - **Kanıt:** Register/Reset validatörlerinde min 8, kompleksite yok.
 - **Çözüm:** Min 10–12 + kompleksite + yaygın parola reddi.
 - **Acceptance:** Zayıf parola register/reset'te 400.
-- **Sprint:** 31B
+- **Sprint:** **31B-2 — UYGULANDI** (shared `PasswordRules`: min 10 + 4 sınıf + yaygın parola reddi; Register/RegisterStudio/Reset/Change ortak; mevcut kullanıcı login'de zorlanmıyor). + ChangePassword endpoint.
 
 ### P1-3 · Saklama & silme politikası + token purge yok
 - **Etki:** Veri minimizasyonu/saklama sınırı ihlali; süresiz veri birikimi.
@@ -86,7 +88,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Kanıt:** nginx'te CSP yok (bilinçli ertelenmiş).
 - **Çözüm:** Next.js inline tema scripti için nonce/hash ile CSP.
 - **Acceptance:** Prod'da CSP aktif; uygulama bozulmuyor; konsol CSP ihlali yok.
-- **Sprint:** 31B
+- **Sprint:** **31B-2 — Report-Only UYGULANDI** (nginx 443; bloklamaz, yalnız raporlar). **Enforce + nonce → 31C.**
 
 ### P1-7 · Backup şifreleme + off-site + drill kanıtı
 - **Etki:** Şifresiz yedek çalınırsa toplu PII ifşası.
@@ -147,7 +149,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 |---|---|
 | **31A** ✅ | P1-3 (politika), P1-4, P1-5 (doküman), P1-8 (risk/karar) |
 | **31B-1** ✅ | **P0-1, P0-3, P0-4** (infra/config, migration yok) — uygulandı, doğrulama yeşil |
-| **31B-2** | P0-2 (tasarım+uygulama), P1-1, P1-2, P1-6 (migration var) |
-| **31C** | P0-2 (kapsam genişletme), P1-8 (teknik), P1-9 (test) |
+| **31B-2** ✅ | P0-2 (auth events), P1-1 (lockout), P1-2 (parola politikası + change-password), P1-6 (CSP Report-Only) — uygulandı (migration: Sprint31B2_AuthHardeningAndAuditLog) |
+| **31C** | P0-2 (kapsam genişletme: rol/ödeme/sözleşme/export/HealthNotes + viewer), P1-6 (CSP enforce + nonce), P1-8 (teknik), P1-9 (test) |
 | **31D** | P1-3 (purge), P1-7, P1-9 (CI), P1-CI, P2-4 |
 | **31-MFA** (ayrı mini-sprint) | P1-10 (Owner/StudioAdmin TOTP MFA) |

@@ -37,6 +37,7 @@ public sealed class ExceptionHandlingMiddleware
         {
             ValidationException ve => (HttpStatusCode.BadRequest, ve.Message, ve.Errors),
             UnauthorizedException => (HttpStatusCode.Unauthorized, ex.Message, null),
+            LockedException => (HttpStatusCode.Locked, ex.Message, null),
             ForbiddenException => (HttpStatusCode.Forbidden, ex.Message, null),
             NotFoundException => (HttpStatusCode.NotFound, ex.Message, null),
             ConflictException => (HttpStatusCode.Conflict, ex.Message, null),

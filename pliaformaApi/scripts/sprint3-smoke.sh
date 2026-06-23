@@ -5,7 +5,7 @@
 set -u
 BASE="${1:-http://localhost:5132}"
 PGC="${PG_CONTAINER:-$(docker ps --format '{{.Names}}' 2>/dev/null | grep -E 'pliaforma-postgres|pliaforma-dev-postgres' | head -1)}"
-TS=$(date +%s); PW="Parola123"; FAILED=0
+TS=$(date +%s); PW="Parola123!"; FAILED=0
 ok(){ printf "  \033[32mPASS\033[0m %s\n" "$1"; }
 bad(){ printf "  \033[31mFAIL\033[0m %s\n" "$1"; FAILED=1; }
 expect(){ [ "$2" = "$3" ] && ok "$1 ($3)" || bad "$1 (beklenen $2, gelen $3)"; }

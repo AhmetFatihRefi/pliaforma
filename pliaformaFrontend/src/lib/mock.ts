@@ -135,4 +135,7 @@ export const mockAuthService: AuthService = {
   async resetPassword() {
     await delay(100);
   },
+  async changePassword() {
+    await delay(100);
+  },
 };

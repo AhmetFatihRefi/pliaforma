@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Common.Security;
 using Pliaforma.Application.Common.Settings;
 using Pliaforma.Application.Common.Text;
 using Pliaforma.Application.Features.Platform;
@@ -32,7 +33,7 @@ public sealed class RegisterStudioValidator : AbstractValidator<RegisterStudioCo
         RuleFor(x => x.StudioName).NotEmpty().MaximumLength(150);
         RuleFor(x => x.OwnerFullName).NotEmpty().MaximumLength(150);
         RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(256);
-        RuleFor(x => x.Password).NotEmpty().MinimumLength(8).MaximumLength(128);
+        RuleFor(x => x.Password).Password();   // Sprint 31B-2 ortak politika
         RuleFor(x => x.Phone).MaximumLength(32);
     }
 }

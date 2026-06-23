@@ -7,7 +7,7 @@
 # Kullanım: scripts/evrim-demo-seed.sh [BASE]   (vars. http://localhost:5132)
 set -u
 BASE="${1:-http://localhost:5132}"
-PW="Demo!2345"
+PW="Demo!2345x"
 ok(){ printf "  \033[32m✓\033[0m %s\n" "$1"; }
 jget(){ grep -o "\"$1\":\"[^\"]*\"" | head -1 | sed "s/\"$1\":\"\\([^\"]*\\)\"/\\1/"; }
 jq2(){ node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));let r=($1);console.log(r==null?'':r)}catch(e){console.log('')}"; }

@@ -13,7 +13,7 @@ LOG_FILE="${PF_API_LOG:-/c/tmp/pf-api.log}"
 LOG_CONTAINER="${PF_LOG_CONTAINER:-pliaforma-dev-backend-1}"
 COMPOSE_FILE="${PF_COMPOSE_FILE:-docker-compose.dev.yml}"
 COMPOSE_SERVICE="${PF_COMPOSE_SERVICE:-backend}"
-TS=$(date +%s); PW="Parola123"; NEWPW="YeniParola456"; FAILED=0
+TS=$(date +%s); PW="Parola123!"; NEWPW="YeniParola456!"; FAILED=0
 ok(){ printf "  \033[32mPASS\033[0m %s\n" "$1"; }
 bad(){ printf "  \033[31mFAIL\033[0m %s\n" "$1"; FAILED=1; }
 expect(){ [ "$2" = "$3" ] && ok "$1 ($3)" || bad "$1 (beklenen $2, gelen $3)"; }
@@ -100,7 +100,7 @@ RT=$(rtoken "$E4")
 expect "reset token → 200" 200 "$(pcode /api/auth/reset-password "{\"token\":\"$RT\",\"newPassword\":\"$NEWPW\"}")"
 expect "eski şifre → 401" 401 "$(pcode /api/auth/login "{\"email\":\"$E4\",\"password\":\"$PW\"}")"
 expect "yeni şifre → 200" 200 "$(pcode /api/auth/login "{\"email\":\"$E4\",\"password\":\"$NEWPW\"}")"
-expect "reset token ikinci kez → 409" 409 "$(pcode /api/auth/reset-password "{\"token\":\"$RT\",\"newPassword\":\"x9y8z7w6\"}")"
+expect "reset token ikinci kez → 409" 409 "$(pcode /api/auth/reset-password "{\"token\":\"$RT\",\"newPassword\":\"YeniParola789!\"}")"
 expect "reset sonrası eski refresh → 401 (revoke)" 401 "$(curl -s -b "$JAR" -o /dev/null -w "%{http_code}" -X POST "$BASE/api/auth/refresh" -H 'Content-Type: application/json' -d '{}')"
 expect "reset, EmailVerifiedAt null ise doğruladı (login emailVerified=true)" yes "$(has "$(body "$(post /api/auth/login "{\"email\":\"$E4\",\"password\":\"$NEWPW\"}")")" '"emailVerified":true')"
 rm -f "$JAR"

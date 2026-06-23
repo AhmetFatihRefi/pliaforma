@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Persistence.Audit;
+using Pliaforma.Persistence.Auth;
 using Pliaforma.Persistence.Contexts;
 using Pliaforma.Persistence.Interceptors;
 using Pliaforma.Persistence.Services;
@@ -23,6 +25,9 @@ public static class DependencyInjection
 
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddScoped<ITransactionManager, EfTransactionManager>();
+        // Sprint 31B-2: bağımsız bağlamla yazan güvenlik servisleri (ana transaction rollback olsa bile kalıcı).
+        services.AddScoped<ISecurityAuditSink, EfSecurityAuditSink>();
+        services.AddScoped<ILoginAttemptStore, EfLoginAttemptStore>();
         services.AddScoped<IClassSessionCapacityService, EfClassSessionCapacityService>();
         services.AddScoped<IMakeupCreditLock, EfMakeupCreditLock>();
         services.AddScoped<IStudentPackageCreditService, EfStudentPackageCreditService>();
