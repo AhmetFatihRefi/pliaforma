@@ -22,6 +22,9 @@ import type {
   ClassSessionStatus,
   ClassTypeDto,
   ClassTypeInput,
+  EquipmentDto,
+  EquipmentDetailDto,
+  EquipmentInput,
   CreateClosureResult,
   DayOfWeek,
   GuestInput,
@@ -87,6 +90,17 @@ export const classTypeService = {
   update: (id: string, input: ClassTypeInput) =>
     api<ClassTypeDto>(`/api/class-types/${id}`, { method: "PUT", body: input }),
   remove: (id: string) => api<null>(`/api/class-types/${id}`, { method: "DELETE" }),
+};
+
+// Sprint 32A: Ekipman/envanter havuzu yönetimi (/api/studio/equipment, yalnız Owner/StudioAdmin).
+export const equipmentService = {
+  list: (onlyActive?: boolean) =>
+    api<EquipmentDto[]>(`/api/studio/equipment${onlyActive ? "?onlyActive=true" : ""}`),
+  get: (id: string) => api<EquipmentDetailDto>(`/api/studio/equipment/${id}`),
+  create: (input: EquipmentInput) => api<EquipmentDto>("/api/studio/equipment", { method: "POST", body: input }),
+  update: (id: string, input: EquipmentInput) =>
+    api<EquipmentDto>(`/api/studio/equipment/${id}`, { method: "PUT", body: input }),
+  remove: (id: string) => api<null>(`/api/studio/equipment/${id}`, { method: "DELETE" }),
 };
 
 // Stüdyo yöneticisi tarafı üyelik yönetimi (/api/studio/memberships)

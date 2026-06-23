@@ -10,10 +10,13 @@ public sealed record ClassTypeDto(
     string Name,
     int DefaultDurationMinutes,
     string? Description,
-    bool IsActive)
+    bool IsActive,
+    // Sprint 32A: opsiyonel ekipman havuzu bağı. null → ekipman kısıtı yok. EquipmentName UI rozeti içindir.
+    Guid? EquipmentId,
+    string? EquipmentName)
 {
-    public static ClassTypeDto From(ClassType c) =>
-        new(c.Id, c.Name, c.DefaultDurationMinutes, c.Description, c.IsActive);
+    public static ClassTypeDto From(ClassType c, string? equipmentName = null) =>
+        new(c.Id, c.Name, c.DefaultDurationMinutes, c.Description, c.IsActive, c.EquipmentId, equipmentName);
 }
 
 /// <summary>Kapasite tipine göre MaxCapacity doğrulaması (Private⇒1, Duo⇒2, Group⇒2..50).</summary>

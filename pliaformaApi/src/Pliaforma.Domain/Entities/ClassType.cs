@@ -29,5 +29,12 @@ public class ClassType : BaseEntity, ITenantScoped
     public string? Description { get; set; }
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Sprint 32A: opsiyonel ekipman havuzu bağı (N:1, <see cref="Equipment"/>). null → ekipman kısıtı YOK
+    /// (eski davranış aynen sürer). Bir havuz birden çok ClassType tarafından paylaşılabilir.
+    /// Navigation eklenmez (mevcut dormant <c>Equipment</c> enum'u ile ad çakışmasını önlemek için yalnız FK).
+    /// </summary>
+    public Guid? EquipmentId { get; set; }
+
     public ICollection<InstructorClassType> Instructors { get; set; } = new List<InstructorClassType>();
 }

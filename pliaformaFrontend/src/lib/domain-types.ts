@@ -9,15 +9,55 @@ export type RateType = "PerSession" | "PerHour" | "PerStudentPerSession";
 export type MembershipDirection = "InvitedByStudio" | "RequestedByUser";
 
 // Sprint 28A: ders tipi sadeleştirildi → equipment/capacityType/maxCapacity/level/purpose KALDIRILDI.
+// Sprint 32A: opsiyonel ekipman havuzu bağı (equipmentId) + UI rozeti için equipmentName eklendi.
 export interface ClassTypeDto {
   id: string;
   name: string;
   defaultDurationMinutes: number;
   description?: string | null;
   isActive: boolean;
+  equipmentId?: string | null;
+  equipmentName?: string | null;
 }
 
-export type ClassTypeInput = Omit<ClassTypeDto, "id"> & { isActive?: boolean };
+// equipmentName salt-okunur (sunucudan gelir); gönderilmez. equipmentId opsiyonel gönderilir.
+export type ClassTypeInput = Omit<ClassTypeDto, "id" | "equipmentName"> & { isActive?: boolean };
+
+// Sprint 32A: Ekipman/envanter havuzu. TotalCapacity = quantity * perUnitConcurrentUsage (kişi).
+export interface EquipmentDto {
+  id: string;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  perUnitConcurrentUsage: number;
+  totalCapacity: number;
+  isActive: boolean;
+  boundClassTypeCount: number;
+}
+
+export interface BoundClassTypeDto {
+  id: string;
+  name: string;
+}
+
+export interface EquipmentDetailDto {
+  id: string;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  perUnitConcurrentUsage: number;
+  totalCapacity: number;
+  isActive: boolean;
+  boundClassTypes: BoundClassTypeDto[];
+}
+
+export interface EquipmentInput {
+  name: string;
+  description?: string | null;
+  quantity: number;
+  perUnitConcurrentUsage: number;
+  isActive?: boolean;
+}
 
 export interface MemberDto {
   membershipId: string;

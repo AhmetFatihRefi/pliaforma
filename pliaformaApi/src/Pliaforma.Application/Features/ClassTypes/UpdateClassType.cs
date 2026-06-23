@@ -13,7 +13,9 @@ public sealed record UpdateClassTypeCommand(
     string Name,
     int DefaultDurationMinutes,
     string? Description,
-    bool IsActive) : ICommand<ClassTypeDto>, IStudioWriteRequest;
+    bool IsActive,
+    // Sprint 32A: opsiyonel ekipman havuzu bağı (null → bağı kaldırır).
+    Guid? EquipmentId = null) : ICommand<ClassTypeDto>, IStudioWriteRequest;
 
 public sealed class UpdateClassTypeValidator : AbstractValidator<UpdateClassTypeCommand>
 {
@@ -46,14 +48,18 @@ public sealed class UpdateClassTypeHandler : ICommandHandler<UpdateClassTypeComm
             .FirstOrDefaultAsync(c => c.Id == request.Id && c.StudioId == studioId, cancellationToken)
             ?? throw new NotFoundException("Ders tipi", request.Id);
 
-        // Sprint 28A: yalnız ad/süre/açıklama/aktiflik güncellenir; dormant alanlara (Equipment/CapacityType/
-        // MaxCapacity/Level/Purpose) dokunulmaz (UI/DTO'dan kaldırıldı).
+        // Sprint 32A: ekipman havuzu verildiyse aktif stüdyoya ait olmalı (tenant izolasyonu).
+        var equipmentName = await ClassTypeEquipmentResolver.ResolveNameAsync(_db, studioId, request.EquipmentId, cancellationToken);
+
+        // Sprint 28A: yalnız ad/süre/açıklama/aktiflik güncellenir; dormant alanlara (Equipment enum/CapacityType/
+        // MaxCapacity/Level/Purpose) dokunulmaz. Sprint 32A: EquipmentId bağı güncellenir.
         entity.Name = request.Name.Trim();
         entity.DefaultDurationMinutes = request.DefaultDurationMinutes;
         entity.Description = request.Description?.Trim();
         entity.IsActive = request.IsActive;
+        entity.EquipmentId = request.EquipmentId;
 
         await _db.SaveChangesAsync(cancellationToken);
-        return ClassTypeDto.From(entity);
+        return ClassTypeDto.From(entity, equipmentName);
     }
 }

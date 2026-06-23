@@ -18,6 +18,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<InstructorProfile> InstructorProfiles => Set<InstructorProfile>();
     public DbSet<ClassType> ClassTypes => Set<ClassType>();
     public DbSet<InstructorClassType> InstructorClassTypes => Set<InstructorClassType>();
+    public DbSet<Equipment> Equipment => Set<Equipment>();
     public DbSet<StudentProfile> StudentProfiles => Set<StudentProfile>();
     public DbSet<InstructorAvailability> InstructorAvailabilities => Set<InstructorAvailability>();
     public DbSet<ClassSession> ClassSessions => Set<ClassSession>();

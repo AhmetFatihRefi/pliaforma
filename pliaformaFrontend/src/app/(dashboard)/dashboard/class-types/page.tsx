@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { classTypeService } from "@/lib/studioApi";
+import { classTypeService, equipmentService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import { useRole } from "@/lib/useRole";
-import { type ClassTypeDto, type ClassTypeInput } from "@/lib/domain-types";
+import { type ClassTypeDto, type ClassTypeInput, type EquipmentDto } from "@/lib/domain-types";
 import {
   Alert,
   Badge,
@@ -13,6 +13,7 @@ import {
   FormField,
   Input,
   Modal,
+  Select,
   Table,
   TableEmpty,
   TD,
@@ -23,18 +24,20 @@ import {
   useConfirm,
 } from "@/components/ui";
 
-// Sprint 28A: ders tipi sadeleşti → yalnız ad + süre + açıklama (ekipman/kapasite/seviye/amaç kaldırıldı).
+// Sprint 28A: ders tipi sadeleşti → ad + süre + açıklama. Sprint 32A: opsiyonel ekipman havuzu bağı (equipmentId).
 const empty: ClassTypeInput = {
   name: "",
   defaultDurationMinutes: 50,
   description: "",
   isActive: true,
+  equipmentId: null,
 };
 
 export default function ClassTypesPage() {
   const confirm = useConfirm();
   const { canManage } = useRole();
   const [items, setItems] = useState<ClassTypeDto[]>([]);
+  const [equipments, setEquipments] = useState<EquipmentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +50,10 @@ export default function ClassTypesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      setItems(await classTypeService.list());
+      // Sprint 32A: ders tipi listesi + (form seçici için) aktif ekipman havuzları paralel yüklenir.
+      const [types, eqs] = await Promise.all([classTypeService.list(), equipmentService.list(true)]);
+      setItems(types);
+      setEquipments(eqs);
       setError(null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Liste yüklenemedi.");
@@ -69,7 +75,7 @@ export default function ClassTypesPage() {
 
   const openEdit = (c: ClassTypeDto) => {
     setEditingId(c.id);
-    setForm({ name: c.name, defaultDurationMinutes: c.defaultDurationMinutes, description: c.description ?? "", isActive: c.isActive });
+    setForm({ name: c.name, defaultDurationMinutes: c.defaultDurationMinutes, description: c.description ?? "", isActive: c.isActive, equipmentId: c.equipmentId ?? null });
     setFormError(null);
     setOpen(true);
   };
@@ -121,15 +127,16 @@ export default function ClassTypesPage() {
           <TR>
             <TH>Ad</TH>
             <TH>Süre</TH>
+            <TH>Ekipman</TH>
             <TH>Durum</TH>
             <TH className="text-right">İşlem</TH>
           </TR>
         </THead>
         <tbody>
           {loading ? (
-            <TableEmpty colSpan={4}>Yükleniyor…</TableEmpty>
+            <TableEmpty colSpan={5}>Yükleniyor…</TableEmpty>
           ) : items.length === 0 ? (
-            <TableEmpty colSpan={4}>Henüz pilates grubu yok.</TableEmpty>
+            <TableEmpty colSpan={5}>Henüz pilates grubu yok.</TableEmpty>
           ) : (
             items.map((c) => (
               <TR key={c.id}>
@@ -138,6 +145,7 @@ export default function ClassTypesPage() {
                   {c.description && <span className="ml-2 text-xs text-muted">{c.description}</span>}
                 </TD>
                 <TD>{c.defaultDurationMinutes} dk</TD>
+                <TD>{c.equipmentName ? <Badge tone="rose">{c.equipmentName}</Badge> : <span className="text-xs text-muted">—</span>}</TD>
                 <TD>{c.isActive ? <Badge tone="success">Aktif</Badge> : <Badge tone="neutral">Pasif</Badge>}</TD>
                 <TD className="text-right">
                   <div className="flex justify-end gap-2">
@@ -163,6 +171,17 @@ export default function ClassTypesPage() {
           </FormField>
           <FormField label="Açıklama (opsiyonel)">
             <Textarea value={form.description ?? ""} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+          </FormField>
+          <FormField label="Ekipman (opsiyonel)" hint="Bu grubu bir ekipman havuzuna bağlayın. Kapasite kontrolü sonraki aşamada gelecek.">
+            <Select
+              value={form.equipmentId ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, equipmentId: e.target.value || null }))}
+            >
+              <option value="">Ekipman yok</option>
+              {equipments.map((eq) => (
+                <option key={eq.id} value={eq.id}>{eq.name} ({eq.totalCapacity} kişi)</option>
+              ))}
+            </Select>
           </FormField>
           {editingId && (
             <label className="flex items-center gap-2 text-sm text-foreground">

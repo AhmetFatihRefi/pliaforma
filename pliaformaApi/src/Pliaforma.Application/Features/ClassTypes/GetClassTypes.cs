@@ -27,9 +27,13 @@ public sealed class GetClassTypesHandler : IQueryHandler<GetClassTypesQuery, IRe
         if (request.OnlyActive == true)
             query = query.Where(c => c.IsActive);
 
+        // Sprint 32A: bağlı ekipman adını korelasyonlu alt sorguyla getir (EquipmentId null → null).
         return await query
             .OrderBy(c => c.Name)
-            .Select(c => ClassTypeDto.From(c))
+            .Select(c => new ClassTypeDto(
+                c.Id, c.Name, c.DefaultDurationMinutes, c.Description, c.IsActive,
+                c.EquipmentId,
+                _db.Equipment.Where(e => e.Id == c.EquipmentId).Select(e => e.Name).FirstOrDefault()))
             .ToListAsync(cancellationToken);
     }
 }
@@ -56,6 +60,11 @@ public sealed class GetClassTypeHandler : IQueryHandler<GetClassTypeQuery, Class
             .FirstOrDefaultAsync(c => c.Id == request.Id && c.StudioId == studioId, cancellationToken)
             ?? throw new NotFoundException("Ders tipi", request.Id);
 
-        return ClassTypeDto.From(entity);
+        var equipmentName = entity.EquipmentId is { } eid
+            ? await _db.Equipment.Where(e => e.Id == eid && e.StudioId == studioId)
+                .Select(e => e.Name).FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+        return ClassTypeDto.From(entity, equipmentName);
     }
 }

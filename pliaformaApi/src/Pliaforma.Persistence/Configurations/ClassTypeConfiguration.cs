@@ -23,6 +23,14 @@ public sealed class ClassTypeConfiguration : IEntityTypeConfiguration<ClassType>
             .HasForeignKey(x => x.StudioId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        // Sprint 32A: opsiyonel ekipman havuzu bağı (N:1). Navigation YOK (yalnız FK; dormant Equipment enum'u
+        // ile ad çakışmasını önler). Restrict → bağlı ClassType varken Equipment silinemez (DeleteEquipment 409).
+        // EF, FK kolonu EquipmentId için otomatik indeks üretir (bağ-bazlı sorgular bununla karşılanır).
+        b.HasOne<Equipment>()
+            .WithMany()
+            .HasForeignKey(x => x.EquipmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         b.HasIndex(x => new { x.StudioId, x.Name });
     }
 }

@@ -36,6 +36,8 @@ const nav: NavItem[] = [
   { href: "/dashboard/instructors", label: "Hocalar", icon: "✦", roles: MANAGER },
   // Sprint 26 ek: ders tipi/grup tanımı stüdyo yetkilisinin işi (Instructor görmez).
   { href: "/dashboard/class-types", label: "Gruplar", icon: "❀", roles: MANAGER },
+  // Sprint 32A: ekipman/envanter havuzu (reformer, mat, vb.) — ders tipine bağlanabilir.
+  { href: "/dashboard/equipment", label: "Ekipman", icon: "▥", roles: MANAGER },
   { href: "/dashboard/subscription", label: "Abonelik", icon: "◈", roles: ["Owner"] },
   { href: "/dashboard/settings", label: "Ayarlar", icon: "⚙", roles: MANAGER },
   // Sprint 18b: öğrenci self-booking kaldırıldı ("Ders Bul" yok); öğrenci yalnız programını görür.

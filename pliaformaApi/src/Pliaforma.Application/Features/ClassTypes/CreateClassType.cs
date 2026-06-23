@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Domain.Entities;
@@ -7,11 +8,13 @@ using Pliaforma.Domain.Enums;
 namespace Pliaforma.Application.Features.ClassTypes;
 
 /// <summary>Aktif stüdyoda yeni bir pilates grubu (ClassType) oluşturur. Sprint 28A: yalnız ad + süre + açıklama
-/// (kapasite/seviye/amaç/ekipman kaldırıldı; dormant kolonlar nötr varsayılanla doldurulur).</summary>
+/// (kapasite/seviye/amaç/ekipman enum'u kaldırıldı; dormant kolonlar nötr varsayılanla doldurulur).
+/// Sprint 32A: opsiyonel ekipman havuzu bağı (EquipmentId).</summary>
 public sealed record CreateClassTypeCommand(
     string Name,
     int DefaultDurationMinutes,
-    string? Description) : ICommand<ClassTypeDto>, IStudioWriteRequest;
+    string? Description,
+    Guid? EquipmentId = null) : ICommand<ClassTypeDto>, IStudioWriteRequest;
 
 public sealed class CreateClassTypeValidator : AbstractValidator<CreateClassTypeCommand>
 {
@@ -38,6 +41,9 @@ public sealed class CreateClassTypeHandler : ICommandHandler<CreateClassTypeComm
     {
         var studioId = _currentUser.RequireStudioId();
 
+        // Sprint 32A: ekipman havuzu verildiyse aktif stüdyoya ait olmalı (tenant izolasyonu).
+        var equipmentName = await ClassTypeEquipmentResolver.ResolveNameAsync(_db, studioId, request.EquipmentId, cancellationToken);
+
         var entity = new ClassType
         {
             StudioId = studioId,
@@ -45,6 +51,7 @@ public sealed class CreateClassTypeHandler : ICommandHandler<CreateClassTypeComm
             DefaultDurationMinutes = request.DefaultDurationMinutes,
             Description = request.Description?.Trim(),
             IsActive = true,
+            EquipmentId = request.EquipmentId,
             // Sprint 28A: dormant alanlar (UI/DTO'dan kaldırıldı) — nötr varsayılan; hiçbir mantık okumaz.
             Equipment = EquipmentType.Mat,
             CapacityType = ClassCapacityType.Group,
@@ -56,6 +63,6 @@ public sealed class CreateClassTypeHandler : ICommandHandler<CreateClassTypeComm
         _db.ClassTypes.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);
 
-        return ClassTypeDto.From(entity);
+        return ClassTypeDto.From(entity, equipmentName);
     }
 }

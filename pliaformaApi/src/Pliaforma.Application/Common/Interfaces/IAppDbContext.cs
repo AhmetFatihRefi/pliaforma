@@ -18,6 +18,9 @@ public interface IAppDbContext
     DbSet<InstructorProfile> InstructorProfiles { get; }
     DbSet<ClassType> ClassTypes { get; }
     DbSet<InstructorClassType> InstructorClassTypes { get; }
+
+    /// <summary>Stüdyonun ekipman/envanter havuzu (Sprint 32A).</summary>
+    DbSet<Equipment> Equipment { get; }
     DbSet<StudentProfile> StudentProfiles { get; }
     DbSet<InstructorAvailability> InstructorAvailabilities { get; }
     DbSet<ClassSession> ClassSessions { get; }
