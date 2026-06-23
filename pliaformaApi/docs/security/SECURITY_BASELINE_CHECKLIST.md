@@ -57,7 +57,8 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 
 ## Yedek & süreklilik
 - [ ] **Backup restore testi yapıldı** (tarihli kanıt) — ⏳ pilot öncesi / [BACKUP_AND_RESTORE_RUNBOOK.md](BACKUP_AND_RESTORE_RUNBOOK.md)
-- [ ] Backup şifreli + off-site — ⏳31D / P1-7
+- [x] **Backup şifreli (gpg AES256)** + restore drill — ✅ (31D-2): `ops/backup-postgres.sh` `.sql.gz.gpg`, prod fail-fast, `ops/restore-drill.sh`; off-site → post-pilot / P1-7
+- [ ] **Prod `BACKUP_ENCRYPTION_KEY` gerçek + ayrı yedek** — ⏳ prod env (yoksa backup fail-fast); recovery secret seti (JWT/MFA/Backup)
 - [x] Otomatik yedek + retention (cron örneği) — ✅ (mevcut)
 - [x] **SecurityAuditLog DB-level append-only + 2yr retention purge** — ✅ (31D-1): PostgreSQL trigger (UPDATE her zaman, DELETE yalnız purge GUC ile blocked) + in-app purge worker (AuditPurge config, ilk deploy DryRun=true); AuthToken/RefreshToken fiziksel hard-delete / P1-3. **Not:** trigger normal/kaza app update-delete'ine karşı guard'dır, tam-compromised app'e karşı mutlak değildir.
 - [ ] **Prod `AuditPurge:Enabled=true` + gözlem sonrası `DryRun=false`** — ⏳ ilk deploy DryRun=true

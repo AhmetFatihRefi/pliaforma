@@ -95,7 +95,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Kanıt:** `ops/backup-postgres.sh` gzip; şifreleme yok; off-site manuel.
 - **Çözüm:** AES/PGP şifreli yedek + off-site + tarihli restore drill kaydı.
 - **Acceptance:** Şifreli yedek üretiliyor; restore drill çıktısı kayıtlı.
-- **Sprint:** 31D
+- **Sprint:** **31D-2 — UYGULANDI** (gpg AES256 `.sql.gz.gpg`; `BACKUP_ENCRYPTION_KEY` prod fail-fast / dev plain-warn; `ops/restore-drill.sh` yarı-otomatik DB-drill: şifreli doğrula + wrong/correct key + temp DB restore + migration history + SecurityAuditLogs/MFA tabloları; geri uyum eski `.sql.gz`). **Off-site → post-pilot/31E.** Key rotation → post-pilot.
 
 ### P1-8 · Özel nitelikli veri (HealthNotes) + serbest metin sızıntısı
 - **Etki:** Sağlık verisi yetkisiz erişim/ifşası (KVKK m.6 ağır sonuç).
@@ -153,6 +153,6 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 | **31C-1** ✅ | P0-2 (kapsam genişletme: rol/ödeme/sözleşme/export/HealthNotes + viewer), P1-9 (tenant isolation test) — uygulandı (migration yok) |
 | **31C-2** ✅ | P1-6 (CSP enforce + nonce + report-sink) — uygulandı (migration yok; prod report-only→enforce env-flip) |
 | **31D-1** ✅ | P1-3 (retention purge + DB-level append-only trigger) — uygulandı (migration: Sprint31D_AuditAppendOnly) |
-| **31D-2** | P1-7 (backup encryption + restore drill) |
+| **31D-2** ✅ | P1-7 (backup encryption gpg AES256 + restore drill) — uygulandı (off-site → post-pilot) |
 | **31D-3** | P1-CI (gitleaks blocking + npm/dotnet/Trivy/SBOM advisory), P1-9, incident tabletop |
 | **31-MFA** ✅ (ayrı mini-sprint) | P1-10 (Owner/StudioAdmin TOTP MFA) — uygulandı (migration: Sprint31MFA_TotpMfa) |
