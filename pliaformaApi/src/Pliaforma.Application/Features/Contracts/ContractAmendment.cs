@@ -45,8 +45,9 @@ public sealed class AddContractAmendmentHandler : ICommandHandler<AddContractAme
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public AddContractAmendmentHandler(IAppDbContext db, ICurrentUserService currentUser)
-    { _db = db; _currentUser = currentUser; }
+    private readonly ISecurityAuditLogger _audit;
+    public AddContractAmendmentHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
+    { _db = db; _currentUser = currentUser; _audit = audit; }
 
     public async Task<ContractAmendmentDto> Handle(AddContractAmendmentCommand request, CancellationToken ct)
     {
@@ -107,6 +108,11 @@ public sealed class AddContractAmendmentHandler : ICommandHandler<AddContractAme
         contract.EndDate = newEndDate;
 
         await _db.SaveChangesAsync(ct);
+
+        // Denetim (31C-1): sözleşme ek işlemi — FİYAT/ders sayısı detay olarak yazılmaz; kind yeterli.
+        await _audit.LogAsync(SecurityAuditEventType.ContractAmended, SecurityAuditOutcome.Success,
+            actorUserId: userId, studioId: studioId, targetType: "StudentContract", targetId: contract.Id,
+            detail: $"kind: {request.Kind}", cancellationToken: ct);
 
         var createdByName = await _db.Users.Where(u => u.Id == userId).Select(u => u.FullName).FirstOrDefaultAsync(ct)
             ?? "—";

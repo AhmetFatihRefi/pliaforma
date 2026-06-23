@@ -92,6 +92,20 @@ public sealed class PlatformController : ApiControllerBase
     [HttpGet("recent-activity")]
     public Task<IActionResult> RecentActivity(CancellationToken ct) =>
         Send(new GetPlatformRecentActivityQuery(), ct: ct);
+
+    // ---- Güvenlik denetim görüntüleyici (Sprint 31C-1; salt-okunur, cross-tenant, export YOK) ----
+    [HttpGet("security-audit")]
+    public Task<IActionResult> SecurityAudit(
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] SecurityAuditEventType? eventType,
+        [FromQuery] Guid? actorUserId,
+        [FromQuery] Guid? studioId,
+        [FromQuery] SecurityAuditOutcome? outcome,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default) =>
+        Send(new GetSecurityAuditLogsQuery(from, to, eventType, actorUserId, studioId, outcome, page, pageSize), ct: ct);
 }
 
 public sealed record SuspendStudioRequest(string Reason);

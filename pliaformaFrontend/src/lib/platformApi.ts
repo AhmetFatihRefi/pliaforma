@@ -7,12 +7,25 @@ import type {
   PlatformStudioListItemDto,
   PlatformStudioStatusDto,
   PlatformSubscriptionDto,
+  SecurityAuditLogPageDto,
   StudioStatus,
   SubscriptionInput,
   SubscriptionPaymentDto,
   SubscriptionPlanDto,
   SubscriptionPlanInput,
 } from "./domain-types";
+
+// Sprint 31C-1 — güvenlik denetim görüntüleyici filtreleri (hepsi opsiyonel; studioId cross-tenant filtre).
+export interface SecurityAuditQuery {
+  from?: string;
+  to?: string;
+  eventType?: string;
+  actorUserId?: string;
+  studioId?: string;
+  outcome?: string;
+  page?: number;
+  pageSize?: number;
+}
 
 // Platform (cross-tenant) yönetim uçları (/api/platform/*) — yalnızca PlatformAdmin.
 export const platformService = {
@@ -60,4 +73,19 @@ export const platformService = {
   healthSummary: () => api<PlatformHealthSummaryDto>("/api/platform/health-summary"),
 
   recentActivity: () => api<PlatformActivityItemDto[]>("/api/platform/recent-activity"),
+
+  // Güvenlik denetim kayıtları (salt-okunur, sayfalı). PlatformAdmin global; studio scoping yok.
+  securityAudit: (q: SecurityAuditQuery = {}) => {
+    const p = new URLSearchParams();
+    if (q.from) p.set("from", q.from);
+    if (q.to) p.set("to", q.to);
+    if (q.eventType) p.set("eventType", q.eventType);
+    if (q.actorUserId) p.set("actorUserId", q.actorUserId);
+    if (q.studioId) p.set("studioId", q.studioId);
+    if (q.outcome) p.set("outcome", q.outcome);
+    if (q.page) p.set("page", String(q.page));
+    if (q.pageSize) p.set("pageSize", String(q.pageSize));
+    const qs = p.toString();
+    return api<SecurityAuditLogPageDto>(`/api/platform/security-audit${qs ? `?${qs}` : ""}`);
+  },
 };

@@ -1250,6 +1250,31 @@ export interface PlatformHealthSummaryDto {
   serverTimeUtc: string;
 }
 
+// Sprint 31C-1 — Güvenlik denetim görüntüleyici (PlatformAdmin, salt-okunur, cross-tenant).
+// EventType/Outcome backend'de string olarak döner (HasConversion<string>).
+export interface SecurityAuditLogRowDto {
+  id: string;
+  occurredAt: string;
+  eventType: string;
+  outcome: string;
+  actorUserId?: string | null;
+  actorEmailMasked?: string | null;
+  studioId?: string | null;
+  studioName?: string | null;
+  targetType?: string | null;
+  targetId?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  detail?: string | null;
+}
+
+export interface SecurityAuditLogPageDto {
+  items: SecurityAuditLogRowDto[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface SubscriptionInput {
   planName: string;
   tier?: string | null;

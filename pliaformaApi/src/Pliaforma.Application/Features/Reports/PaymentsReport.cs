@@ -18,8 +18,9 @@ public sealed class GetPaymentsReportHandler : IQueryHandler<GetPaymentsReportQu
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
-    public GetPaymentsReportHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
-    { _db = db; _currentUser = currentUser; _clock = clock; }
+    private readonly ISecurityAuditLogger _audit;
+    public GetPaymentsReportHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, ISecurityAuditLogger audit)
+    { _db = db; _currentUser = currentUser; _clock = clock; _audit = audit; }
 
     public async Task<PaymentsReportDto> Handle(GetPaymentsReportQuery request, CancellationToken ct)
     {
@@ -49,6 +50,12 @@ public sealed class GetPaymentsReportHandler : IQueryHandler<GetPaymentsReportQu
             }
         }
         var totals = new PaymentTotalsDto(paid, pending, overdue, paidC, pendingC, overdueC);
+
+        // Denetim (31C-1): toplu finansal rapor okundu — istek-başı tek event, yalnız sayı (TUTAR/PII yok).
+        await _audit.LogAsync(SecurityAuditEventType.StudentDataListed, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: sid,
+            targetType: "PaymentsReport", detail: $"count={dtos.Count}", cancellationToken: ct);
+
         return new PaymentsReportDto(p.Label, totals, dtos);
     }
 }

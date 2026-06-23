@@ -21,13 +21,15 @@ public sealed class AcceptMembershipHandler : ICommandHandler<AcceptMembershipCo
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
     private readonly AuthSettings _auth;
+    private readonly ISecurityAuditLogger _audit;
 
-    public AcceptMembershipHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, IOptions<AuthSettings> auth)
+    public AcceptMembershipHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, IOptions<AuthSettings> auth, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
         _auth = auth.Value;
+        _audit = audit;
     }
 
     public async Task<Unit> Handle(AcceptMembershipCommand request, CancellationToken cancellationToken)
@@ -63,6 +65,13 @@ public sealed class AcceptMembershipHandler : ICommandHandler<AcceptMembershipCo
         await EnsureRoleProfileAsync(membership, cancellationToken);
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Denetim (31C-1): üyelik kabul edildi.
+        await _audit.LogAsync(SecurityAuditEventType.MembershipAccepted, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: membership.StudioId,
+            targetType: "StudioMembership", targetId: membership.Id,
+            detail: $"role: {membership.Role}", cancellationToken: cancellationToken);
+
         return Unit.Value;
     }
 
@@ -118,11 +127,13 @@ public sealed class RejectMembershipHandler : ICommandHandler<RejectMembershipCo
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly ISecurityAuditLogger _audit;
 
-    public RejectMembershipHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public RejectMembershipHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
+        _audit = audit;
     }
 
     public async Task<Unit> Handle(RejectMembershipCommand request, CancellationToken cancellationToken)
@@ -138,6 +149,13 @@ public sealed class RejectMembershipHandler : ICommandHandler<RejectMembershipCo
 
         membership.Status = MembershipStatus.Rejected;
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Denetim (31C-1): üyelik reddedildi.
+        await _audit.LogAsync(SecurityAuditEventType.MembershipRejected, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: membership.StudioId,
+            targetType: "StudioMembership", targetId: membership.Id,
+            detail: $"role: {membership.Role}", cancellationToken: cancellationToken);
+
         return Unit.Value;
     }
 }

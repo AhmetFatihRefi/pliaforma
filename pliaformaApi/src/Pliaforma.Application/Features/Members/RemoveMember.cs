@@ -16,11 +16,13 @@ public sealed class RemoveMemberHandler : ICommandHandler<RemoveMemberCommand, U
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly ISecurityAuditLogger _audit;
 
-    public RemoveMemberHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public RemoveMemberHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
+        _audit = audit;
     }
 
     public async Task<Unit> Handle(RemoveMemberCommand request, CancellationToken cancellationToken)
@@ -40,6 +42,13 @@ public sealed class RemoveMemberHandler : ICommandHandler<RemoveMemberCommand, U
 
         membership.Status = MembershipStatus.Removed;
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Denetim (31C-1): üye çıkarıldı.
+        await _audit.LogAsync(SecurityAuditEventType.MemberRemoved, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: studioId,
+            targetType: "StudioMembership", targetId: membership.Id,
+            detail: $"role: {membership.Role}", cancellationToken: cancellationToken);
+
         return Unit.Value;
     }
 }

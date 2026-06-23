@@ -30,11 +30,13 @@ public sealed class ChangeMemberRoleHandler : ICommandHandler<ChangeMemberRoleCo
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly ISecurityAuditLogger _audit;
 
-    public ChangeMemberRoleHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public ChangeMemberRoleHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
+        _audit = audit;
     }
 
     public async Task<Unit> Handle(ChangeMemberRoleCommand request, CancellationToken cancellationToken)
@@ -51,6 +53,7 @@ public sealed class ChangeMemberRoleHandler : ICommandHandler<ChangeMemberRoleCo
         if (membership.Role == request.Role)
             return Unit.Value;
 
+        var oldRole = membership.Role;
         membership.Role = request.Role;
 
         // Instructor'a geçişte profil yoksa oluştur (ücret 0; Owner sonra günceller).
@@ -74,6 +77,13 @@ public sealed class ChangeMemberRoleHandler : ICommandHandler<ChangeMemberRoleCo
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Denetim (31C-1): rol değişimi — eski/yeni rol; PII yok.
+        await _audit.LogAsync(SecurityAuditEventType.RoleChanged, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: studioId,
+            targetType: "StudioMembership", targetId: membership.Id,
+            detail: $"role: {oldRole}->{request.Role}", cancellationToken: cancellationToken);
+
         return Unit.Value;
     }
 }

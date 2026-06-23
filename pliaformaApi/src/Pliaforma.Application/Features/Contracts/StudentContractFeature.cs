@@ -53,11 +53,13 @@ public sealed class CreateStudentContractHandler : ICommandHandler<CreateStudent
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly ISecurityAuditLogger _audit;
 
-    public CreateStudentContractHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public CreateStudentContractHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
+        _audit = audit;
     }
 
     public async Task<StudentContractDto> Handle(CreateStudentContractCommand request, CancellationToken ct)
@@ -130,6 +132,11 @@ public sealed class CreateStudentContractHandler : ICommandHandler<CreateStudent
 
         await _db.SaveChangesAsync(ct);
 
+        // Denetim (31C-1): sözleşme oluşturuldu — FİYAT yazılmaz.
+        await _audit.LogAsync(SecurityAuditEventType.ContractCreated, SecurityAuditOutcome.Success,
+            actorUserId: userId, studioId: studioId, targetType: "StudentContract", targetId: contract.Id,
+            cancellationToken: ct);
+
         return new StudentContractDto(
             contract.Id, student.Id, student.FullName, classType.Id, classType.Name,
             instructor.Id, instructor.DisplayName, contract.StartDate, contract.EndDate,
@@ -185,7 +192,9 @@ public sealed class CancelStudentContractHandler : ICommandHandler<CancelStudent
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public CancelStudentContractHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly ISecurityAuditLogger _audit;
+    public CancelStudentContractHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
+    { _db = db; _currentUser = currentUser; _audit = audit; }
 
     public async Task<Unit> Handle(CancelStudentContractCommand request, CancellationToken ct)
     {
@@ -199,6 +208,12 @@ public sealed class CancelStudentContractHandler : ICommandHandler<CancelStudent
 
         contract.Status = StudentContractStatus.Cancelled;
         await _db.SaveChangesAsync(ct);
+
+        // Denetim (31C-1): sözleşme iptal edildi.
+        await _audit.LogAsync(SecurityAuditEventType.ContractCancelled, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: studioId, targetType: "StudentContract", targetId: contract.Id,
+            cancellationToken: ct);
+
         return Unit.Value;
     }
 }

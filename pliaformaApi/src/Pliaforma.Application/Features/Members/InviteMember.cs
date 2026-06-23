@@ -46,19 +46,22 @@ public sealed class InviteMemberHandler : ICommandHandler<InviteMemberCommand, M
     private readonly IDateTime _clock;
     private readonly INotificationChannelSender _notifications;
     private readonly ILogger<InviteMemberHandler> _logger;
+    private readonly ISecurityAuditLogger _audit;
 
     public InviteMemberHandler(
         IAppDbContext db,
         ICurrentUserService currentUser,
         IDateTime clock,
         INotificationChannelSender notifications,
-        ILogger<InviteMemberHandler> logger)
+        ILogger<InviteMemberHandler> logger,
+        ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
         _notifications = notifications;
         _logger = logger;
+        _audit = audit;
     }
 
     public async Task<MemberDto> Handle(InviteMemberCommand request, CancellationToken cancellationToken)
@@ -97,6 +100,12 @@ public sealed class InviteMemberHandler : ICommandHandler<InviteMemberCommand, M
         await CreateInviteNotificationAsync(studioId, user.Id, membership.Id, studioName, request.Role, cancellationToken);
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Denetim (31C-1): üye davet edildi — rol; davet edilen e-posta HAM yazılmaz.
+        await _audit.LogAsync(SecurityAuditEventType.MemberInvited, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: studioId,
+            targetType: "StudioMembership", targetId: membership.Id,
+            detail: $"role: {request.Role}", cancellationToken: cancellationToken);
 
         // Profil yok → InstructorProfileId/Rate/RateType null (kabul sonrası stüdyo ücreti belirler).
         return new MemberDto(membership.Id, user.Id, user.FullName, user.Email, membership.Role,

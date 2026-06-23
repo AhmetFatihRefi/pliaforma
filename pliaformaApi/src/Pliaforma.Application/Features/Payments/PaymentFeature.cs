@@ -135,8 +135,9 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
-    public CreatePaymentHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
-    { _db = db; _currentUser = currentUser; _clock = clock; }
+    private readonly ISecurityAuditLogger _audit;
+    public CreatePaymentHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, ISecurityAuditLogger audit)
+    { _db = db; _currentUser = currentUser; _clock = clock; _audit = audit; }
 
     public async Task<PaymentDto> Handle(CreatePaymentCommand request, CancellationToken ct)
     {
@@ -207,6 +208,11 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
         _db.Payments.Add(payment);
         await _db.SaveChangesAsync(ct);
 
+        // Denetim (31C-1): ödeme oluşturuldu — TUTAR yazılmaz.
+        await _audit.LogAsync(SecurityAuditEventType.PaymentCreated, SecurityAuditOutcome.Success,
+            actorUserId: userId, studioId: studioId, targetType: "Payment", targetId: payment.Id,
+            cancellationToken: ct);
+
         var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
         return PaymentMapping.ToDto(payment, student.FullName, today, lineLabel);
     }
@@ -232,8 +238,9 @@ public sealed class UpdatePaymentHandler : ICommandHandler<UpdatePaymentCommand,
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
-    public UpdatePaymentHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
-    { _db = db; _currentUser = currentUser; _clock = clock; }
+    private readonly ISecurityAuditLogger _audit;
+    public UpdatePaymentHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, ISecurityAuditLogger audit)
+    { _db = db; _currentUser = currentUser; _clock = clock; _audit = audit; }
 
     public async Task<PaymentDto> Handle(UpdatePaymentCommand request, CancellationToken ct)
     {
@@ -249,6 +256,11 @@ public sealed class UpdatePaymentHandler : ICommandHandler<UpdatePaymentCommand,
         payment.Notes = request.Notes?.Trim();
         await _db.SaveChangesAsync(ct);
 
+        // Denetim (31C-1): ödeme güncellendi — TUTAR yazılmaz.
+        await _audit.LogAsync(SecurityAuditEventType.PaymentUpdated, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: studioId, targetType: "Payment", targetId: payment.Id,
+            cancellationToken: ct);
+
         var name = await _db.StudentProfiles.Where(s => s.Id == payment.StudentProfileId).Select(s => s.FullName).FirstAsync(ct);
         var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
         return PaymentMapping.ToDto(payment, name, today);
@@ -263,8 +275,9 @@ public sealed class MarkPaymentPaidHandler : ICommandHandler<MarkPaymentPaidComm
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
-    public MarkPaymentPaidHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
-    { _db = db; _currentUser = currentUser; _clock = clock; }
+    private readonly ISecurityAuditLogger _audit;
+    public MarkPaymentPaidHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, ISecurityAuditLogger audit)
+    { _db = db; _currentUser = currentUser; _clock = clock; _audit = audit; }
 
     public async Task<Unit> Handle(MarkPaymentPaidCommand request, CancellationToken ct)
     {
@@ -280,6 +293,12 @@ public sealed class MarkPaymentPaidHandler : ICommandHandler<MarkPaymentPaidComm
         payment.PaidAt = _clock.UtcNow;
         if (request.Method is { } m) payment.Method = m;
         await _db.SaveChangesAsync(ct);
+
+        // Denetim (31C-1): ödeme ödendi işaretlendi — TUTAR yazılmaz.
+        await _audit.LogAsync(SecurityAuditEventType.PaymentMarkedPaid, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: studioId, targetType: "Payment", targetId: payment.Id,
+            cancellationToken: ct);
+
         return Unit.Value;
     }
 }
@@ -291,7 +310,9 @@ public sealed class CancelPaymentHandler : ICommandHandler<CancelPaymentCommand,
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public CancelPaymentHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly ISecurityAuditLogger _audit;
+    public CancelPaymentHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
+    { _db = db; _currentUser = currentUser; _audit = audit; }
 
     public async Task<Unit> Handle(CancelPaymentCommand request, CancellationToken ct)
     {
@@ -303,6 +324,12 @@ public sealed class CancelPaymentHandler : ICommandHandler<CancelPaymentCommand,
 
         payment.Status = PaymentStatus.Cancelled;
         await _db.SaveChangesAsync(ct);
+
+        // Denetim (31C-1): ödeme iptal edildi.
+        await _audit.LogAsync(SecurityAuditEventType.PaymentCancelled, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: studioId, targetType: "Payment", targetId: payment.Id,
+            cancellationToken: ct);
+
         return Unit.Value;
     }
 }

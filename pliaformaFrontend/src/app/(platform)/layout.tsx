@@ -15,6 +15,7 @@ const nav = [
   { href: "/platform/studios", label: "Stüdyolar", icon: "❖" },
   { href: "/platform/plans", label: "Planlar", icon: "◈" },
   { href: "/platform/health", label: "Sistem Sağlığı", icon: "✚" },
+  { href: "/platform/security-audit", label: "Güvenlik Denetimi", icon: "🛡" },
 ];
 
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {

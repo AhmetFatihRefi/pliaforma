@@ -16,11 +16,13 @@ public sealed class GetStudentsHandler : IQueryHandler<GetStudentsQuery, IReadOn
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly ISecurityAuditLogger _audit;
 
-    public GetStudentsHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public GetStudentsHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
+        _audit = audit;
     }
 
     public async Task<IReadOnlyList<StudentDto>> Handle(GetStudentsQuery request, CancellationToken cancellationToken)
@@ -60,7 +62,19 @@ public sealed class GetStudentsHandler : IQueryHandler<GetStudentsQuery, IReadOn
 
         var list = await query.OrderBy(s => s.FullName).ToListAsync(cancellationToken);
 
+        // Denetim (31C-1): toplu öğrenci verisi okundu — istek-başı TEK event, yalnız sayı (PII yok).
+        await _audit.LogAsync(SecurityAuditEventType.StudentDataListed, SecurityAuditOutcome.Success,
+            actorUserId: _currentUser.UserId, studioId: studioId,
+            targetType: "StudentProfile", detail: $"count={list.Count}", cancellationToken: cancellationToken);
+
         // Listeye dönen tüm satırlar yönetilebilir olduğundan sağlık notu görünür.
+        // Sağlık notu GERÇEKTEN dolu olan kayıt varsa tek HealthNotesAccessed (boşlar gürültü yaratmaz).
+        var healthCount = list.Count(s => !string.IsNullOrWhiteSpace(s.HealthNotes));
+        if (healthCount > 0)
+            await _audit.LogAsync(SecurityAuditEventType.HealthNotesAccessed, SecurityAuditOutcome.Success,
+                actorUserId: _currentUser.UserId, studioId: studioId,
+                targetType: "StudentProfile", detail: $"count={healthCount}", cancellationToken: cancellationToken);
+
         return list.Select(s => StudentDto.From(s, includeHealth: true)).ToList();
     }
 }

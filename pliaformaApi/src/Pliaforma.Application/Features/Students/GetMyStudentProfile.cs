@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
 
 namespace Pliaforma.Application.Features.Students;
@@ -15,11 +16,13 @@ public sealed class GetMyStudentProfileHandler : IQueryHandler<GetMyStudentProfi
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly ISecurityAuditLogger _audit;
 
-    public GetMyStudentProfileHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public GetMyStudentProfileHandler(IAppDbContext db, ICurrentUserService currentUser, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
+        _audit = audit;
     }
 
     public async Task<StudentDto> Handle(GetMyStudentProfileQuery request, CancellationToken cancellationToken)
@@ -32,6 +35,13 @@ public sealed class GetMyStudentProfileHandler : IQueryHandler<GetMyStudentProfi
             .OrderByDescending(s => s.IsActive)
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException("Bu stüdyoda öğrenci profiliniz bulunamadı.");
+
+        // Denetim (31C-1): öğrenci KENDİ sağlık notunu görüyor (actor = öğrencinin kendisi); yalnız dolu ise.
+        if (!string.IsNullOrWhiteSpace(student.HealthNotes))
+            await _audit.LogAsync(SecurityAuditEventType.HealthNotesAccessed, SecurityAuditOutcome.Success,
+                actorUserId: userId, studioId: studioId,
+                targetType: "StudentProfile", targetId: student.Id, detail: "count=1; self",
+                cancellationToken: cancellationToken);
 
         return StudentDto.From(student, includeHealth: true);
     }
