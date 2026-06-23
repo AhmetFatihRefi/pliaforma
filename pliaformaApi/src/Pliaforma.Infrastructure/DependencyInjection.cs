@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Common.Security;
+using Pliaforma.Application.Common.Settings;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Infrastructure.Services;
 using Pliaforma.Infrastructure.Settings;
@@ -34,6 +35,12 @@ public static class DependencyInjection
         if (isProduction)
             GuardAgainstPlaceholderSecrets(jwt.Secret, configuration["Seed:AdminPassword"]);
 
+        // Sprint 31-MFA ayarları + Production fail-fast (MFA pilotta açık olmalı; anahtar gerçek olmalı).
+        services.Configure<MfaSettings>(configuration.GetSection(MfaSettings.SectionName));
+        var mfa = configuration.GetSection(MfaSettings.SectionName).Get<MfaSettings>() ?? new MfaSettings();
+        if (isProduction)
+            GuardMfaProduction(mfa);
+
         ConfigureEmail(services, configuration, isProduction);
 
         services.AddHttpContextAccessor();
@@ -41,6 +48,9 @@ public static class DependencyInjection
         services.AddSingleton<IDateTime, DateTimeService>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddSingleton<ITokenService, TokenService>();
+        services.AddSingleton<ITotpService, TotpService>();
+        services.AddSingleton<IMfaSecretProtector, MfaSecretProtector>();
+        services.AddSingleton<IMfaChallengeService, MfaChallengeService>();
         services.AddScoped<ICurrentUserService, CurrentUserService>();
         services.AddScoped<ISecurityAuditLogger, SecurityAuditLogger>();
         services.AddScoped<INotificationChannelSender, LoggingNotificationSender>();
@@ -109,6 +119,32 @@ public static class DependencyInjection
             throw new InvalidOperationException(
                 "Seed:AdminPassword Production'da örnek/zayıf bir değer içeriyor (ör. 'CHANGE_ME', 'Admin!2345'). " +
                 "Güçlü ve benzersiz bir parola kullanın (Seed__AdminPassword) veya boş bırakın (admin tohumlanmaz).");
+    }
+
+    /// <summary>
+    /// Production fail-fast (Sprint 31-MFA): MFA pilotta ZORUNLU olmalı (Mfa:Enabled=true) ve geçerli bir
+    /// AES anahtarı (Mfa:EncryptionKey, base64 ≥32 bayt, placeholder değil) bulunmalı. Aksi halde açılmaz.
+    /// Development/test'te bu kontrol uygulanmaz (Mfa:Enabled=false ile mevcut akışlar korunur).
+    /// </summary>
+    private static void GuardMfaProduction(MfaSettings mfa)
+    {
+        if (!mfa.Enabled)
+            throw new InvalidOperationException(
+                "Mfa:Enabled Production'da true OLMALI (Owner/StudioAdmin MFA pilotta zorunludur). " +
+                "Mfa__Enabled=true ve geçerli bir Mfa__EncryptionKey verin.");
+
+        if (string.IsNullOrWhiteSpace(mfa.EncryptionKey)
+            || mfa.EncryptionKey.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "Mfa:EncryptionKey tanımlı değil veya placeholder ('CHANGE_ME'). Gerçek bir base64 anahtar verin " +
+                "(en az 32 bayt), örn: openssl rand -base64 32.");
+
+        byte[] keyBytes;
+        try { keyBytes = Convert.FromBase64String(mfa.EncryptionKey); }
+        catch (FormatException) { throw new InvalidOperationException("Mfa:EncryptionKey geçerli base64 değil."); }
+
+        if (keyBytes.Length < 32)
+            throw new InvalidOperationException("Mfa:EncryptionKey en az 32 bayt (base64) olmalı.");
     }
 
     /// <summary>

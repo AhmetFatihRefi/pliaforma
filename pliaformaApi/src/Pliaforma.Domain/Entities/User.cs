@@ -38,6 +38,12 @@ public class User : BaseEntity
     public DateTime? LockoutEnd { get; set; }
 
     /// <summary>
+    /// TOTP MFA aktif mi? (Sprint 31-MFA). Login hot-path'inde hızlı kontrol için User üzerinde tutulur;
+    /// secret/recovery kodları ayrı tablolardadır (<see cref="UserMfaSettings"/>, <see cref="MfaRecoveryCode"/>).
+    /// </summary>
+    public bool MfaEnabled { get; set; }
+
+    /// <summary>
     /// E-posta doğrulandığı an (UTC). null → doğrulanmamış (Sprint 16). Mevcut kullanıcılar migration
     /// backfill ile doğrulanmış sayılır. Doğrulanmamış kullanıcı login olabilir ama stüdyoya başvuramaz.
     /// </summary>

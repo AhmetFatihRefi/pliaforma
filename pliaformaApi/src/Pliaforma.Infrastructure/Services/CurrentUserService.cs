@@ -32,6 +32,8 @@ public sealed class CurrentUserService : ICurrentUserService
 
     public Guid? MembershipId => TryGuid(Find(AppClaims.MembershipId));
 
+    public bool MfaPending => Find(AppClaims.MfaPending) == "true";
+
     public Guid RequireUserId() =>
         UserId ?? throw new UnauthorizedException("Kimlik doğrulanmamış.");
 

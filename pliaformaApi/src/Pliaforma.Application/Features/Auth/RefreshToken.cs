@@ -16,7 +16,7 @@ namespace Pliaforma.Application.Features.Auth;
 public sealed record RefreshTokenCommand(
     string RefreshToken,
     Guid? StudioId = null,
-    string? Ip = null) : ICommand<AuthResult>;
+    string? Ip = null) : ICommand<AuthOutcome>;
 
 public sealed class RefreshTokenValidator : AbstractValidator<RefreshTokenCommand>
 {
@@ -26,7 +26,7 @@ public sealed class RefreshTokenValidator : AbstractValidator<RefreshTokenComman
     }
 }
 
-public sealed class RefreshTokenHandler : ICommandHandler<RefreshTokenCommand, AuthResult>
+public sealed class RefreshTokenHandler : ICommandHandler<RefreshTokenCommand, AuthOutcome>
 {
     private readonly IAppDbContext _db;
     private readonly ITokenService _tokens;
@@ -41,7 +41,7 @@ public sealed class RefreshTokenHandler : ICommandHandler<RefreshTokenCommand, A
         _session = session;
     }
 
-    public async Task<AuthResult> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
+    public async Task<AuthOutcome> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
     {
         var hash = _tokens.HashRefreshToken(request.RefreshToken);
 
@@ -57,20 +57,22 @@ public sealed class RefreshTokenHandler : ICommandHandler<RefreshTokenCommand, A
         if (!user.IsActive)
             throw new ForbiddenException("Hesabınız devre dışı bırakılmış.");
 
+        var activeMemberships = await _db.StudioMemberships
+            .Where(m => m.UserId == user.Id && m.Status == MembershipStatus.Active)
+            .ToListAsync(cancellationToken);
+
         // İstenen stüdyo bağlamı varsa üyeliğin hâlâ Active olduğunu doğrula.
         StudioMembership? membership = null;
         if (request.StudioId is { } studioId)
         {
-            membership = await _db.StudioMemberships
-                .FirstOrDefaultAsync(
-                    m => m.UserId == user.Id && m.StudioId == studioId && m.Status == MembershipStatus.Active,
-                    cancellationToken)
+            membership = activeMemberships.FirstOrDefault(m => m.StudioId == studioId)
                 ?? throw new ForbiddenException("Stüdyo üyeliğiniz artık aktif değil.");
         }
 
-        // Rotasyon: eski token'ı revoke et, yenisini IssueAsync üretsin.
+        // Rotasyon: eski token'ı revoke et, yenisini üret. Refresh challenge YAPMAZ (zaten MFA geçilmiş);
+        // yalnız setup-pending durumunda kısıtlı token üretilir (Sprint 31-MFA).
         stored.RevokedAt = _clock.UtcNow;
 
-        return await _session.IssueAsync(user, membership, request.Ip, cancellationToken);
+        return await _session.IssuePostAuthAsync(user, membership, activeMemberships, request.Ip, cancellationToken);
     }
 }

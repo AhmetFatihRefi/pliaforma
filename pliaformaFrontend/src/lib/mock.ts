@@ -101,7 +101,7 @@ export const mockAuthService: AuthService = {
     };
     const auth = buildAuth(user, "Zen Pilates");
     current = { user, activeStudio: auth.activeStudio, memberships: auth.memberships };
-    return auth;
+    return { kind: "auth" as const, auth };
   },
 
   async switchStudio(studioId: string) {
@@ -137,5 +137,24 @@ export const mockAuthService: AuthService = {
   },
   async changePassword() {
     await delay(100);
+  },
+  async mfaSetupStart() {
+    await delay(100);
+    return { otpauthUri: "otpauth://totp/Pliaforma:mock?secret=MOCKSECRET234567&issuer=Pliaforma", manualKey: "MOCKSECRET234567" };
+  },
+  async mfaSetupVerify() {
+    await delay(100);
+    if (!current) throw new Error("Oturum yok");
+    return { auth: buildAuth(current.user, current.activeStudio?.studioName ?? "Zen Pilates"), recoveryCodes: ["AAAAA-BBBBB", "CCCCC-DDDDD"] };
+  },
+  async mfaChallengeVerify() {
+    await delay(100);
+    if (!current) throw new Error("Oturum yok");
+    return buildAuth(current.user, current.activeStudio?.studioName ?? "Zen Pilates");
+  },
+  async mfaRecoveryVerify() {
+    await delay(100);
+    if (!current) throw new Error("Oturum yok");
+    return buildAuth(current.user, current.activeStudio?.studioName ?? "Zen Pilates");
   },
 };

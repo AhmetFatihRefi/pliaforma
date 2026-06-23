@@ -7,4 +7,10 @@ public static class AppClaims
     public const string StudioId = "studio_id";
     public const string StudioRole = "studio_role";
     public const string MembershipId = "membership_id";
+
+    /// <summary>
+    /// Sprint 31-MFA: MFA kurulumu tamamlanmamış kullanıcı için "kısıtlı" token işareti.
+    /// Bu claim varsa yalnız MFA-setup uçlarına izin verilir (MfaPendingGuardMiddleware).
+    /// </summary>
+    public const string MfaPending = "mfa_pending";
 }

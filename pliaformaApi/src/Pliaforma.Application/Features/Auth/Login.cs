@@ -14,7 +14,7 @@ namespace Pliaforma.Application.Features.Auth;
 /// switch-studio ile seçer.
 /// <para>Sprint 31B-2: hesap kilitleme (N başarısız → geçici kilit) + güvenlik denetimi (audit).</para>
 /// </summary>
-public sealed record LoginCommand(string Email, string Password, string? Ip = null) : ICommand<AuthResult>;
+public sealed record LoginCommand(string Email, string Password, string? Ip = null) : ICommand<AuthOutcome>;
 
 public sealed class LoginValidator : AbstractValidator<LoginCommand>
 {
@@ -25,7 +25,7 @@ public sealed class LoginValidator : AbstractValidator<LoginCommand>
     }
 }
 
-public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthResult>
+public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthOutcome>
 {
     private readonly IAppDbContext _db;
     private readonly IPasswordHasher _hasher;
@@ -45,7 +45,7 @@ public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthResult>
         _loginAttempts = loginAttempts;
     }
 
-    public async Task<AuthResult> Handle(LoginCommand request, CancellationToken cancellationToken)
+    public async Task<AuthOutcome> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
         var normalizedEmail = EmailNormalizer.Normalize(request.Email);
         var now = _clock.UtcNow;
@@ -99,12 +99,17 @@ public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthResult>
         // Tek aktif üyelik varsa otomatik seç; aksi halde stüdyosuz token.
         var activeMembership = activeMemberships.Count == 1 ? activeMemberships[0] : null;
 
-        var result = await _session.IssueAsync(user, activeMembership, request.Ip, cancellationToken);
+        // Sprint 31-MFA: MFA gerekiyorsa challenge / setup-pending dallanması.
+        var outcome = await _session.IssueWithMfaAsync(user, activeMembership, activeMemberships, request.Ip, cancellationToken);
 
-        await _audit.LogAsync(SecurityAuditEventType.LoginSucceeded, SecurityAuditOutcome.Success,
-            actorUserId: user.Id, actorEmail: user.Email, studioId: activeMembership?.StudioId,
-            cancellationToken: cancellationToken);
+        if (outcome.MfaChallengeRequired)
+            await _audit.LogAsync(SecurityAuditEventType.MFAChallengeCreated, SecurityAuditOutcome.Success,
+                actorUserId: user.Id, actorEmail: user.Email, cancellationToken: cancellationToken);
+        else
+            await _audit.LogAsync(SecurityAuditEventType.LoginSucceeded, SecurityAuditOutcome.Success,
+                actorUserId: user.Id, actorEmail: user.Email, studioId: activeMembership?.StudioId,
+                cancellationToken: cancellationToken);
 
-        return result;
+        return outcome;
     }
 }

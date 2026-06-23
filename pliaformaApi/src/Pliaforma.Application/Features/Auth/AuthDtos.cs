@@ -10,7 +10,8 @@ public sealed record UserDto(
     string? Phone,
     GlobalRole GlobalRole,
     bool EmailVerified,
-    RegistrationIntent RegistrationIntent);
+    RegistrationIntent RegistrationIntent,
+    bool MfaEnabled = false);
 
 /// <summary>Kullanıcının bir stüdyodaki üyelik özeti (stüdyo seçimi için).</summary>
 public sealed record MembershipDto(
@@ -42,8 +43,24 @@ public sealed record AuthResult(
     ActiveStudioDto? ActiveStudio,
     IReadOnlyList<MembershipDto> Memberships);
 
-/// <summary>/auth/me yanıtı (token üretmez).</summary>
+/// <summary>/auth/me yanıtı (token üretmez). MFA durumu Sprint 31-MFA.</summary>
 public sealed record MeResult(
     UserDto User,
     ActiveStudioDto? ActiveStudio,
-    IReadOnlyList<MembershipDto> Memberships);
+    IReadOnlyList<MembershipDto> Memberships,
+    bool MfaSetupRequired = false,
+    int MfaRecoveryCodesRemaining = 0);
+
+/// <summary>
+/// Login / register-studio / refresh sonucu — MFA dallanmasını taşır (Sprint 31-MFA).
+/// <list type="bullet">
+/// <item><c>MfaChallengeRequired=true</c> → <c>Auth=null</c>; istemci <c>ChallengeToken</c> ile TOTP gönderir.</item>
+/// <item><c>MfaSetupRequired=true</c> → <c>Auth</c> KISITLI (mfa_pending) token; kullanıcı MFA kurmalı.</item>
+/// <item>aksi halde normal tam token.</item>
+/// </list>
+/// </summary>
+public sealed record AuthOutcome(
+    AuthResult? Auth,
+    bool MfaChallengeRequired,
+    string? ChallengeToken,
+    bool MfaSetupRequired);

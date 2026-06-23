@@ -17,7 +17,7 @@ public sealed class TokenService : ITokenService
 
     public TokenService(IOptions<JwtSettings> settings) => _settings = settings.Value;
 
-    public AccessToken GenerateAccessToken(User user, StudioMembership? activeMembership)
+    public AccessToken GenerateAccessToken(User user, StudioMembership? activeMembership, bool mfaPending = false)
     {
         var expires = DateTime.UtcNow.AddMinutes(_settings.AccessTokenMinutes);
 
@@ -36,6 +36,10 @@ public sealed class TokenService : ITokenService
             claims.Add(new Claim(AppClaims.StudioRole, activeMembership.Role.ToString()));
             claims.Add(new Claim(AppClaims.MembershipId, activeMembership.Id.ToString()));
         }
+
+        // Sprint 31-MFA: MFA kurulumu beklenen kullanıcı → kısıtlı token (yalnız MFA setup uçları).
+        if (mfaPending)
+            claims.Add(new Claim(AppClaims.MfaPending, "true"));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);

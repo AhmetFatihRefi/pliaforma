@@ -24,8 +24,9 @@ export default function RegisterStudioPage() {
     setFieldErrors({});
     setLoading(true);
     try {
-      await registerStudio({ ...form, phone: form.phone || undefined });
-      router.replace("/dashboard");
+      const auth = await registerStudio({ ...form, phone: form.phone || undefined });
+      if (auth.mfaSetupRequired) router.replace("/mfa-setup"); // Sprint 31-MFA: yeni Owner MFA kurmalı
+      else router.replace("/dashboard");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -58,7 +59,7 @@ export default function RegisterStudioPage() {
           <Input id="email" type="email" autoComplete="email" value={form.email} onChange={set("email")} required />
         </FormField>
 
-        <FormField label="Parola" htmlFor="password" hint="En az 8 karakter" error={fe("Password")}>
+        <FormField label="Parola" htmlFor="password" hint="En az 10 karakter; büyük/küçük harf, rakam ve özel karakter" error={fe("Password")}>
           <Input
             id="password"
             type="password"

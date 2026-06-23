@@ -24,7 +24,7 @@ public sealed record RegisterStudioCommand(
     string Email,
     string Password,
     string? Phone,
-    string? Ip = null) : ICommand<AuthResult>;
+    string? Ip = null) : ICommand<AuthOutcome>;
 
 public sealed class RegisterStudioValidator : AbstractValidator<RegisterStudioCommand>
 {
@@ -38,7 +38,7 @@ public sealed class RegisterStudioValidator : AbstractValidator<RegisterStudioCo
     }
 }
 
-public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioCommand, AuthResult>
+public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioCommand, AuthOutcome>
 {
     private readonly IAppDbContext _db;
     private readonly IPasswordHasher _hasher;
@@ -63,7 +63,7 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
         _auth = auth.Value;
     }
 
-    public async Task<AuthResult> Handle(RegisterStudioCommand request, CancellationToken cancellationToken)
+    public async Task<AuthOutcome> Handle(RegisterStudioCommand request, CancellationToken cancellationToken)
     {
         var normalizedEmail = EmailNormalizer.Normalize(request.Email);
 
@@ -148,7 +148,8 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
             await _db.SaveChangesAsync(cancellationToken);
         }
 
-        return await _session.IssueAsync(user, membership, request.Ip, cancellationToken);
+        // Sprint 31-MFA: yeni Owner MFA-zorunlu → setup-pending token (full dashboard token değil).
+        return await _session.IssueWithMfaAsync(user, membership, new[] { membership }, request.Ip, cancellationToken);
     }
 
     private async Task<string> GenerateUniqueSlugAsync(string studioName, CancellationToken ct)

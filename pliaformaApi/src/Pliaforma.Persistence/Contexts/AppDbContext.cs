@@ -43,6 +43,8 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<PlatformSubscriptionPayment> PlatformSubscriptionPayments => Set<PlatformSubscriptionPayment>();
     public DbSet<SecurityAuditLog> SecurityAuditLogs => Set<SecurityAuditLog>();
+    public DbSet<UserMfaSettings> UserMfaSettings => Set<UserMfaSettings>();
+    public DbSet<MfaRecoveryCode> MfaRecoveryCodes => Set<MfaRecoveryCode>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

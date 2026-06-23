@@ -107,6 +107,31 @@ function ChangePasswordCard() {
   );
 }
 
+function MfaStatusCard() {
+  const { user } = useAuth();
+  const [remaining, setRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user?.mfaEnabled) return;
+    authService.me().then((me) => setRemaining(me.mfaRecoveryCodesRemaining ?? 0)).catch(() => {});
+  }, [user?.mfaEnabled]);
+
+  return (
+    <Card>
+      <h2 className="mb-2 text-lg font-semibold text-foreground">İki adımlı doğrulama (MFA)</h2>
+      {user?.mfaEnabled ? (
+        <div className="space-y-1 text-sm">
+          <p className="flex items-center gap-2 text-foreground">Durum: <Badge tone="success">Aktif</Badge></p>
+          {remaining !== null && <p className="text-muted">Kalan kurtarma kodu: <span className="font-medium text-foreground">{remaining}</span></p>}
+          <p className="pt-1 text-xs text-muted">MFA&apos;yı sıfırlamak için platform yöneticinizle iletişime geçin (self-servis kapatma yoktur).</p>
+        </div>
+      ) : (
+        <p className="text-sm text-muted">MFA bu hesap için aktif değil.</p>
+      )}
+    </Card>
+  );
+}
+
 export default function MyProfilePage() {
   const [profile, setProfile] = useState<StudentDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +172,8 @@ export default function MyProfilePage() {
         </Card>
       )}
 
-      {/* Parola değiştirme tüm oturum açmış kullanıcılar için (öğrenci profili olmasa da). */}
+      {/* MFA durumu + parola değiştirme tüm oturum açmış kullanıcılar için. */}
+      <MfaStatusCard />
       <ChangePasswordCard />
     </div>
   );

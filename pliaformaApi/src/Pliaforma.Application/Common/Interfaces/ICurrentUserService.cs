@@ -16,6 +16,9 @@ public interface ICurrentUserService
     StudioRole? StudioRole { get; }
     Guid? MembershipId { get; }
 
+    /// <summary>Sprint 31-MFA: token mfa_pending mi? (MFA kurulumu beklenen kısıtlı token).</summary>
+    bool MfaPending { get; }
+
     bool IsAuthenticated { get; }
 
     Guid RequireUserId();

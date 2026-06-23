@@ -11,7 +11,7 @@ import { FullscreenLoader } from "@/components/layout/FullscreenLoader";
 import { ConfirmProvider, ToastProvider } from "@/components/ui";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, activeStudio, memberships, loading } = useAuth();
+  const { user, activeStudio, memberships, loading, mfaSetupRequired } = useAuth();
   const router = useRouter();
 
   // Stüdyo bağlamı olmayan PlatformAdmin'i platform paneline yönlendir (tenant dashboard'u onun için anlamsız).
@@ -22,11 +22,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace("/login");
+    else if (mfaSetupRequired) router.replace("/mfa-setup"); // Sprint 31-MFA: kurulum tamamlanmadan dashboard yok
     else if (platformOnly) router.replace("/platform");
     else if (needsJoin) router.replace("/join-studio");
-  }, [loading, user, platformOnly, needsJoin, router]);
+  }, [loading, user, mfaSetupRequired, platformOnly, needsJoin, router]);
 
-  if (loading || !user || platformOnly || needsJoin) return <FullscreenLoader />;
+  if (loading || !user || mfaSetupRequired || platformOnly || needsJoin) return <FullscreenLoader />;
 
   return (
     <ToastProvider>

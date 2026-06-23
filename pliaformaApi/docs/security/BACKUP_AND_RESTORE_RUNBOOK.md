@@ -24,6 +24,14 @@ Bu doküman yalnızca **KVKK/güvenlik açısından ekleri** ve eksikleri kayded
 | **Periyodik restore drill kanıtı** | Yedek geçerliliği garanti değil | 3 ayda bir tarihli drill kaydı | ⏳31D |
 | **Backup erişim kısıtı** | Yedek dosyalarına yetkisiz erişim | Dosya izinleri + ayrı kimlik; audit | ⏳31D |
 
+## 2.5 Kritik secret'lar — DB yedeği yetmez (Sprint 31-MFA)
+- **`Mfa:EncryptionKey`** TOTP secret'larını AES-256-GCM ile şifreler. Anahtar **`.env`'de** (DB yedeğinde DEĞİL).
+  → Yalnız DB yedeği TOTP secret'larını **çözemez** (güvenlik açısından doğru). Anahtar **JWT secret gibi kritik**;
+  güvenli ve ayrı bir yerde yedeklenmeli. **Anahtar kaybı** → kullanıcılar MFA'yı yeniden kurmak zorunda kalır
+  (**recovery code'lar bağımsız hash'li olduğu için çalışmaya devam eder** → kurtarma + yeniden enroll mümkün).
+- Anahtar rotasyonu = mevcut secret'lar çözülemez → tüm kullanıcılar yeniden enroll (pilotta önerilmez).
+- **Restore tatbikatında** doğrula: `Mfa:EncryptionKey` + `Jwt:Secret` ayrı yedekten geri yüklenmeli; yalnız DB restore yetmez.
+
 ## 3. Yedek güvenliği prensipleri (hedef)
 - Yedekler **şifreli** saklanır (anahtar yedeklerden **ayrı** yönetilir).
 - Yedek deposu **erişim kontrollü**; sadece yetkili kimlik erişir.

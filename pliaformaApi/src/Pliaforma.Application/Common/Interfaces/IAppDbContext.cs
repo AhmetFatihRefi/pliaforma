@@ -46,5 +46,9 @@ public interface IAppDbContext
     /// <summary>Güvenlik denetim kayıtları (append-only; yalnız Add). Bkz. SecurityAuditLog.</summary>
     DbSet<SecurityAuditLog> SecurityAuditLogs { get; }
 
+    /// <summary>TOTP MFA ayarları (Sprint 31-MFA).</summary>
+    DbSet<UserMfaSettings> UserMfaSettings { get; }
+    DbSet<MfaRecoveryCode> MfaRecoveryCodes { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

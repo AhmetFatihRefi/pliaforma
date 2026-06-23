@@ -18,7 +18,7 @@ const nav = [
 ];
 
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, mfaSetupRequired } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -27,10 +27,11 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   useEffect(() => {
     if (loading) return;
     if (!user) router.replace("/login");
+    else if (mfaSetupRequired) router.replace("/mfa-setup"); // Sprint 31-MFA
     else if (!isPlatformAdmin) router.replace("/dashboard");
-  }, [loading, user, isPlatformAdmin, router]);
+  }, [loading, user, mfaSetupRequired, isPlatformAdmin, router]);
 
-  if (loading || !user || !isPlatformAdmin) return <FullscreenLoader />;
+  if (loading || !user || mfaSetupRequired || !isPlatformAdmin) return <FullscreenLoader />;
 
   const onLogout = async () => {
     await logout();

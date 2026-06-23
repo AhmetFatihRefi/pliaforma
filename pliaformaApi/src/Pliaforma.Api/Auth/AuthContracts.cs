@@ -19,16 +19,36 @@ public sealed record ResetPasswordRequest(string Token, string NewPassword);
 // Sprint 31B-2: authenticated parola değiştirme
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
+// Sprint 31-MFA: MFA istek gövdeleri
+public sealed record MfaSetupVerifyRequest(string Code);
+public sealed record MfaChallengeVerifyRequest(string ChallengeToken, string Code);
+public sealed record MfaRecoveryCodeVerifyRequest(string ChallengeToken, string RecoveryCode);
+public sealed record MfaResetRequest(Guid UserId);
+
 /// <summary>
 /// İstemciye dönen auth gövdesi. Refresh token BURADA YOKTUR; httpOnly cookie ile gider.
+/// <c>MfaSetupRequired=true</c> → token KISITLI (mfa_pending); kullanıcı MFA kurmalı (Sprint 31-MFA).
 /// </summary>
 public sealed record AuthResponse(
     string AccessToken,
     DateTime AccessTokenExpiresAt,
     UserDto User,
     ActiveStudioDto? ActiveStudio,
-    IReadOnlyList<MembershipDto> Memberships)
+    IReadOnlyList<MembershipDto> Memberships,
+    bool MfaSetupRequired = false)
 {
-    public static AuthResponse From(AuthResult r) =>
-        new(r.AccessToken, r.AccessTokenExpiresAt, r.User, r.ActiveStudio, r.Memberships);
+    public static AuthResponse From(AuthResult r, bool mfaSetupRequired = false) =>
+        new(r.AccessToken, r.AccessTokenExpiresAt, r.User, r.ActiveStudio, r.Memberships, mfaSetupRequired);
 }
+
+/// <summary>Login MFA-aktif kullanıcı için: tam token YOK; istemci challengeToken ile TOTP gönderir.</summary>
+public sealed record MfaChallengeResponse(string ChallengeToken)
+{
+    public bool MfaChallengeRequired => true;
+}
+
+/// <summary>setup/start yanıtı: authenticator için otpauth URI + manuel secret.</summary>
+public sealed record MfaSetupStartResponse(string OtpauthUri, string ManualKey);
+
+/// <summary>setup/verify yanıtı: tam auth + bir kez gösterilecek recovery code'lar.</summary>
+public sealed record MfaSetupCompleteResponse(AuthResponse Auth, IReadOnlyList<string> RecoveryCodes);

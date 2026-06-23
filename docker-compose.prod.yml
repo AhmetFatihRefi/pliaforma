@@ -38,6 +38,9 @@ services:
       Seed__AdminEmail: ${SEED_ADMIN_EMAIL}
       Seed__AdminPassword: ${SEED_ADMIN_PASSWORD}
       Cors__Origins__0: ${PUBLIC_ORIGIN}
+      # MFA (Sprint 31-MFA): pilotta ZORUNLU. Mfa:Enabled=true + geçerli Mfa:EncryptionKey yoksa backend AÇILMAZ.
+      Mfa__Enabled: ${MFA_ENABLED:-true}
+      Mfa__EncryptionKey: ${MFA_ENCRYPTION_KEY}
       # E-posta (Sprint 16) — prod'da SenderMode=Smtp önerilir; Smtp iken PublicOrigin/Host/From zorunlu (fail-fast).
       # PublicOrigin = kullanıcıya görünen origin (doğrulama/sıfırlama linkleri bununla kurulur).
       Email__SenderMode: ${EMAIL_SENDER_MODE:-Smtp}

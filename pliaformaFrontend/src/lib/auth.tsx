@@ -7,6 +7,7 @@ import type {
   ActiveStudioDto,
   AuthResponse,
   LoginInput,
+  LoginResult,
   MembershipDto,
   RegisterInput,
   RegisterStudioInput,
@@ -18,16 +19,20 @@ interface AuthState {
   activeStudio: ActiveStudioDto | null;
   memberships: MembershipDto[];
   loading: boolean;
+  /** Sprint 31-MFA: token kısıtlı (mfa_pending) → kullanıcı MFA kurmalı (dashboard gate). */
+  mfaSetupRequired: boolean;
 }
 
 interface AuthContextValue extends AuthState {
-  login: (input: LoginInput) => Promise<AuthResponse>;
+  login: (input: LoginInput) => Promise<LoginResult>;
   registerStudio: (input: RegisterStudioInput) => Promise<AuthResponse>;
   register: (input: RegisterInput) => Promise<AuthResponse>;
   switchStudio: (studioId: string) => Promise<AuthResponse>;
   logout: () => Promise<void>;
   /** Sprint 16: /me'yi yeniden çekip durumu (örn. emailVerified) günceller. */
   reloadMe: () => Promise<void>;
+  /** Sprint 31-MFA: MFA challenge/setup sonrası dönen auth'u uygular. */
+  applyAuth: (auth: AuthResponse) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -38,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     activeStudio: null,
     memberships: [],
     loading: true,
+    mfaSetupRequired: false,
   });
 
   const applyAuth = (auth: AuthResponse) => {
@@ -48,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       activeStudio: auth.activeStudio ?? null,
       memberships: auth.memberships,
       loading: false,
+      mfaSetupRequired: auth.mfaSetupRequired ?? false,
     });
   };
 
@@ -63,9 +70,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             activeStudio: me.activeStudio ?? null,
             memberships: me.memberships,
             loading: false,
+            mfaSetupRequired: me.mfaSetupRequired ?? false,
           });
       } catch {
-        if (!cancelled) setState({ user: null, activeStudio: null, memberships: [], loading: false });
+        if (!cancelled) setState({ user: null, activeStudio: null, memberships: [], loading: false, mfaSetupRequired: false });
       }
     })();
     return () => {
@@ -74,9 +82,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (input: LoginInput) => {
-    const auth = await authService.login(input);
-    applyAuth(auth);
-    return auth;
+    const result = await authService.login(input);
+    if (result.kind === "auth") applyAuth(result.auth);
+    return result;
   };
 
   const registerStudio = async (input: RegisterStudioInput) => {
@@ -102,21 +110,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await authService.logout();
     } finally {
       tokenStore.clear();
-      setState({ user: null, activeStudio: null, memberships: [], loading: false });
+      setState({ user: null, activeStudio: null, memberships: [], loading: false, mfaSetupRequired: false });
     }
   };
 
   const reloadMe = async () => {
     try {
       const me = await authService.me();
-      setState({ user: me.user, activeStudio: me.activeStudio ?? null, memberships: me.memberships, loading: false });
+      setState({ user: me.user, activeStudio: me.activeStudio ?? null, memberships: me.memberships, loading: false, mfaSetupRequired: me.mfaSetupRequired ?? false });
     } catch {
       /* oturum yoksa sessiz geç */
     }
   };
 
   return (
-    <AuthContext.Provider value={{ ...state, login, registerStudio, register, switchStudio, logout, reloadMe }}>
+    <AuthContext.Provider value={{ ...state, login, registerStudio, register, switchStudio, logout, reloadMe, applyAuth }}>
       {children}
     </AuthContext.Provider>
   );

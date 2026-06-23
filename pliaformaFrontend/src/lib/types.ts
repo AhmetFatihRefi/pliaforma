@@ -17,6 +17,8 @@ export interface UserDto {
   emailVerified: boolean;
   /** Sprint 17 Rev2: kayıt niyeti (öğrenci/hoca) — yalnız /join-studio UX'i için. */
   registrationIntent: RegistrationIntent;
+  /** Sprint 31-MFA: TOTP MFA aktif mi. */
+  mfaEnabled?: boolean;
 }
 
 export interface MembershipDto {
@@ -43,6 +45,8 @@ export interface AuthResponse {
   user: UserDto;
   activeStudio?: ActiveStudioDto | null;
   memberships: MembershipDto[];
+  /** Sprint 31-MFA: token kısıtlı (mfa_pending); kullanıcı MFA kurmalı. */
+  mfaSetupRequired?: boolean;
 }
 
 /** /auth/me gövdesi. */
@@ -50,6 +54,29 @@ export interface MeResult {
   user: UserDto;
   activeStudio?: ActiveStudioDto | null;
   memberships: MembershipDto[];
+  /** Sprint 31-MFA */
+  mfaSetupRequired?: boolean;
+  mfaRecoveryCodesRemaining?: number;
+}
+
+// ---- Sprint 31-MFA ----
+/** Login MFA-aktif kullanıcı için: tam token YOK; challengeToken ile TOTP gönderilir. */
+export interface MfaChallengeResponse {
+  mfaChallengeRequired: true;
+  challengeToken: string;
+}
+/** login() sonucu: ya normal/setup-pending auth ya da challenge. */
+export type LoginResult =
+  | { kind: "auth"; auth: AuthResponse }
+  | { kind: "challenge"; challengeToken: string };
+
+export interface MfaSetupStartResponse {
+  otpauthUri: string;
+  manualKey: string;
+}
+export interface MfaSetupCompleteResponse {
+  auth: AuthResponse;
+  recoveryCodes: string[];
 }
 
 /** Tüm yanıtların standart zarfı. */

@@ -37,7 +37,8 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 - [x] Parola BCrypt hash — ✅
 - [x] **Parola politikası** (min 10 + 4 sınıf + yaygın parola reddi; shared rule + change-password) — ✅ (31B-2) / P1-2
 - [x] **Hesap kilitleme** (5 başarısız → 15dk; 423; success/reset/change sıfırlar) — ✅ (31B-2) / P1-1
-- [ ] MFA (Owner/StudioAdmin) — ⏳ **Sprint 31-MFA (ayrı mini-sprint)** / P1-10 (31B'ye dahil DEĞİL)
+- [x] **MFA (Owner/StudioAdmin) TOTP** — ✅ (Sprint 31-MFA); hesap-düzeyi zorunlu, recovery codes, PlatformAdmin reset, audit / P1-10
+- [ ] **Prod `MFA_ENCRYPTION_KEY` gerçek + `MFA_ENABLED=true`** — ⏳ prod env doğrulaması (yoksa/placeholder ise backend açılmaz); anahtar JWT secret gibi yedeklenmeli
 - [x] Refresh token hash + rotasyon + revoke — ✅
 - [x] Refresh cookie HttpOnly/SameSite=Strict/Secure(prod)/Path — ✅
 - [x] Email verification + password reset güvenli — ✅

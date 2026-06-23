@@ -3,7 +3,11 @@ import { mockAuthService } from "./mock";
 import type {
   AuthResponse,
   LoginInput,
+  LoginResult,
   MeResult,
+  MfaChallengeResponse,
+  MfaSetupCompleteResponse,
+  MfaSetupStartResponse,
   RegisterInput,
   RegisterStudioInput,
 } from "./types";
@@ -11,7 +15,7 @@ import type {
 export interface AuthService {
   registerStudio(input: RegisterStudioInput): Promise<AuthResponse>;
   register(input: RegisterInput): Promise<AuthResponse>;
-  login(input: LoginInput): Promise<AuthResponse>;
+  login(input: LoginInput): Promise<LoginResult>;
   switchStudio(studioId: string): Promise<AuthResponse>;
   me(): Promise<MeResult>;
   logout(): Promise<void>;
@@ -22,6 +26,11 @@ export interface AuthService {
   resetPassword(token: string, newPassword: string): Promise<void>;
   // Sprint 31B-2: oturum açmış kullanıcı parolasını değiştirir
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
+  // Sprint 31-MFA
+  mfaSetupStart(): Promise<MfaSetupStartResponse>;
+  mfaSetupVerify(code: string): Promise<MfaSetupCompleteResponse>;
+  mfaChallengeVerify(challengeToken: string, code: string): Promise<AuthResponse>;
+  mfaRecoveryVerify(challengeToken: string, recoveryCode: string): Promise<AuthResponse>;
 }
 
 const realAuthService: AuthService = {
@@ -29,8 +38,12 @@ const realAuthService: AuthService = {
     api<AuthResponse>("/api/auth/register-studio", { method: "POST", body: input, skipAuthRetry: true }),
   register: (input) =>
     api<AuthResponse>("/api/auth/register", { method: "POST", body: input, skipAuthRetry: true }),
-  login: (input) =>
-    api<AuthResponse>("/api/auth/login", { method: "POST", body: input, skipAuthRetry: true }),
+  login: async (input) => {
+    const data = await api<AuthResponse | MfaChallengeResponse>("/api/auth/login", { method: "POST", body: input, skipAuthRetry: true });
+    if ("mfaChallengeRequired" in data && data.mfaChallengeRequired)
+      return { kind: "challenge", challengeToken: data.challengeToken };
+    return { kind: "auth", auth: data as AuthResponse };
+  },
   switchStudio: (studioId) =>
     api<AuthResponse>("/api/auth/switch-studio", { method: "POST", body: { studioId } }),
   me: () => api<MeResult>("/api/auth/me"),
@@ -45,6 +58,14 @@ const realAuthService: AuthService = {
     api<null>("/api/auth/reset-password", { method: "POST", body: { token, newPassword }, skipAuthRetry: true }).then(() => undefined),
   changePassword: (currentPassword, newPassword) =>
     api<null>("/api/auth/change-password", { method: "POST", body: { currentPassword, newPassword }, skipAuthRetry: true }).then(() => undefined),
+  mfaSetupStart: () =>
+    api<MfaSetupStartResponse>("/api/auth/mfa/setup/start", { method: "POST" }),
+  mfaSetupVerify: (code) =>
+    api<MfaSetupCompleteResponse>("/api/auth/mfa/setup/verify", { method: "POST", body: { code } }),
+  mfaChallengeVerify: (challengeToken, code) =>
+    api<AuthResponse>("/api/auth/mfa/challenge/verify", { method: "POST", body: { challengeToken, code }, skipAuthRetry: true }),
+  mfaRecoveryVerify: (challengeToken, recoveryCode) =>
+    api<AuthResponse>("/api/auth/mfa/recovery-code/verify", { method: "POST", body: { challengeToken, recoveryCode }, skipAuthRetry: true }),
 };
 
 const useMock = process.env.NEXT_PUBLIC_USE_MOCK === "true";

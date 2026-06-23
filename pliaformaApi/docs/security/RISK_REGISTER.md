@@ -117,7 +117,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Çözüm:** Owner/StudioAdmin için TOTP MFA (Instructor/Student P2).
 - **Acceptance:** Owner/StudioAdmin MFA ile giriş. Not: 31B şişmesin diye MFA 31B'den **ayrıldı**; pilot öncesi
   zorunlu minimum P1-1 (hesap kilitleme) + P1-2 (parola politikası) + login/failed-login audit (P0-2) ile sağlanır.
-- **Sprint:** **Sprint 31-MFA (ayrı mini-sprint) — Owner/Admin MFA**
+- **Sprint:** **Sprint 31-MFA — UYGULANDI** (TOTP; hesap-düzeyi zorunlu Owner/StudioAdmin; AES-256-GCM şifreli secret + `Mfa:EncryptionKey` prod fail-fast; stateless challenge token; setup-pending `mfa_pending` claim + API enforcement middleware; 10 recovery code (hash'li, tek kullanım); PlatformAdmin reset; 7 audit event; `Mfa:Enabled` switch prod-true/dev-false). Migration: `Sprint31MFA_TotpMfa`. Instructor/Student MFA → P2-2.
 
 ### P1-CI · Secret scan + dependency scan (CI)
 - **Etki:** Sızan secret / zafiyetli bağımlılık fark edilmez.
@@ -152,4 +152,4 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 | **31B-2** ✅ | P0-2 (auth events), P1-1 (lockout), P1-2 (parola politikası + change-password), P1-6 (CSP Report-Only) — uygulandı (migration: Sprint31B2_AuthHardeningAndAuditLog) |
 | **31C** | P0-2 (kapsam genişletme: rol/ödeme/sözleşme/export/HealthNotes + viewer), P1-6 (CSP enforce + nonce), P1-8 (teknik), P1-9 (test) |
 | **31D** | P1-3 (purge), P1-7, P1-9 (CI), P1-CI, P2-4 |
-| **31-MFA** (ayrı mini-sprint) | P1-10 (Owner/StudioAdmin TOTP MFA) |
+| **31-MFA** ✅ (ayrı mini-sprint) | P1-10 (Owner/StudioAdmin TOTP MFA) — uygulandı (migration: Sprint31MFA_TotpMfa) |

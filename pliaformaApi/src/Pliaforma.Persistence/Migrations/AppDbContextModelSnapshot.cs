@@ -703,6 +703,38 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("MakeupRequests", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.MfaRecoveryCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("MfaRecoveryCodes", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.Notification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2108,6 +2140,9 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<DateTime?>("LockoutEnd")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("MfaEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -2137,6 +2172,46 @@ namespace Pliaforma.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.UserMfaSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EnrolledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<long?>("LastUsedTimestep")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("PendingSecretEncrypted")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("SecretEncrypted")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"IsDeleted\" = false");
+
+                    b.ToTable("UserMfaSettings", (string)null);
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.Attendance", b =>
@@ -2366,6 +2441,17 @@ namespace Pliaforma.Persistence.Migrations
                     b.Navigation("StudentContractLine");
 
                     b.Navigation("Studio");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.MfaRecoveryCode", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.Notification", b =>
@@ -2766,6 +2852,17 @@ namespace Pliaforma.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Studio");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.UserMfaSettings", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

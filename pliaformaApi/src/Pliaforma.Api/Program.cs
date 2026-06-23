@@ -106,6 +106,9 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Sprint 31-MFA: mfa_pending (kurulum beklenen) token'ları yalnız MFA-setup uçlarına izinli kıl (API enforcement).
+app.UseMiddleware<Pliaforma.Api.Middleware.MfaPendingGuardMiddleware>();
+
 // Prometheus: her HTTP isteği için süre/sayı metrikleri toplanır.
 app.UseHttpMetrics();
 

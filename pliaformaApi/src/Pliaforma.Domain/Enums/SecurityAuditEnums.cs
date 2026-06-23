@@ -13,6 +13,15 @@ public enum SecurityAuditEventType
     PasswordResetRequested = 4,
     PasswordResetCompleted = 5,
     PasswordChanged = 6,
+
+    // Sprint 31-MFA
+    MFASetupStarted = 7,
+    MFASetupCompleted = 8,
+    MFAChallengeCreated = 9,
+    MFASucceeded = 10,
+    MFAFailed = 11,
+    MFARecoveryCodeUsed = 12,
+    MFAResetCompleted = 13,
 }
 
 /// <summary>Denetim olayının sonucu.</summary>

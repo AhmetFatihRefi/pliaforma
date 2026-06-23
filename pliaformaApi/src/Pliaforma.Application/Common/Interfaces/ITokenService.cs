@@ -15,7 +15,7 @@ public interface ITokenService
     /// Kullanıcı için kısa ömürlü access token üretir. activeMembership verilirse
     /// token'a studio_id/studio_role/membership_id claim'leri eklenir.
     /// </summary>
-    AccessToken GenerateAccessToken(User user, StudioMembership? activeMembership);
+    AccessToken GenerateAccessToken(User user, StudioMembership? activeMembership, bool mfaPending = false);
 
     GeneratedRefreshToken GenerateRefreshToken();
 

@@ -5,6 +5,7 @@ using Pliaforma.Api.Auth;
 using Pliaforma.Api.RateLimiting;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Models;
+using Pliaforma.Application.Common.Security;
 using Pliaforma.Application.Features.Auth;
 
 namespace Pliaforma.Api.Controllers;
@@ -30,9 +31,9 @@ public sealed class AuthController : ControllerBase
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> RegisterStudio(RegisterStudioRequest body, CancellationToken ct)
     {
-        var result = await _dispatcher.Send(
+        var outcome = await _dispatcher.Send(
             new RegisterStudioCommand(body.StudioName, body.OwnerFullName, body.Email, body.Password, body.Phone, ClientIp), ct);
-        return AuthOk(result, "Stüdyo oluşturuldu.");
+        return OutcomeOk(outcome, "Stüdyo oluşturuldu.");
     }
 
     [HttpPost("register")]
@@ -42,15 +43,15 @@ public sealed class AuthController : ControllerBase
         var result = await _dispatcher.Send(
             new RegisterCommand(body.FullName, body.Email, body.Password, body.Phone,
                 body.Intent ?? Domain.Enums.RegistrationIntent.Unknown, ClientIp), ct);
-        return AuthOk(result, "Hesap oluşturuldu.");
+        return AuthOk(result, mfaSetupRequired: false, "Hesap oluşturuldu.");
     }
 
     [HttpPost("login")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Login(LoginRequest body, CancellationToken ct)
     {
-        var result = await _dispatcher.Send(new LoginCommand(body.Email, body.Password, ClientIp), ct);
-        return AuthOk(result, "Giriş başarılı.");
+        var outcome = await _dispatcher.Send(new LoginCommand(body.Email, body.Password, ClientIp), ct);
+        return OutcomeOk(outcome, "Giriş başarılı.");
     }
 
     [Authorize]
@@ -69,8 +70,8 @@ public sealed class AuthController : ControllerBase
         var raw = RefreshCookie.Read(Request)
             ?? throw new Domain.Exceptions.UnauthorizedException("Oturum bulunamadı. Lütfen tekrar giriş yapın.");
 
-        var result = await _dispatcher.Send(new RefreshTokenCommand(raw, body.StudioId, ClientIp), ct);
-        return AuthOk(result, "Oturum yenilendi.");
+        var outcome = await _dispatcher.Send(new RefreshTokenCommand(raw, body.StudioId, ClientIp), ct);
+        return OutcomeOk(outcome, "Oturum yenilendi.");
     }
 
     [HttpPost("logout")]
@@ -137,12 +138,68 @@ public sealed class AuthController : ControllerBase
         return Ok(ApiResponse<object?>.Ok(null, "Parolanız güncellendi. Oturumlarınız yenilendi; lütfen tekrar giriş yapın."));
     }
 
+    // ---- Sprint 31-MFA: TOTP ----
+
+    [Authorize]
+    [HttpPost("mfa/setup/start")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> MfaSetupStart(CancellationToken ct)
+    {
+        var r = await _dispatcher.Send(new MfaSetupStartCommand(), ct);
+        return Ok(ApiResponse<MfaSetupStartResponse>.Ok(new MfaSetupStartResponse(r.OtpauthUri, r.ManualKey)));
+    }
+
+    [Authorize]
+    [HttpPost("mfa/setup/verify")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> MfaSetupVerify(MfaSetupVerifyRequest body, CancellationToken ct)
+    {
+        var r = await _dispatcher.Send(new MfaSetupVerifyCommand(body.Code, ClientIp), ct);
+        if (!string.IsNullOrEmpty(r.Auth.RefreshToken))
+            RefreshCookie.Write(Response, r.Auth.RefreshToken, r.Auth.RefreshTokenExpiresAt, _secureCookie);
+        return Ok(ApiResponse<MfaSetupCompleteResponse>.Ok(
+            new MfaSetupCompleteResponse(AuthResponse.From(r.Auth), r.RecoveryCodes),
+            "MFA etkinleştirildi. Kurtarma kodlarınızı güvenli bir yerde saklayın (bir daha gösterilmez)."));
+    }
+
+    [HttpPost("mfa/challenge/verify")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> MfaChallengeVerify(MfaChallengeVerifyRequest body, CancellationToken ct)
+    {
+        var result = await _dispatcher.Send(new MfaChallengeVerifyCommand(body.ChallengeToken, body.Code, ClientIp), ct);
+        return AuthOk(result, mfaSetupRequired: false, "Giriş başarılı.");
+    }
+
+    [HttpPost("mfa/recovery-code/verify")]
+    [EnableRateLimiting(RateLimitPolicies.Auth)]
+    public async Task<IActionResult> MfaRecoveryVerify(MfaRecoveryCodeVerifyRequest body, CancellationToken ct)
+    {
+        var result = await _dispatcher.Send(new MfaRecoveryCodeVerifyCommand(body.ChallengeToken, body.RecoveryCode, ClientIp), ct);
+        return AuthOk(result, mfaSetupRequired: false, "Giriş başarılı.");
+    }
+
+    [Authorize(Policy = AuthPolicies.PlatformAdmin)]
+    [HttpPost("mfa/reset")]
+    public async Task<IActionResult> MfaReset(MfaResetRequest body, CancellationToken ct)
+    {
+        await _dispatcher.Send(new MfaResetCommand(body.UserId), ct);
+        return Ok(ApiResponse<object?>.Ok(null, "Kullanıcının MFA'sı sıfırlandı; kullanıcı tekrar kurulum yapmalı."));
+    }
+
+    /// <summary>AuthOutcome'u HTTP yanıtına çevirir: challenge / setup-pending / normal token.</summary>
+    private IActionResult OutcomeOk(AuthOutcome outcome, string message)
+    {
+        if (outcome.MfaChallengeRequired)
+            return Ok(ApiResponse<MfaChallengeResponse>.Ok(new MfaChallengeResponse(outcome.ChallengeToken!), "MFA doğrulaması gerekli."));
+        return AuthOk(outcome.Auth!, outcome.MfaSetupRequired, message);
+    }
+
     /// <summary>Refresh token'ı cookie'ye yazar (varsa) ve gövdeyi refresh'siz döner.</summary>
-    private IActionResult AuthOk(AuthResult result, string message)
+    private IActionResult AuthOk(AuthResult result, bool mfaSetupRequired, string message)
     {
         if (!string.IsNullOrEmpty(result.RefreshToken))
             RefreshCookie.Write(Response, result.RefreshToken, result.RefreshTokenExpiresAt, _secureCookie);
 
-        return Ok(ApiResponse<AuthResponse>.Ok(AuthResponse.From(result), message));
+        return Ok(ApiResponse<AuthResponse>.Ok(AuthResponse.From(result, mfaSetupRequired), message));
     }
 }

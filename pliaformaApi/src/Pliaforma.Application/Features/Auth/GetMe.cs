@@ -31,6 +31,12 @@ public sealed class GetMeHandler : IQueryHandler<GetMeQuery, MeResult>
         var memberships = await _session.LoadMembershipsAsync(userId, cancellationToken);
         var active = await _session.BuildActiveStudioAsync(_currentUser.MembershipId, cancellationToken);
 
-        return new MeResult(AuthSessionService.ToUserDto(user), active, memberships);
+        // Sprint 31-MFA: kısıtlı (mfa_pending) token ise setup gerekli; aktifse kalan recovery code sayısı.
+        var recoveryRemaining = user.MfaEnabled
+            ? await _db.MfaRecoveryCodes.CountAsync(c => c.UserId == userId && c.ConsumedAt == null, cancellationToken)
+            : 0;
+
+        return new MeResult(AuthSessionService.ToUserDto(user), active, memberships,
+            _currentUser.MfaPending, recoveryRemaining);
     }
 }
