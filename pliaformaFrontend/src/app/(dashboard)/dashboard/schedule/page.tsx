@@ -816,7 +816,13 @@ function CancelSessionModal({ session, onClose, onDone }: { session: ClassSessio
 }
 
 const conflictLabel = (r?: string | null) =>
-  r === "past" ? "geçmiş zaman" : r === "instructor" ? "hoca çakışması" : r === "student" ? "öğrenci çakışması" : null;
+  r === "past" ? "geçmiş zaman"
+    : r === "instructor" ? "hoca çakışması"
+    : r === "student" ? "öğrenci çakışması"
+    : r === "lineRange" ? "sözleşme tarih aralığı"
+    : r === "equipmentCapacity" ? "ekipman kapasitesi dolu"
+    : r === "equipmentUnlimited" ? "sınırsız kapasite (ekipman)"
+    : null;
 
 // Sprint 21: tek ders taşıma — mod A (sadece bu ders) / mod B (zincirleme kaydır + önizleme).
 function RescheduleModal({ session, onClose, onDone, isManager }: {
@@ -1144,6 +1150,10 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Sprint 32B: seçili ders tipi bir ekipman havuzuna bağlıysa kapasite o havuzla sınırlıdır (sınırsız kullanılamaz).
+  const selectedCt = classTypes.find((c) => c.id === form.classTypeId);
+  const equipmentBound = !!selectedCt?.equipmentId;
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -1176,15 +1186,22 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
         </FormField>
         <FormField label="Grup (ClassType)" hint="Süre ve kapasite buradan gelir">
           <Select value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))}>
-            {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk</option>)}
+            {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk{c.equipmentName ? ` · ${c.equipmentName}` : ""}</option>)}
           </Select>
         </FormField>
+        {equipmentBound && (
+          <Alert kind="info">
+            Bu ders tipi <span className="font-medium">{selectedCt?.equipmentName}</span> ekipman havuzuna bağlı. Kapasite bu havuzun
+            o saatteki boş kapasitesiyle sınırlıdır ve <span className="font-medium">zorunludur</span> (sınırsız kullanılamaz).
+          </Alert>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Başlangıç">
             <Input type="datetime-local" value={form.startAt} onChange={(e) => setForm((f) => ({ ...f, startAt: e.target.value }))} required />
           </FormField>
-          <FormField label="Kapasite (ops.)">
-            <Input type="number" min={1} value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="grup varsayılanı" />
+          <FormField label={equipmentBound ? "Kapasite (zorunlu)" : "Kapasite (ops.)"} hint={equipmentBound ? "Ekipman havuzu sınırlı" : undefined}>
+            <Input type="number" min={1} value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))}
+              placeholder={equipmentBound ? "örn. 3" : "grup varsayılanı"} required={equipmentBound} />
           </FormField>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -1219,8 +1236,12 @@ function BulkModal({ instructors, classTypes, onClose, onDone }: ModalProps) {
     breakMinutes: "0",
   });
   const [err, setErr] = useState<string | null>(null);
-  const [result, setResult] = useState<{ created: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{ created: number; skipped: number; equipmentSkipped: number } | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Sprint 32B: ekipman-bağlı ders tipinde toplu üretim kapasiteyi havuzla sınırlar (sınırsız kullanılamaz).
+  const selectedCt = classTypes.find((c) => c.id === form.classTypeId);
+  const equipmentBound = !!selectedCt?.equipmentId;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1235,7 +1256,11 @@ function BulkModal({ instructors, classTypes, onClose, onDone }: ModalProps) {
         rangeEnd: `${form.rangeEnd}:00`,
         breakMinutes: form.breakMinutes ? Number(form.breakMinutes) : undefined,
       });
-      setResult({ created: r.created.length, skipped: r.skipped.length });
+      setResult({
+        created: r.created.length,
+        skipped: r.skipped.length,
+        equipmentSkipped: r.skipped.filter((s) => s.reason === "equipmentCapacity").length,
+      });
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "Dersler oluşturulamadı.");
     } finally {
@@ -1249,7 +1274,16 @@ function BulkModal({ instructors, classTypes, onClose, onDone }: ModalProps) {
         <p className="text-sm text-muted">Seçilen gün ve saat aralığında, mola süresine göre art arda dersler oluşturur.</p>
         {err && <Alert kind="error">{err}</Alert>}
         {result && (
-          <Alert kind="success">{result.created} ders oluşturuldu, {result.skipped} atlandı.</Alert>
+          <Alert kind="success">
+            {result.created} ders oluşturuldu, {result.skipped} atlandı
+            {result.equipmentSkipped > 0 ? ` (${result.equipmentSkipped} tanesi ekipman kapasitesi yetmediği için)` : ""}.
+          </Alert>
+        )}
+        {equipmentBound && (
+          <Alert kind="info">
+            <span className="font-medium">{selectedCt?.equipmentName}</span> ekipman havuzuna bağlı: kapasitesi dolan saatler atlanır,
+            kapasite zorunludur (sınırsız kullanılamaz).
+          </Alert>
         )}
         <FormField label="Hoca">
           <Select value={form.instructorProfileId} onChange={(e) => setForm((f) => ({ ...f, instructorProfileId: e.target.value }))}>

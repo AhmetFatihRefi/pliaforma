@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
@@ -148,8 +149,9 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
-    public GenerateContractScheduleHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
-    { _db = db; _currentUser = currentUser; _clock = clock; }
+    private readonly EquipmentCapacityGuard _equipmentGuard;
+    public GenerateContractScheduleHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, EquipmentCapacityGuard equipmentGuard)
+    { _db = db; _currentUser = currentUser; _clock = clock; _equipmentGuard = equipmentGuard; }
 
     // Sprint 28C-1: DEPRECATED wrapper — header'ın aktif LINE'ları üzerinde line-bazlı üretim (booking lineId yazar). Geri uyum.
     public async Task<GenerateContractScheduleResultDto> Handle(GenerateContractScheduleCommand request, CancellationToken ct)
@@ -172,7 +174,7 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
         foreach (var line in lines)
         {
             var duration = await _db.ClassTypes.Where(c => c.Id == line.ClassTypeId).Select(c => c.DefaultDurationMinutes).FirstAsync(ct);
-            var r = await ContractLineScheduleEngine.RunAsync(_db, _clock, studioId, userId, line, duration, request.Slots, request.ReuseExistingGroup, generate: true, ct);
+            var r = await ContractLineScheduleEngine.RunAsync(_db, _clock, studioId, userId, line, duration, request.Slots, request.ReuseExistingGroup, generate: true, ct, _equipmentGuard);
             created += r.CreatedCount; newSessions += r.NewSessionCount; reusedSessions += r.ReusedSessionCount; skipped += r.SkippedCount;
             startAts.AddRange(r.CreatedStartAts);
         }

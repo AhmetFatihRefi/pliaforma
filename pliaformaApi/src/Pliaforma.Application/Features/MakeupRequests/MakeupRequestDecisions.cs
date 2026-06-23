@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.Bookings;
+using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
@@ -118,14 +119,16 @@ public sealed class ApproveMakeupRequestHandler : ICommandHandler<ApproveMakeupR
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
     private readonly BookingCreator _bookingCreator;
+    private readonly EquipmentCapacityGuard _equipmentGuard;
 
     public ApproveMakeupRequestHandler(
-        IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, BookingCreator bookingCreator)
+        IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, BookingCreator bookingCreator, EquipmentCapacityGuard equipmentGuard)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
         _bookingCreator = bookingCreator;
+        _equipmentGuard = equipmentGuard;
     }
 
     public async Task<MakeupRequestDto> Handle(ApproveMakeupRequestCommand request, CancellationToken cancellationToken)
@@ -178,6 +181,13 @@ public sealed class ApproveMakeupRequestHandler : ICommandHandler<ApproveMakeupR
         if (await SessionRules.PendingStudentConflictAsync(_db, studioId, new[] { student.Id }, startAt, endAt, entity.Id, cancellationToken))
             throw new ConflictException("Öğrencinin bu zaman aralığında onay bekleyen başka bir telafi talebi var.");
 
+        // ---- Sprint 32B: Makeup seansı kapasitesi. Makeup tek öğrenci içindir → ekipman-bağlı ders tipinde
+        // Capacity=1 (1 ekipman kapasitesi rezerve; sınırsız 9999 YASAK). Ekipmansız grupta eski davranış (9999). ----
+        var capacity = (line.IsIndividual || classType.EquipmentId is not null) ? 1 : EquipmentCapacityRules.UnlimitedCapacity;
+
+        // Ekipman-bağlıysa guard: aktif/≤toplam/≤available + havuz FOR UPDATE kilidi. Dolu aralık → 409 (yeni seans, exclude yok).
+        await _equipmentGuard.EnsureCanReserveAsync(studioId, classType, startAt, endAt, capacity, excludeSessionId: null, pendingOverlapCapacity: 0, cancellationToken);
+
         // ---- flip-first: talep artık Pending DEĞİL → kullanılabilir-bakiye hesabında kendini rezerve bloklamaz. ----
         entity.Status = MakeupRequestStatus.Approved;
         entity.DecisionByUserId = userId;
@@ -192,7 +202,7 @@ public sealed class ApproveMakeupRequestHandler : ICommandHandler<ApproveMakeupR
             ClassTypeId = classType.Id,
             StartAt = startAt,
             EndAt = endAt,
-            Capacity = line.IsIndividual ? 1 : 9999, // 9999 = grup-sınırsız (ContractScheduleEngine deseni)
+            Capacity = capacity,
             IsIndividual = line.IsIndividual,
             SessionKind = ClassSessionKind.Makeup,
             Notes = entity.Description,

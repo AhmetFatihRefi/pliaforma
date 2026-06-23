@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.Contracts;
+using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
 
@@ -30,12 +31,14 @@ public sealed class UpdateClassSessionHandler : ICommandHandler<UpdateClassSessi
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
+    private readonly EquipmentCapacityGuard _equipmentGuard;
 
-    public UpdateClassSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
+    public UpdateClassSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, EquipmentCapacityGuard equipmentGuard)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _equipmentGuard = equipmentGuard;
     }
 
     public async Task<ClassSessionDto> Handle(UpdateClassSessionCommand request, CancellationToken cancellationToken)
@@ -67,6 +70,12 @@ public sealed class UpdateClassSessionHandler : ICommandHandler<UpdateClassSessi
             session.Capacity = cap;
 
         session.Notes = request.Notes?.Trim();
+
+        // Sprint 32B: zaman veya kapasite değiştiyse ekipman kapasite guard'ı (kendini hariç tutar). Not-only update → atlanır.
+        if (request.StartAt is not null || request.Capacity is not null)
+            await _equipmentGuard.EnsureCanReserveAsync(
+                studioId, classType, session.StartAt, session.EndAt, session.Capacity,
+                excludeSessionId: session.Id, pendingOverlapCapacity: 0, cancellationToken);
 
         await _db.SaveChangesAsync(cancellationToken);
         return ClassSessionDto.From(session, profile.DisplayName, classType.Name);
@@ -141,13 +150,15 @@ public sealed class RescheduleClassSessionHandler : ICommandHandler<RescheduleCl
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
     private readonly SessionCancellationService _cancellation;
+    private readonly EquipmentCapacityGuard _equipmentGuard;
 
-    public RescheduleClassSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, SessionCancellationService cancellation)
+    public RescheduleClassSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, SessionCancellationService cancellation, EquipmentCapacityGuard equipmentGuard)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
         _cancellation = cancellation;
+        _equipmentGuard = equipmentGuard;
     }
 
     public async Task<ClassSessionDto> Handle(RescheduleClassSessionCommand request, CancellationToken cancellationToken)
@@ -180,6 +191,11 @@ public sealed class RescheduleClassSessionHandler : ICommandHandler<RescheduleCl
         // Sprint 28C-1: rezervasyonlar taşınıyorsa (KeepBookings) Regular ders line tarih aralığını aşamaz (hard block).
         if (request.KeepBookings)
             await ContractLineRules.EnsureRegularInLineRangeAsync(_db, studioId, session, newStart, cancellationToken);
+
+        // Sprint 32B: yeni zaman aralığı için ekipman kapasite guard'ı (kendini hariç tutar; kapasite seansın mevcut Capacity'si).
+        await _equipmentGuard.EnsureCanReserveAsync(
+            studioId, classType, newStart, newEnd, session.Capacity,
+            excludeSessionId: session.Id, pendingOverlapCapacity: 0, cancellationToken);
 
         if (!request.KeepBookings)
         {

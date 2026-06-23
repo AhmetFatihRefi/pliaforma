@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -12,7 +13,7 @@ namespace Pliaforma.Application.Features.Scheduling;
 public sealed record ChainShiftItemDto(
     Guid SessionId, string ClassTypeName,
     DateTime OldStartAt, DateTime OldEndAt, DateTime NewStartAt, DateTime NewEndAt,
-    string? ConflictReason);   // null | "past" | "instructor" | "student" | "lineRange" (Sprint 28C-1)
+    string? ConflictReason);   // null | "past" | "instructor" | "student" | "lineRange" (28C-1) | "equipmentCapacity" | "equipmentUnlimited" (32B)
 
 /// <summary>Zincirleme kaydırma önizlemesi: kayacak dersler + uygulanabilir mi.</summary>
 public sealed record ChainShiftPreviewDto(IReadOnlyList<ChainShiftItemDto> Affected, bool CanApply);
@@ -95,6 +96,19 @@ internal static class ChainShiftPlanner
 
         var instructorId = chain[0].Session.InstructorProfileId;
 
+        // Sprint 32B: zincirdeki ekipman-bağlı derslerin yeni konumda kapasite kontrolü için havuz bilgisi.
+        var equipmentByClassType = await db.ClassTypes
+            .Where(c => c.StudioId == studioId && db.ClassSessions.Any(s => sessionIds.Contains(s.Id) && s.ClassTypeId == c.Id))
+            .Select(c => new { c.Id, c.EquipmentId })
+            .ToDictionaryAsync(c => c.Id, c => c.EquipmentId, ct);
+        var poolIds = equipmentByClassType.Values.Where(v => v != null).Select(v => v!.Value).Distinct().ToList();
+        var poolTotals = poolIds.Count == 0
+            ? new Dictionary<Guid, int>()
+            : await db.Equipment
+                .Where(e => e.StudioId == studioId && poolIds.Contains(e.Id))
+                .Select(e => new { e.Id, Total = e.Quantity * e.PerUnitConcurrentUsage })
+                .ToDictionaryAsync(e => e.Id, e => e.Total, ct);
+
         var items = new List<ChainShiftItemDto>(chain.Count);
         foreach (var m in chain)
         {
@@ -117,6 +131,28 @@ internal static class ChainShiftPlanner
                     var nd = DateOnly.FromDateTime(m.NewStart);
                     if (ranges.Any(r => nd < r.StartDate || nd > r.EndDate))
                         reason = "lineRange";
+                }
+            }
+
+            // Sprint 32B: ekipman kapasitesi — yeni konumda havuz dolacaksa zincir uygulanamaz. Zincir-dışı çakışan
+            // Scheduled seanslar (DB) + zincirdeki diğer üyelerin YENİ konumları (in-memory) used'a katılır.
+            if (reason is null
+                && equipmentByClassType.TryGetValue(m.Session.ClassTypeId, out var eqId) && eqId is { } poolId)
+            {
+                if (EquipmentCapacityRules.IsUnlimited(m.Session.Capacity))
+                    reason = "equipmentUnlimited";
+                else
+                {
+                    var total = poolTotals.TryGetValue(poolId, out var t) ? t : 0;
+                    var usedDb = await EquipmentCapacityRules.UsedCapacityAsync(db, studioId, poolId, m.NewStart, m.NewEnd, chainIds, ct);
+                    var usedChain = chain
+                        .Where(o => o.Session.Id != m.Session.Id
+                                    && !EquipmentCapacityRules.IsUnlimited(o.Session.Capacity)
+                                    && equipmentByClassType.TryGetValue(o.Session.ClassTypeId, out var oeq) && oeq == poolId
+                                    && o.NewStart < m.NewEnd && m.NewStart < o.NewEnd)
+                        .Sum(o => o.Session.Capacity);
+                    if (m.Session.Capacity > total - usedDb - usedChain)
+                        reason = "equipmentCapacity";
                 }
             }
 
@@ -178,12 +214,14 @@ public sealed class ChainShiftSessionHandler : ICommandHandler<ChainShiftSession
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
+    private readonly IEquipmentPoolLock _poolLock;
 
-    public ChainShiftSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
+    public ChainShiftSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, IEquipmentPoolLock poolLock)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _poolLock = poolLock;
     }
 
     public async Task<ChainShiftPreviewDto> Handle(ChainShiftSessionCommand request, CancellationToken cancellationToken)
@@ -193,6 +231,15 @@ public sealed class ChainShiftSessionHandler : ICommandHandler<ChainShiftSession
 
         var newStart = DateTime.SpecifyKind(request.NewStartAt, DateTimeKind.Unspecified);
         var chain = await ChainShiftPlanner.BuildAsync(_db, studioId, session, newStart, cancellationToken);
+
+        // Sprint 32B: zincirdeki ekipman-bağlı derslerin havuzlarını kilitle (FOR UPDATE) → eşzamanlı yarış serileşir.
+        var chainClassTypeIds = chain.Select(m => m.Session.ClassTypeId).Distinct().ToList();
+        var lockPoolIds = await _db.ClassTypes
+            .Where(c => c.StudioId == studioId && chainClassTypeIds.Contains(c.Id) && c.EquipmentId != null)
+            .Select(c => c.EquipmentId!.Value).Distinct().ToListAsync(cancellationToken);
+        foreach (var pid in lockPoolIds)
+            await _poolLock.LockEquipmentAsync(studioId, pid, cancellationToken);
+
         var items = await ChainShiftPlanner.EvaluateAsync(_db, _clock, studioId, chain, cancellationToken);
 
         // Atomik: herhangi bir HARD çakışma varsa hiçbir ders kaymaz.
@@ -204,6 +251,8 @@ public sealed class ChainShiftSessionHandler : ICommandHandler<ChainShiftSession
                 "instructor" => "Zincir, hocanın başka bir dersiyle çakışıyor.",
                 "student" => "Zincir, bir öğrencinin başka dersiyle çakışıyor.",
                 "lineRange" => "Zincirde bir ders, sözleşme satırı (line) tarih aralığını aşıyor.",
+                "equipmentCapacity" => "Zincirde bir ders, yeni saatte ekipman kapasitesini aşıyor.",
+                "equipmentUnlimited" => "Zincirde ekipman bağlı ama sınırsız kapasiteli bir ders var; önce sonlu kapasite atayın.",
                 _ => "Zincir uygulanamıyor (çakışma).",
             });
 

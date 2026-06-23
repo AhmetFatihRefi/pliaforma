@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -40,12 +41,14 @@ public sealed class BulkGenerateClassSessionsHandler
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
+    private readonly IEquipmentPoolLock _poolLock;
 
-    public BulkGenerateClassSessionsHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
+    public BulkGenerateClassSessionsHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, IEquipmentPoolLock poolLock)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _poolLock = poolLock;
     }
 
     public async Task<BulkGenerateResultDto> Handle(BulkGenerateClassSessionsCommand request, CancellationToken cancellationToken)
@@ -63,6 +66,24 @@ public sealed class BulkGenerateClassSessionsHandler
         // Sprint 28A: ClassType.MaxCapacity dormant → verilmezse grup-sınırsız (9999).
         var capacity = request.Capacity ?? 9999;
         if (capacity < 1) capacity = 1;
+
+        // Sprint 32B: ekipman-bağlı ders tipi → ön kontroller + havuz kilidi. Slot başına kapasite yetmezse o slot
+        // ATLANIR (skip "equipmentCapacity"); aynı bulk'ta üretilen önceki slotlar da used'a dahil (over-allocation guard).
+        Guid? equipmentId = classType.EquipmentId;
+        var poolTotal = 0;
+        if (equipmentId is { } eqId)
+        {
+            if (EquipmentCapacityRules.IsUnlimited(capacity))
+                throw new ConflictException("Ekipman bağlı derslerde sınırsız kapasite kullanılamaz. Lütfen sonlu bir kapasite girin.");
+            await _poolLock.LockEquipmentAsync(studioId, eqId, cancellationToken);
+            var equipment = await _db.Equipment.FirstOrDefaultAsync(e => e.Id == eqId && e.StudioId == studioId, cancellationToken)
+                ?? throw new NotFoundException("Ekipman", eqId);
+            if (!equipment.IsActive)
+                throw new ConflictException("Bu ders tipinin ekipmanı pasif; ders oluşturulamaz. Önce ekipmanı etkinleştirin.");
+            poolTotal = EquipmentCapacityRules.TotalCapacity(equipment.Quantity, equipment.PerUnitConcurrentUsage);
+            if (capacity > poolTotal)
+                throw new ConflictException($"Bu ders için istenen kapasite ({capacity}) ekipman toplam kapasitesini ({poolTotal}) aşıyor.");
+        }
 
         var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, cancellationToken);
 
@@ -92,6 +113,18 @@ public sealed class BulkGenerateClassSessionsHandler
             {
                 skipped.Add(new SkippedSlotDto(start, "conflict"));
                 continue;
+            }
+
+            // Sprint 32B: ekipman kapasite kontrolü (DB'deki çakışan kullanım + aynı bulk'ta üretilmiş çakışan slotlar).
+            if (equipmentId is { } poolId)
+            {
+                var used = await EquipmentCapacityRules.UsedCapacityAsync(_db, studioId, poolId, start, end, System.Array.Empty<Guid>(), cancellationToken)
+                           + created.Where(c => c.StartAt < end && start < c.EndAt).Sum(c => c.Capacity);
+                if (capacity > poolTotal - used)
+                {
+                    skipped.Add(new SkippedSlotDto(start, "equipmentCapacity"));
+                    continue;
+                }
             }
 
             created.Add(new ClassSession

@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -37,12 +38,14 @@ public sealed class CreateClassSessionHandler : ICommandHandler<CreateClassSessi
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
+    private readonly EquipmentCapacityGuard _equipmentGuard;
 
-    public CreateClassSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
+    public CreateClassSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, EquipmentCapacityGuard equipmentGuard)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
+        _equipmentGuard = equipmentGuard;
     }
 
     public async Task<ClassSessionDto> Handle(CreateClassSessionCommand request, CancellationToken cancellationToken)
@@ -63,6 +66,9 @@ public sealed class CreateClassSessionHandler : ICommandHandler<CreateClassSessi
         if (capacity < 1) capacity = 1;
 
         await SessionRules.EnsureValidAsync(_db, _clock, studioId, profile.Id, startAt, endAt, excludeId: null, cancellationToken);
+
+        // Sprint 32B: ekipman-bağlı ders tipinde kapasite guard (sınırsız yasak, ≤toplam, ≤available; havuz kilidi).
+        await _equipmentGuard.EnsureCanReserveAsync(studioId, classType, startAt, endAt, capacity, excludeSessionId: null, pendingOverlapCapacity: 0, cancellationToken);
 
         var entity = new ClassSession
         {

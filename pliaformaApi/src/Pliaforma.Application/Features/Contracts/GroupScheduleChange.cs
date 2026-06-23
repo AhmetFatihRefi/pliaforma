@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
@@ -46,7 +47,7 @@ internal sealed class GroupScheduleChangeService
     public static string SlotLabel(DateTime startAt) => $"{TrDays[(int)startAt.DayOfWeek]} {startAt:HH:mm}";
 
     public async Task<GroupChangePreviewDto> ExecuteAsync(
-        IAppDbContext db, ICurrentUserService user, IDateTime clock,
+        IAppDbContext db, ICurrentUserService user, IDateTime clock, EquipmentCapacityGuard equipmentGuard,
         Guid instructorProfileId, Guid classTypeId, DateOnly effectiveDate,
         IReadOnlyList<Guid> lineIds, IReadOnlyList<ContractScheduleSlotInput> newSlots, CancellationToken ct)
     {
@@ -155,7 +156,11 @@ internal sealed class GroupScheduleChangeService
 
                 if (target is null)
                 {
+                    // Sprint 32B: ekipman-bağlı GRUP → 409 (sınırsız üretilemez); ekipman-bağlı BİREYSEL → guard (Capacity=1).
+                    EquipmentCapacityRules.EnsureAutoGenAllowed(classType, individual);
                     target = ContractScheduleEngine.NewSession(studioId, instructorProfileId, classTypeId, cand.StartAt, cand.EndAt, individual, userId);
+                    if (classType.EquipmentId is not null && individual)
+                        await equipmentGuard.EnsureCanReserveAsync(studioId, classType, cand.StartAt, cand.EndAt, target.Capacity, excludeSessionId: null, pendingOverlapCapacity: 0, ct);
                     db.ClassSessions.Add(target);
                     newS++;
                     slots.Add(new(cand.StartAt, cand.EndAt, "created-new", null));
@@ -241,8 +246,9 @@ public sealed class PreviewGroupScheduleChangeHandler : IQueryHandler<PreviewGro
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
     private readonly ITransactionManager _transactions;
-    public PreviewGroupScheduleChangeHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, ITransactionManager transactions)
-    { _db = db; _currentUser = currentUser; _clock = clock; _transactions = transactions; }
+    private readonly EquipmentCapacityGuard _equipmentGuard;
+    public PreviewGroupScheduleChangeHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, ITransactionManager transactions, EquipmentCapacityGuard equipmentGuard)
+    { _db = db; _currentUser = currentUser; _clock = clock; _transactions = transactions; _equipmentGuard = equipmentGuard; }
 
     public async Task<GroupChangePreviewDto> Handle(PreviewGroupScheduleChangeQuery request, CancellationToken ct)
     {
@@ -251,7 +257,7 @@ public sealed class PreviewGroupScheduleChangeHandler : IQueryHandler<PreviewGro
         try
         {
             var result = await new GroupScheduleChangeService().ExecuteAsync(
-                _db, _currentUser, _clock, request.InstructorProfileId, request.ClassTypeId, request.EffectiveDate,
+                _db, _currentUser, _clock, _equipmentGuard, request.InstructorProfileId, request.ClassTypeId, request.EffectiveDate,
                 request.LineIds, request.NewSlots, ct);
             return result;
         }
@@ -273,13 +279,14 @@ public sealed class ApplyGroupScheduleChangeHandler : ICommandHandler<ApplyGroup
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
-    public ApplyGroupScheduleChangeHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
-    { _db = db; _currentUser = currentUser; _clock = clock; }
+    private readonly EquipmentCapacityGuard _equipmentGuard;
+    public ApplyGroupScheduleChangeHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, EquipmentCapacityGuard equipmentGuard)
+    { _db = db; _currentUser = currentUser; _clock = clock; _equipmentGuard = equipmentGuard; }
 
     public async Task<GroupChangePreviewDto> Handle(ApplyGroupScheduleChangeCommand request, CancellationToken ct)
     {
         var result = await new GroupScheduleChangeService().ExecuteAsync(
-            _db, _currentUser, _clock, request.InstructorProfileId, request.ClassTypeId, request.EffectiveDate,
+            _db, _currentUser, _clock, _equipmentGuard, request.InstructorProfileId, request.ClassTypeId, request.EffectiveDate,
             request.LineIds, request.NewSlots, ct);
 
         // HARD çakışma varsa atomik abort: exception → TransactionBehavior tüm işlemi rollback eder (yarım taşıma yok).

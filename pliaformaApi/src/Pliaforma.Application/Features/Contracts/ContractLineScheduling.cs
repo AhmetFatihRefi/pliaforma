@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
@@ -198,13 +199,23 @@ internal static class ContractLineScheduleEngine
     public static async Task<GenerateContractScheduleResultDto> RunAsync(
         IAppDbContext db, IDateTime clock, Guid studioId, Guid userId,
         StudentContractLine line, int durationMin, IReadOnlyList<ContractScheduleSlotInput> slots,
-        bool reuseExistingGroup, bool generate, CancellationToken ct)
+        bool reuseExistingGroup, bool generate, CancellationToken ct,
+        EquipmentCapacityGuard? equipmentGuard = null)
     {
         var available = await ContractLineRules.AvailableAsync(db, line, ct);
         if (available == 0)
             return new GenerateContractScheduleResultDto(0, 0, 0, 0, Array.Empty<DateTime>());
 
         var individual = line.IsIndividual;
+
+        // Sprint 32B: yalnız ÜRETİMDE (generate) ekipman kuralı. Ekipman-bağlı GRUP → 409 (sınırsız üretilemez);
+        // ekipman-bağlı BİREYSEL → her yeni seans için guard (Capacity=1, availability + havuz kilidi). Ekipmansız → eski.
+        ClassType? classType = null;
+        if (generate)
+        {
+            classType = await db.ClassTypes.FirstAsync(c => c.Id == line.ClassTypeId, ct);
+            EquipmentCapacityRules.EnsureAutoGenAllowed(classType, individual);
+        }
         var nowLocal = await SessionRules.StudioNowAsync(db, clock, studioId, ct);
         var closures = await db.StudioClosures.Where(cl => cl.StudioId == studioId).ToListAsync(ct);
         var candidates = BuildCandidates(line, durationMin, slots);
@@ -238,6 +249,9 @@ internal static class ContractLineScheduleEngine
                 if (target is null)
                 {
                     target = ContractScheduleEngine.NewSession(studioId, line.InstructorProfileId, line.ClassTypeId, c.StartAt, c.EndAt, individual, userId);
+                    // Sprint 32B: ekipman-bağlı bireysel seans → guard (Capacity=1, availability + havuz kilidi). Dolu → 409.
+                    if (classType?.EquipmentId is not null && individual && equipmentGuard is not null)
+                        await equipmentGuard.EnsureCanReserveAsync(studioId, classType, c.StartAt, c.EndAt, target.Capacity, excludeSessionId: null, pendingOverlapCapacity: 0, ct);
                     db.ClassSessions.Add(target);
                     newSessions++;
                 }
@@ -334,8 +348,9 @@ public sealed class GenerateLineScheduleHandler : ICommandHandler<GenerateLineSc
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
-    public GenerateLineScheduleHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
-    { _db = db; _currentUser = currentUser; _clock = clock; }
+    private readonly EquipmentCapacityGuard _equipmentGuard;
+    public GenerateLineScheduleHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, EquipmentCapacityGuard equipmentGuard)
+    { _db = db; _currentUser = currentUser; _clock = clock; _equipmentGuard = equipmentGuard; }
 
     public async Task<GenerateContractScheduleResultDto> Handle(GenerateLineScheduleCommand request, CancellationToken ct)
     {
@@ -343,6 +358,6 @@ public sealed class GenerateLineScheduleHandler : ICommandHandler<GenerateLineSc
         var userId = _currentUser.RequireUserId();
         var line = await ContractLineScheduleEngine.LoadActiveLineAsync(_db, studioId, request.LineId, ct);
         var duration = await _db.ClassTypes.Where(c => c.Id == line.ClassTypeId).Select(c => c.DefaultDurationMinutes).FirstAsync(ct);
-        return await ContractLineScheduleEngine.RunAsync(_db, _clock, studioId, userId, line, duration, request.Slots, request.ReuseExistingGroup, generate: true, ct);
+        return await ContractLineScheduleEngine.RunAsync(_db, _clock, studioId, userId, line, duration, request.Slots, request.ReuseExistingGroup, generate: true, ct, _equipmentGuard);
     }
 }

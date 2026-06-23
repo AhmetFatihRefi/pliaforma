@@ -27,6 +27,8 @@ public static class DependencyInjection
         services.AddScoped<Features.Contracts.ContractLineResolver>();
         services.AddScoped<Features.Contracts.ContractLineEligibilityChecker>();
         services.AddScoped<Features.Attendance.AttendanceMarker>();
+        // Sprint 32B: ekipman kapasite guard'ı (create/update/bulk/reschedule; FOR UPDATE havuz kilidi).
+        services.AddScoped<Features.Equipments.EquipmentCapacityGuard>();
         services.AddScoped<Features.Notifications.ReminderScanner>();
 
         RegisterHandlers(services, assembly);

@@ -30,6 +30,7 @@ public static class DependencyInjection
         services.AddScoped<ILoginAttemptStore, EfLoginAttemptStore>();
         services.AddScoped<IClassSessionCapacityService, EfClassSessionCapacityService>();
         services.AddScoped<IMakeupCreditLock, EfMakeupCreditLock>();
+        services.AddScoped<IEquipmentPoolLock, EfEquipmentPoolLock>();
         services.AddScoped<IStudentPackageCreditService, EfStudentPackageCreditService>();
 
         return services;
