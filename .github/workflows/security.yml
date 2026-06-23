@@ -38,6 +38,7 @@ jobs:
   deps-dotnet:
     name: dotnet vulnerable packages (advisory)
     runs-on: ubuntu-latest
+    continue-on-error: true   # advisory: job hatası (setup/restore dahil) workflow'u KIRMAZ
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -56,6 +57,7 @@ jobs:
   deps-npm:
     name: npm audit (advisory)
     runs-on: ubuntu-latest
+    continue-on-error: true   # advisory: job hatası workflow'u KIRMAZ
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -74,6 +76,7 @@ jobs:
   trivy-fs:
     name: trivy fs (advisory)
     runs-on: ubuntu-latest
+    continue-on-error: true   # advisory: job hatası workflow'u KIRMAZ
     steps:
       - uses: actions/checkout@v4
       - name: trivy fs scan
@@ -89,6 +92,7 @@ jobs:
   sbom:
     name: SBOM (CycloneDX, artifact)
     runs-on: ubuntu-latest
+    continue-on-error: true   # advisory/artifact: job hatası workflow'u KIRMAZ
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

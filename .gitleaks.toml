@@ -23,4 +23,7 @@ regexes = [
   '''E2ePass123!''',
   # .env.example / docs placeholder'ları (gerçek değer değil).
   '''CHANGE_ME[_A-Za-z0-9]*''',
+  # scripts/ci-security-smoke.sh içindeki SAHTE gate-test fixture token'ı (gerçek değil; gate'in çalıştığını
+  # ispatlamak için bilinçli yerleştirilmiş). Gate testi config'siz koştuğu için yine tespit edilir.
+  '''ghp_aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vWxYz0''',
 ]
