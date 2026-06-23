@@ -88,7 +88,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 - **Kanıt:** nginx'te CSP yok (bilinçli ertelenmiş).
 - **Çözüm:** Next.js inline tema scripti için nonce/hash ile CSP.
 - **Acceptance:** Prod'da CSP aktif; uygulama bozulmuyor; konsol CSP ihlali yok.
-- **Sprint:** **31B-2 — Report-Only UYGULANDI** (nginx 443; bloklamaz, yalnız raporlar). **Enforce + nonce → 31C.**
+- **Sprint:** **31C-2 — ENFORCE + NONCE UYGULANDI** (Next 16 `proxy.ts` per-request nonce + `strict-dynamic`; `script-src 'unsafe-inline'` kaldırıldı; nginx CSP'yi Next'e devretti → çift header yok; report-sink `POST /api/csp-report` salt-log; `CSP_MODE=report-only|enforce|disabled` runtime env). Prod ilk deploy **report-only** → canlı doğrulama → env-flip **enforce**. (31B-2: Report-Only baseline.) report-to → 31D.
 
 ### P1-7 · Backup şifreleme + off-site + drill kanıtı
 - **Etki:** Şifresiz yedek çalınırsa toplu PII ifşası.
@@ -150,6 +150,7 @@ Kanıt referansları HEAD'deki kod incelemesine dayanır.
 | **31A** ✅ | P1-3 (politika), P1-4, P1-5 (doküman), P1-8 (risk/karar) |
 | **31B-1** ✅ | **P0-1, P0-3, P0-4** (infra/config, migration yok) — uygulandı, doğrulama yeşil |
 | **31B-2** ✅ | P0-2 (auth events), P1-1 (lockout), P1-2 (parola politikası + change-password), P1-6 (CSP Report-Only) — uygulandı (migration: Sprint31B2_AuthHardeningAndAuditLog) |
-| **31C** | P0-2 (kapsam genişletme: rol/ödeme/sözleşme/export/HealthNotes + viewer), P1-6 (CSP enforce + nonce), P1-8 (teknik), P1-9 (test) |
+| **31C-1** ✅ | P0-2 (kapsam genişletme: rol/ödeme/sözleşme/export/HealthNotes + viewer), P1-9 (tenant isolation test) — uygulandı (migration yok) |
+| **31C-2** ✅ | P1-6 (CSP enforce + nonce + report-sink) — uygulandı (migration yok; prod report-only→enforce env-flip) |
 | **31D** | P1-3 (purge), P1-7, P1-9 (CI), P1-CI, P2-4 |
 | **31-MFA** ✅ (ayrı mini-sprint) | P1-10 (Owner/StudioAdmin TOTP MFA) — uygulandı (migration: Sprint31MFA_TotpMfa) |

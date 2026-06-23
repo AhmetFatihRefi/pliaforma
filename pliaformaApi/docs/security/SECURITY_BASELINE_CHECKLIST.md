@@ -12,8 +12,9 @@ Statü: ✅ hazır · ⏳ ilgili sprintte · ❌ açık.
 - [ ] **HTTPS aktif** (nginx 443 + sertifika) — 🟡 config hazır (31B-1); gerçek cert + canlı doğrulama pilot-deploy / **P0-1**
 - [x] **HTTP→HTTPS 301 redirect** — ✅ nginx config (31B-1) / P0-1
 - [x] **HSTS header** aktif — ✅ nginx 443 (kısa max-age; cert sonrası uzat) (31B-1) / P0-1
-- [x] CSP **Report-Only** aktif — ✅ nginx 443 (31B-2); **enforce + nonce → 31C** / P1-6
-- [x] X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy (nginx) — ✅
+- [x] **CSP enforce + nonce** — ✅ Next 16 `proxy.ts` (31C-2): per-request nonce + strict-dynamic, script-src unsafe-inline yok, report-sink `/api/csp-report`, `CSP_MODE` runtime; nginx CSP üretmez (çift header yok) / P1-6
+- [ ] **Prod `CSP_MODE=enforce` env-flip** — ⏳ ilk deploy report-only; canlı doğrulama sonrası enforce + restart
+- [x] X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy (nginx) — ✅ (frame-ancestors CSP'de de var)
 - [x] CORS allowlist (prod `https://` origin) — ⏳ prod env doğrulaması / P0-4
 - [x] Rate limit auth uçlarında aktif (prod 10/dk) — ✅
 - [x] `client_max_body_size` (nginx 10m) — ✅

@@ -36,7 +36,7 @@ Statü sembolleri: ✅ yeterli · ⚠️ kısmi · ❌ yok.
 |---|---|---|---|---|---|
 | TLS/HTTPS | nginx 443 ssl + 80→301 **aktif** (31B-1); prod compose 443+cert volume | 🟡 | Gerçek cert + canlı doğrulama (pilot-deploy) | Operatör certbot ile cert sağlar | **P0-1** |
 | HSTS | nginx 443'te `Strict-Transport-Security` (kısa max-age) **aktif** (31B-1) | ✅ | TLS doğrulanınca max-age uzat | — | **P0-1** |
-| CSP | Yok (Next.js inline tema scripti nedeniyle bilinçli ertelenmiş) | ❌ | CSP | nonce/hash ile | P1-6 |
+| CSP | **Enforce + nonce** (Next 16 `proxy.ts`; strict-dynamic; script-src unsafe-inline yok; report-sink `/api/csp-report`; `CSP_MODE` runtime; nginx devretti) (31C-2) | ✅ | Prod `CSP_MODE=enforce` env-flip; report-to (31D) | report-only→enforce | P1-6 |
 | X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy | nginx'te set | ✅ | — | — | — |
 | CORS | `Cors:Origins` allowlist; AllowCredentials | ✅ | Prod origin doğrulaması | Prod env'de `https://` origin | P0-4 |
 | Rate limiting | Auth uçları IP bazlı | ✅ | Global limit yok (kabul edilebilir) | İhtiyaca göre genişlet | — |

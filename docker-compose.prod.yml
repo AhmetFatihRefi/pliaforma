@@ -64,6 +64,9 @@ services:
         BACKEND_ORIGIN: http://backend:8080
     environment:
       BACKEND_ORIGIN: http://backend:8080
+      # Sprint 31C-2: CSP modu (proxy.ts runtime okur). İlk deploy report-only; canlı doğrulama sonrası
+      # CSP_MODE=enforce ile env-flip + restart (rebuild gerekmez). Acil rollback: report-only / disabled.
+      CSP_MODE: ${CSP_MODE:-report-only}
     depends_on:
       - backend
     restart: unless-stopped
