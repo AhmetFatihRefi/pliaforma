@@ -203,15 +203,19 @@ export function AddContractLineModal({ studentId, onClose, onSaved }: { studentI
           </div>
         </Section>
 
-        <Section title="Tercih gün/saatleri (en az 1)">
+        <Section title="Haftalık ders gün/saatleri (en az 1)">
+          <p className="text-xs text-muted">Haftada 2 ders için 2 farklı gün/saat ekleyin. Sistem toplam ders hakkı bitene kadar bu haftalık düzeni tekrarlar. Aynı gün farklı saat serbest; aynı gün+saat tekrar edemez.</p>
           <div className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-border p-3">
             <Select value={slotDay} onChange={(e) => setSlotDay(e.target.value as DayOfWeek)} className="w-36">
               {daysOfWeek.map((d) => <option key={d} value={d}>{dayLabels[d]}</option>)}
             </Select>
             <Input type="time" value={slotTime} onChange={(e) => setSlotTime(e.target.value)} className="w-32" />
-            <Button type="button" variant="secondary" size="sm" onClick={addPrefSlot}>+ Tercih ekle</Button>
-            <span className="text-xs text-muted">Saat boş = farketmez</span>
+            <Button type="button" variant="secondary" size="sm" onClick={addPrefSlot}>+ Slot ekle</Button>
+            <span className="text-xs text-muted">Saat boş = farketmez (üretimde kullanılmaz)</span>
           </div>
+          {prefSlots.filter((s) => s.preferredStartTime).length > 0 && (
+            <Badge tone="rose">Haftada {prefSlots.filter((s) => s.preferredStartTime).length} ders düzeni</Badge>
+          )}
           {prefSlots.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {prefSlots.map((s, i) => (
@@ -261,9 +265,6 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
   const [err, setErr] = useState<string | null>(null);
   const [due, setDue] = useState(l.dueDate ?? "");
   const [busy, setBusy] = useState(false);
-  const [days, setDays] = useState<DayOfWeek[]>([]);
-  const [time, setTime] = useState("18:00");
-  const [reuse, setReuse] = useState(!l.isIndividual);
   const [genMsg, setGenMsg] = useState<string | null>(null);
   const [slotDay, setSlotDay] = useState<DayOfWeek>("Monday");
   const [slotTime, setSlotTime] = useState("");
@@ -281,6 +282,10 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
   const needInstructor = l.instructorProfileId == null;
   const needCapacity = l.preferredMaxCapacity == null && equipmentBound;
   const capLabel = l.preferredMaxCapacity == null ? "Farketmez" : l.preferredMaxCapacity === 1 ? "Bireysel" : `En fazla ${l.preferredMaxCapacity} kişi`;
+  // Sprint 35: program üretimi line'ın KAYITLI haftalık slot düzenini (saatli preferred slots) kullanır — tek kaynak.
+  const weeklySlots = l.preferredSlots.filter((s) => s.preferredStartTime);
+  const weeklyCount = weeklySlots.length;
+  const estWeeks = weeklyCount > 0 ? Math.ceil(l.availableLessonCount / weeklyCount) : 0;
 
   // Sprint 34: TERCİH DÜZENLE (full-replace) — hoca/kapasite/slot. Mevcut programa dokunmaz.
   const capModeOf = (v: number | null | undefined): "any" | "1" | "2" | "3" | "4" | "custom" =>
@@ -348,14 +353,15 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
     finally { setBusy(false); }
   };
   const generate = async () => {
-    if (days.length === 0) { setGenMsg("En az bir gün seçin."); return; }
+    if (weeklyCount === 0) { setGenMsg("Önce “Tercihleri düzenle”den saatli gün/saat ekleyin (haftalık düzen)."); return; }
     if (needInstructor && !genInstructor) { setGenMsg("Bu sözleşmenin hocası belirtilmemiş; program için bir hoca seçin."); return; }
     if (needCapacity && !genCapacity) { setGenMsg("Ekipman bağlı ders için seans kapasitesi seçin."); return; }
     setBusy(true); setGenMsg(null);
     try {
+      // Sprint 35: slot kaynağı = line'ın kayıtlı haftalık düzeni (saatli preferred slots). Manuel gün/saat picker yok.
       const r = await contractService.generateLineSchedule(l.id, {
-        slots: days.map((d) => ({ dayOfWeek: d, startTime: `${time}:00` })),
-        reuseExistingGroup: l.isIndividual ? false : reuse,
+        slots: weeklySlots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.preferredStartTime! })),
+        reuseExistingGroup: !l.isIndividual,
         instructorProfileId: needInstructor ? genInstructor : null,
         capacity: needCapacity ? Number(genCapacity) : null,
       });
@@ -439,7 +445,12 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
               )}
             </div>
             <div>
-              <p className="mb-1 text-xs text-muted">Gün/saat tercihleri (en az 1)</p>
+              <div className="mb-1 flex items-center gap-2">
+                <p className="text-xs text-muted">Haftalık ders gün/saatleri (en az 1) — haftada 2 ders için 2 farklı gün/saat ekleyin.</p>
+                {editSlots.filter((s) => s.preferredStartTime).length > 0 && (
+                  <Badge tone="rose">Haftada {editSlots.filter((s) => s.preferredStartTime).length} ders</Badge>
+                )}
+              </div>
               <div className="mb-2 flex flex-wrap gap-2">
                 {editSlots.length === 0 ? <span className="text-xs text-muted">Henüz tercih yok.</span> :
                   editSlots.map((s, i) => (
@@ -465,11 +476,25 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
           </div>
         )}
 
-        {/* Programı oluştur */}
+        {/* Programı oluştur (Sprint 35) — kayıtlı HAFTALIK slot düzenini kullanır; manuel gün/saat picker yok */}
         {isActive && (
-          <div className="space-y-2 rounded-xl border border-border bg-surface-muted/40 p-3">
+          <div className="space-y-3 rounded-xl border border-border bg-surface-muted/40 p-3">
             <SectionTitle>Programı oluştur</SectionTitle>
-            <p className="text-xs text-muted">Seçili gün(ler) ve saatte, kalan {l.availableLessonCount} ders kadar seans oluşturur.</p>
+            {weeklyCount === 0 ? (
+              <p className="text-xs text-warning">Bu satırda saatli haftalık gün/saat tercihi yok. Yukarıdan “Tercihleri düzenle” ile haftalık düzeni (örn. Pzt 10:00 + Per 18:00) ekleyin.</p>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="rose">Haftada {weeklyCount} ders düzeni</Badge>
+                  <div className="flex flex-wrap gap-1.5">
+                    {weeklySlots.map((s, i) => (
+                      <span key={i} className="rounded-full border border-border bg-surface px-2 py-0.5 text-xs text-foreground">{dayLabels[s.dayOfWeek]} {s.preferredStartTime!.slice(0, 5)}</span>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-muted">Haftada 2 ders için 2 farklı gün/saat ekleyin. Sistem toplam ders hakkı bitene kadar bu haftalık düzeni tekrarlar. <strong>{l.availableLessonCount} ders / haftada {weeklyCount} slot → yaklaşık {estWeeks} hafta.</strong></p>
+              </>
+            )}
             {(needInstructor || needCapacity) && (
               <div className="grid gap-3 sm:grid-cols-2">
                 {needInstructor && (
@@ -487,22 +512,8 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
                 )}
               </div>
             )}
-            <div className="flex flex-wrap gap-2">
-              {daysOfWeek.map((d) => (
-                <label key={d} className={`cursor-pointer rounded-lg border px-2.5 py-1 text-xs ${days.includes(d) ? "border-primary bg-primary-soft text-primary" : "border-border text-muted"}`}>
-                  <input type="checkbox" className="hidden" checked={days.includes(d)} onChange={(e) => setDays((xs) => e.target.checked ? [...xs, d] : xs.filter((x) => x !== d))} />
-                  {dayLabels[d]}
-                </label>
-              ))}
-            </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-32" />
-              {!l.isIndividual && (
-                <label className="flex items-center gap-2 text-xs text-muted">
-                  <input type="checkbox" checked={reuse} onChange={(e) => setReuse(e.target.checked)} /> Mevcut gruba bağlan
-                </label>
-              )}
-              <Button size="sm" loading={busy} onClick={generate}>Oluştur ({l.availableLessonCount} ders)</Button>
+              <Button size="sm" loading={busy} disabled={weeklyCount === 0} onClick={generate}>Haftalık düzene göre oluştur ({l.availableLessonCount} ders)</Button>
             </div>
             {genMsg && <p className="text-xs text-muted">{genMsg}</p>}
           </div>
