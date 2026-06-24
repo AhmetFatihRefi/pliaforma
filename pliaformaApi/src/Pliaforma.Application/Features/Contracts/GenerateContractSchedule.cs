@@ -42,12 +42,14 @@ internal static class ContractScheduleEngine
         closures.Any(cl => cl.StartAt <= startAt && startAt < cl.EndAt);
 
     // ---- Sprint 22: program üretiminin paylaşılan çekirdeği (generate + grup-değişikliği ortak) ----
-    /// <summary>Aynı slotta yeniden kullanılabilir mevcut GRUP seansı (bireysel değil, Scheduled). Yoksa null.</summary>
+    /// <summary>Aynı slotta yeniden kullanılabilir mevcut GRUP seansı (bireysel değil, Scheduled). Sprint 33: yalnız
+    /// kapasitesi <paramref name="maxCapacity"/>'yi aşmayan gruplar (kapasite tercihi). Yoksa null.</summary>
     public static Task<ClassSession?> FindReusableGroupAsync(
-        IAppDbContext db, Guid studioId, Guid instructorProfileId, Guid classTypeId, DateTime startAt, CancellationToken ct) =>
+        IAppDbContext db, Guid studioId, Guid instructorProfileId, Guid classTypeId, DateTime startAt, CancellationToken ct, int maxCapacity = int.MaxValue) =>
         db.ClassSessions.FirstOrDefaultAsync(s => s.StudioId == studioId
             && s.InstructorProfileId == instructorProfileId && s.ClassTypeId == classTypeId
-            && s.StartAt == startAt && s.Status == ClassSessionStatus.Scheduled && !s.IsIndividual, ct);
+            && s.StartAt == startAt && s.Status == ClassSessionStatus.Scheduled && !s.IsIndividual
+            && s.Capacity <= maxCapacity, ct);
 
     /// <summary>Öğrencinin verilen aralıkta örtüşen aktif (Booked, Scheduled) bir dersi var mı?</summary>
     public static Task<bool> StudentBusyAsync(
@@ -61,8 +63,9 @@ internal static class ContractScheduleEngine
         db.ClassBookings.CountAsync(b => b.StudentContractId == contractId
             && b.Status == ClassBookingStatus.Booked && b.ClassSession!.SessionKind == ClassSessionKind.Regular, ct);
 
+    /// <summary>Sprint 33: kapasite EXPLICIT verilir (effective). IsIndividual = (capacity == 1).</summary>
     public static ClassSession NewSession(
-        Guid studioId, Guid instructorProfileId, Guid classTypeId, DateTime startAt, DateTime endAt, bool individual, Guid userId) =>
+        Guid studioId, Guid instructorProfileId, Guid classTypeId, DateTime startAt, DateTime endAt, int capacity, Guid userId) =>
         new()
         {
             StudioId = studioId,
@@ -70,11 +73,11 @@ internal static class ContractScheduleEngine
             ClassTypeId = classTypeId,
             StartAt = startAt,
             EndAt = endAt,
-            Capacity = individual ? 1 : GroupUnlimitedCapacity,
+            Capacity = capacity,
             BookedCount = 0,
             Status = ClassSessionStatus.Scheduled,
             SessionKind = ClassSessionKind.Regular,
-            IsIndividual = individual,
+            IsIndividual = capacity == 1,
             CreatedByUserId = userId,
         };
 

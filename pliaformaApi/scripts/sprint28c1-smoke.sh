@@ -38,7 +38,7 @@ CT=$(ctype Mat)
 TODAY=$(date +%F); SOON=$(date -d "+2 days" +%F); END=$(date -d "+60 days" +%F); FAR=$(date -d "+70 days" +%F)
 ALLDAYS='[{"dayOfWeek":"Monday","startTime":"18:00:00"},{"dayOfWeek":"Tuesday","startTime":"18:00:00"},{"dayOfWeek":"Wednesday","startTime":"18:00:00"},{"dayOfWeek":"Thursday","startTime":"18:00:00"},{"dayOfWeek":"Friday","startTime":"18:00:00"},{"dayOfWeek":"Saturday","startTime":"18:00:00"},{"dayOfWeek":"Sunday","startTime":"18:00:00"}]'
 # addline: $1=student $2=instructorProfile $3=lessonCount $4=isIndividual
-addline(){ body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$2\",\"startDate\":\"$TODAY\",\"endDate\":\"$END\",\"lessonCount\":$3,\"pricePerLesson\":100,\"makeupAllowance\":1,\"isIndividual\":$4,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]}" "$ATOK")"; }
+addline(){ local cap; [ "$4" = "true" ] && cap=1 || cap=null; body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$2\",\"startDate\":\"$TODAY\",\"endDate\":\"$END\",\"lessonCount\":$3,\"pricePerLesson\":100,\"makeupAllowance\":1,\"preferredMaxCapacity\":$cap,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]}" "$ATOK")"; }
 genline(){ post "/api/studio/contract-lines/$1/schedule/generate" "{\"slots\":$ALLDAYS,\"reuseExistingGroup\":false}" "$ATOK"; }
 lineavail(){ gbody "/api/studio/students/$1/contract-lines" "$ATOK" | jq2 "d.data.find(l=>l.id==='$2')?.availableLessonCount"; }
 linesched(){ gbody "/api/studio/students/$1/contract-lines" "$ATOK" | jq2 "d.data.find(l=>l.id==='$2')?.scheduledLessonCount"; }

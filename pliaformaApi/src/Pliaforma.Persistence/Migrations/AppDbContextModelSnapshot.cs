@@ -1366,7 +1366,7 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
-                    b.Property<Guid>("InstructorProfileId")
+                    b.Property<Guid?>("InstructorProfileId")
                         .HasColumnType("uuid");
 
                     b.Property<bool>("IsDeleted")
@@ -1446,7 +1446,7 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
 
-                    b.Property<Guid>("InstructorProfileId")
+                    b.Property<Guid?>("InstructorProfileId")
                         .HasColumnType("uuid");
 
                     b.Property<bool>("IsDeleted")
@@ -1464,6 +1464,9 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<int?>("PreferredMaxCapacity")
+                        .HasColumnType("integer");
 
                     b.Property<decimal>("PricePerLesson")
                         .HasPrecision(12, 2)
@@ -2694,8 +2697,7 @@ namespace Pliaforma.Persistence.Migrations
                     b.HasOne("Pliaforma.Domain.Entities.InstructorProfile", "InstructorProfile")
                         .WithMany()
                         .HasForeignKey("InstructorProfileId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Pliaforma.Domain.Entities.StudentProfile", "StudentProfile")
                         .WithMany()
@@ -2729,8 +2731,7 @@ namespace Pliaforma.Persistence.Migrations
                     b.HasOne("Pliaforma.Domain.Entities.InstructorProfile", "InstructorProfile")
                         .WithMany()
                         .HasForeignKey("InstructorProfileId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("Pliaforma.Domain.Entities.StudentContract", "StudentContract")
                         .WithMany()

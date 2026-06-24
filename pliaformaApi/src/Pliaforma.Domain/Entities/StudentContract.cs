@@ -24,8 +24,11 @@ public class StudentContract : BaseEntity, ITenantScoped
     public Guid ClassTypeId { get; set; }
     public ClassType? ClassType { get; set; }
 
-    /// <summary>Anlaşılan (planlanan) hoca. Program bu hocayla üretilir; fiilî hoca seans bazında değişebilir.</summary>
-    public Guid InstructorProfileId { get; set; }
+    /// <summary>
+    /// Anlaşılan (planlanan) varsayılan hoca (header düzeyi gruplama). Sprint 33: <c>null</c> olabilir — hocası
+    /// belirtilmeden açılan line için otomatik üretilen header'da null kalır. Asıl yetki line üzerindedir.
+    /// </summary>
+    public Guid? InstructorProfileId { get; set; }
     public InstructorProfile? InstructorProfile { get; set; }
 
     /// <summary>Sözleşme başlangıcı (stüdyo-yerel gün).</summary>

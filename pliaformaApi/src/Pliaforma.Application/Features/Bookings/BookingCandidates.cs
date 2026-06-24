@@ -66,7 +66,8 @@ public sealed class GetRegularBookingCandidatesHandler
             .Where(l => l.StudioId == studioId
                         && l.Status == StudentContractLineStatus.Active
                         && l.ClassTypeId == session.ClassTypeId
-                        && l.InstructorProfileId == session.InstructorProfileId
+                        // Sprint 33: line hocası null → herhangi bir hoca; dolu → eşleşme zorunlu.
+                        && (l.InstructorProfileId == null || l.InstructorProfileId == session.InstructorProfileId)
                         && l.StartDate <= sessionDate && sessionDate <= l.EndDate
                         && l.StudentContract!.StudentProfile!.Status != StudentStatus.Inactive
                         && (request.Level == null || l.StudentContract!.StudentProfile!.Level == request.Level))
@@ -87,8 +88,8 @@ public sealed class GetRegularBookingCandidatesHandler
         foreach (var l in lines)
         {
             var spId = l.StudentContract!.StudentProfileId;
-            // Bireysel line grup dersine aday değil.
-            if (l.IsIndividual && !session.IsIndividual) continue;
+            // Sprint 33: kapasite tercihi (HARD). Tercih varsa yalnız kapasitesi ≤ tercih olan dersler aday (bireysel=1 özel hâl).
+            if (l.PreferredMaxCapacity is { } cap && session.Capacity > cap) continue;
             // Planlanabilir hak > 0 (AvailableForPlanning = LessonCount − Booked Regular).
             var avail = await ContractLineRules.AvailableAsync(_db, l, ct);
             if (avail <= 0) continue;

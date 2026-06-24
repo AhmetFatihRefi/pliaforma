@@ -132,7 +132,11 @@ internal sealed class GroupScheduleChangeService
         foreach (var l in ordered)
         {
             var studentProfileId = l.StudentContract!.StudentProfileId;
-            var individual = l.IsIndividual;
+            // Sprint 33: effective kapasite = line tercihi ?? grup-sınırsız. Grup düzeni değişikliğinde üretim-anı kapasite girdisi
+            // yoktur → ekipman-bağlı + tercih yok ise EnsureFiniteForEquipment 409 ile reddeder (32B invariant güvencesi).
+            var effCap = l.PreferredMaxCapacity ?? ContractScheduleEngine.GroupUnlimitedCapacity;
+            EquipmentCapacityRules.EnsureFiniteForEquipment(classType, effCap);
+            var canReuse = effCap > 1;
             var available = await ContractLineRules.AvailableAsync(db, l, ct);
             var candidates = ContractLineScheduleEngine.BuildCandidates(l, duration, newSlots)
                 .Where(x => x.StartAt >= effectiveDt).ToList();
@@ -145,8 +149,9 @@ internal sealed class GroupScheduleChangeService
                 if (cand.StartAt <= nowLocal) { skipped++; slots.Add(new(cand.StartAt, cand.EndAt, "skipped", "Geçmiş zaman")); continue; }
                 if (ContractScheduleEngine.InAnyClosure(cand.StartAt, closures)) { skipped++; slots.Add(new(cand.StartAt, cand.EndAt, "skipped", "Stüdyo kapalı")); continue; }
 
-                var target = individual ? null
-                    : await ContractScheduleEngine.FindReusableGroupAsync(db, studioId, instructorProfileId, classTypeId, cand.StartAt, ct);
+                var target = canReuse
+                    ? await ContractScheduleEngine.FindReusableGroupAsync(db, studioId, instructorProfileId, classTypeId, cand.StartAt, ct, effCap)
+                    : null;
 
                 if (target is null && await SessionRules.HasConflictAsync(db, studioId, instructorProfileId, cand.StartAt, cand.EndAt, null, ct))
                 { conflicts++; canApply = false; slots.Add(new(cand.StartAt, cand.EndAt, "conflict", "Hoca çakışması")); continue; }
@@ -156,10 +161,9 @@ internal sealed class GroupScheduleChangeService
 
                 if (target is null)
                 {
-                    // Sprint 32B: ekipman-bağlı GRUP → 409 (sınırsız üretilemez); ekipman-bağlı BİREYSEL → guard (Capacity=1).
-                    EquipmentCapacityRules.EnsureAutoGenAllowed(classType, individual);
-                    target = ContractScheduleEngine.NewSession(studioId, instructorProfileId, classTypeId, cand.StartAt, cand.EndAt, individual, userId);
-                    if (classType.EquipmentId is not null && individual)
+                    // Sprint 33: effective kapasiteyle yeni seans; ekipman-bağlıysa guard (availability + havuz kilidi). 9999 EnsureFiniteForEquipment'te elendi.
+                    target = ContractScheduleEngine.NewSession(studioId, instructorProfileId, classTypeId, cand.StartAt, cand.EndAt, effCap, userId);
+                    if (classType.EquipmentId is not null)
                         await equipmentGuard.EnsureCanReserveAsync(studioId, classType, cand.StartAt, cand.EndAt, target.Capacity, excludeSessionId: null, pendingOverlapCapacity: 0, ct);
                     db.ClassSessions.Add(target);
                     newS++;

@@ -124,7 +124,7 @@ expectn "bulk2: 3 slot equipmentCapacity ile atlandı" 3 "$(echo "$RJ2" | jq2 "d
 
 echo "--- K) Makeup approval da equipment guard'dan geçer (blocker fix) ---"
 guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\":\"Phone\"}" "$ATOK")" | jget id; }
-addline(){ post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$3\",\"startDate\":\"$(date +%F)\",\"endDate\":\"$(date -d '+90 days' +%F)\",\"lessonCount\":8,\"pricePerLesson\":100,\"makeupAllowance\":3,\"isIndividual\":true,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]}" "$ATOK"; }
+addline(){ post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$3\",\"startDate\":\"$(date +%F)\",\"endDate\":\"$(date -d '+90 days' +%F)\",\"lessonCount\":8,\"pricePerLesson\":100,\"makeupAllowance\":3,\"preferredMaxCapacity\":1,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]}" "$ATOK"; }
 grant(){ pcode "/api/studio/students/$1/makeup-credits/grant" "{\"studentContractLineId\":\"$2\",\"amount\":$3,\"notes\":\"smoke\"}" "$ATOK" >/dev/null; }
 mkreq(){ body "$(post /api/studio/makeup-requests "{\"studentContractLineId\":\"$1\",\"startAt\":\"${D}T$2:00\"}" "$ATOK")" | jget id; }
 appr(){ pcode "/api/studio/makeup-requests/$1/approve" '{}' "$ATOK"; }
@@ -154,8 +154,8 @@ expect "ekipmansız makeup approve → 200 (eski davranış)" 200 "$(appr "$REQ3
 
 echo "--- L) Sözleşme programı üretimi de equipment guard'dan geçer (ContractScheduleEngine) ---"
 TODAY=$(date +%F); ENDL=$(date -d "+30 days" +%F)
-# addlineX: $1=student $2=classType $3=instructor $4=isIndividual (preferredSlots zorunlu 29A). 30 günlük kısa aralık.
-addlineX(){ post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$3\",\"startDate\":\"$TODAY\",\"endDate\":\"$ENDL\",\"lessonCount\":8,\"pricePerLesson\":100,\"makeupAllowance\":1,\"isIndividual\":$4,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]}" "$ATOK"; }
+# addlineX: $1=student $2=classType $3=instructor $4=isIndividual(true/false→Sprint33 preferredMaxCapacity 1/null). 30 günlük kısa aralık.
+addlineX(){ local cap; [ "$4" = "true" ] && cap=1 || cap=null; post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$3\",\"startDate\":\"$TODAY\",\"endDate\":\"$ENDL\",\"lessonCount\":8,\"pricePerLesson\":100,\"makeupAllowance\":1,\"preferredMaxCapacity\":$cap,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]}" "$ATOK"; }
 # genAt: $1=lineId $2=saat (HH:MM) → Pazartesi $2 slotuyla üret. Her alt-test FARKLI hoca+saat → instructor çakışması maskelemez.
 genAt(){ pcode "/api/studio/contract-lines/$1/schedule/generate" "{\"slots\":[{\"dayOfWeek\":\"Monday\",\"startTime\":\"$2:00\"}],\"reuseExistingGroup\":false}" "$ATOK"; }
 genAtB(){ post "/api/studio/contract-lines/$1/schedule/generate" "{\"slots\":[{\"dayOfWeek\":\"Monday\",\"startTime\":\"$2:00\"}],\"reuseExistingGroup\":false}" "$ATOK"; }

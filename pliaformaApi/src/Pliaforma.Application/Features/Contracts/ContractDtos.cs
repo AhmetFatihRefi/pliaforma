@@ -9,8 +9,9 @@ public sealed record StudentContractDto(
     string StudentName,
     Guid ClassTypeId,
     string ClassTypeName,
-    Guid InstructorProfileId,
-    string InstructorName,
+    // Sprint 33: header hocası opsiyonel (hocası belirtilmeden açılan line → null).
+    Guid? InstructorProfileId,
+    string? InstructorName,
     DateOnly StartDate,
     DateOnly EndDate,
     int TotalLessonCount,
@@ -91,7 +92,7 @@ public sealed record StudentAmendmentDto(
 public sealed record StudentContractViewDto(
     Guid Id,
     string ClassTypeName,
-    string InstructorName,
+    string? InstructorName,
     DateOnly StartDate,
     DateOnly EndDate,
     int TotalLessonCount,

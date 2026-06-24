@@ -24,8 +24,9 @@ public sealed record StudentContractLineDto(
     string StudentName,
     Guid ClassTypeId,
     string ClassTypeName,
-    Guid InstructorProfileId,
-    string InstructorName,
+    // Sprint 33: hoca opsiyonel (null = herhangi bir hoca).
+    Guid? InstructorProfileId,
+    string? InstructorName,
     DateOnly StartDate,
     DateOnly EndDate,
     int LessonCount,
@@ -38,6 +39,8 @@ public sealed record StudentContractLineDto(
     int MakeupAllowance,
     DateOnly? DueDate,
     bool IsIndividual,
+    // Sprint 33: kapasite tercihi (null = farketmez; 1 = bireysel; N = en fazla N).
+    int? PreferredMaxCapacity,
     StudentContractLineStatus Status,
     string Currency,
     int SequenceNo,
@@ -63,7 +66,7 @@ internal static class ContractLineQuery
                 StudentProfileId = l.StudentContract!.StudentProfileId,
                 StudentName = l.StudentContract.StudentProfile!.FullName,
                 l.ClassTypeId, ClassTypeName = l.ClassType!.Name,
-                l.InstructorProfileId, InstructorName = l.InstructorProfile!.DisplayName,
+                l.InstructorProfileId, InstructorName = l.InstructorProfile != null ? l.InstructorProfile.DisplayName : null,
                 l.StartDate, l.EndDate, l.LessonCount,
                 // Sprint 29C: Planned (Scheduled seans) + Delivered (Completed seans) ayrı; toplamı = eski Scheduled (Reserved).
                 Planned = db.ClassBookings.Count(b => b.StudentContractLineId == l.Id
@@ -88,7 +91,7 @@ internal static class ContractLineQuery
                 LegacyCandidate = db.Payments.Where(p => p.StudentContractLineId == null
                     && p.StudentContractId == l.StudentContractId && p.Status == PaymentStatus.Paid)
                     .Sum(p => (decimal?)p.Amount) ?? 0m,
-                l.MakeupAllowance, l.DueDate, l.IsIndividual, l.Status, l.Currency, l.SequenceNo,
+                l.MakeupAllowance, l.DueDate, l.IsIndividual, l.PreferredMaxCapacity, l.Status, l.Currency, l.SequenceNo,
             })
             .ToListAsync(ct);
 
@@ -115,7 +118,7 @@ internal static class ContractLineQuery
                 r.Id, r.StudentContractId, r.StudentProfileId, r.StudentName, r.ClassTypeId, r.ClassTypeName,
                 r.InstructorProfileId, r.InstructorName, r.StartDate, r.EndDate, r.LessonCount, scheduled,
                 r.LessonCount - scheduled, r.PricePerLesson, r.TotalPrice, paid, r.TotalPrice - paid,
-                r.MakeupAllowance, r.DueDate, r.IsIndividual, r.Status, r.Currency, r.SequenceNo,
+                r.MakeupAllowance, r.DueDate, r.IsIndividual, r.PreferredMaxCapacity, r.Status, r.Currency, r.SequenceNo,
                 planned, delivered, remainingRight, slots);
         }).ToList();
     }
@@ -204,14 +207,16 @@ public sealed record CreateStudentContractLineCommand(
     Guid StudentProfileId,
     Guid? HeaderId,
     Guid ClassTypeId,
-    Guid InstructorProfileId,
+    // Sprint 33: hoca OPSİYONEL (null = herhangi bir hoca).
+    Guid? InstructorProfileId,
     DateOnly StartDate,
     DateOnly EndDate,
     int LessonCount,
     decimal PricePerLesson,
     int MakeupAllowance,
     DateOnly? DueDate,
-    bool IsIndividual,
+    // Sprint 33: kapasite tercihi (null = farketmez; 1 = bireysel; N = en fazla N). "Bireysel mi?" yerine.
+    int? PreferredMaxCapacity,
     string? Currency,
     string? Notes,
     // Sprint 29A: yeni line'da EN AZ 1 tercih gün/saat zorunlu (gün zorunlu, saat opsiyonel; aynı gün+saat tekrar edemez).
@@ -223,7 +228,9 @@ public sealed class CreateStudentContractLineValidator : AbstractValidator<Creat
     {
         RuleFor(x => x.StudentProfileId).NotEmpty();
         RuleFor(x => x.ClassTypeId).NotEmpty();
-        RuleFor(x => x.InstructorProfileId).NotEmpty();
+        // Sprint 33: kapasite tercihi opsiyonel; verildiyse 1..50.
+        RuleFor(x => x.PreferredMaxCapacity).InclusiveBetween(1, 50).When(x => x.PreferredMaxCapacity.HasValue)
+            .WithMessage("Kapasite tercihi 1 ile 50 arasında olmalıdır.");
         RuleFor(x => x.EndDate).GreaterThanOrEqualTo(x => x.StartDate).WithMessage("Bitiş tarihi başlangıçtan önce olamaz.");
         RuleFor(x => x.LessonCount).GreaterThan(0).LessThanOrEqualTo(1000);
         RuleFor(x => x.PricePerLesson).GreaterThanOrEqualTo(0);
@@ -257,8 +264,18 @@ public sealed class CreateStudentContractLineHandler : ICommandHandler<CreateStu
 
         var classType = await _db.ClassTypes.FirstOrDefaultAsync(c => c.Id == request.ClassTypeId && c.StudioId == studioId, ct)
             ?? throw new NotFoundException("Ders grubu", request.ClassTypeId);
-        var instructor = await _db.InstructorProfiles.FirstOrDefaultAsync(p => p.Id == request.InstructorProfileId && p.StudioId == studioId, ct)
-            ?? throw new NotFoundException("Hoca", request.InstructorProfileId);
+
+        // Sprint 33: hoca opsiyonel — verildiyse aktif stüdyoya ait olmalı; null = herhangi bir hoca.
+        Guid? instructorId = null;
+        if (request.InstructorProfileId is { } reqInstr)
+        {
+            var instructor = await _db.InstructorProfiles.FirstOrDefaultAsync(p => p.Id == reqInstr && p.StudioId == studioId, ct)
+                ?? throw new NotFoundException("Hoca", reqInstr);
+            instructorId = instructor.Id;
+        }
+
+        // Sprint 33: IsIndividual artık PreferredMaxCapacity'den TÜRETİLİR (== 1 ise true).
+        var isIndividual = request.PreferredMaxCapacity == 1;
 
         var currency = string.IsNullOrWhiteSpace(request.Currency) ? "TRY" : request.Currency.Trim().ToUpperInvariant();
         var totalPrice = decimal.Round(request.LessonCount * request.PricePerLesson, 2);
@@ -272,14 +289,14 @@ public sealed class CreateStudentContractLineHandler : ICommandHandler<CreateStu
                 StudioId = studioId,
                 StudentProfileId = student.Id,
                 ClassTypeId = classType.Id,
-                InstructorProfileId = instructor.Id,
+                InstructorProfileId = instructorId,
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,
                 TotalLessonCount = request.LessonCount,
                 MakeupAllowance = request.MakeupAllowance,
                 Price = totalPrice,
                 Currency = currency,
-                IsIndividualDefault = request.IsIndividual,
+                IsIndividualDefault = isIndividual,
                 Status = StudentContractStatus.Active,
                 CreatedByUserId = userId,
             };
@@ -295,7 +312,7 @@ public sealed class CreateStudentContractLineHandler : ICommandHandler<CreateStu
             StudioId = studioId,
             StudentContractId = header.Id,
             ClassTypeId = classType.Id,
-            InstructorProfileId = instructor.Id,
+            InstructorProfileId = instructorId,
             StartDate = request.StartDate,
             EndDate = request.EndDate,
             LessonCount = request.LessonCount,
@@ -303,7 +320,8 @@ public sealed class CreateStudentContractLineHandler : ICommandHandler<CreateStu
             TotalPrice = totalPrice,
             MakeupAllowance = request.MakeupAllowance,
             DueDate = request.DueDate,
-            IsIndividual = request.IsIndividual,
+            IsIndividual = isIndividual,
+            PreferredMaxCapacity = request.PreferredMaxCapacity,
             Status = StudentContractLineStatus.Active,
             Currency = currency,
             SequenceNo = nextSeq,

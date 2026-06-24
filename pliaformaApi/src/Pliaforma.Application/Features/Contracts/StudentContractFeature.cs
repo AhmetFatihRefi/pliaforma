@@ -118,6 +118,8 @@ public sealed class CreateStudentContractHandler : ICommandHandler<CreateStudent
             MakeupAllowance = contract.MakeupAllowance,
             DueDate = null,    // Karar: backfill/oluşturmada NULL; son ödeme tarihi line ekranında girilir (28B/28D).
             IsIndividual = contract.IsIndividualDefault,
+            // Sprint 33: IsIndividual ↔ PreferredMaxCapacity senkron (bireysel → 1; grup → null = farketmez).
+            PreferredMaxCapacity = contract.IsIndividualDefault ? 1 : null,
             Status = StudentContractLineStatus.Active,
             Currency = currency,
             SequenceNo = 1,
@@ -227,7 +229,7 @@ internal static class ContractProjection
     public static System.Linq.Expressions.Expression<Func<StudentContract, StudentContractDto>> ToDto(IAppDbContext db) =>
         c => new StudentContractDto(
             c.Id, c.StudentProfileId, c.StudentProfile!.FullName,
-            c.ClassTypeId, c.ClassType!.Name, c.InstructorProfileId, c.InstructorProfile!.DisplayName,
+            c.ClassTypeId, c.ClassType!.Name, c.InstructorProfileId, c.InstructorProfile != null ? c.InstructorProfile.DisplayName : null,
             c.StartDate, c.EndDate, c.TotalLessonCount, c.MakeupAllowance, c.Price, c.Currency,
             c.IsIndividualDefault, c.Status, c.Notes,
             // ScheduledLessonCount: bu sözleşmeye bağlı aktif (Booked) Regular ders rezervasyonu.

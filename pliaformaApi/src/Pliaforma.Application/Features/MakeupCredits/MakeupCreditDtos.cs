@@ -61,8 +61,9 @@ public sealed record MakeupEligibleLineDto(
     string StudentName,
     Guid ClassTypeId,
     string ClassTypeName,
-    Guid InstructorProfileId,
-    string InstructorName,
+    // Sprint 33: line hocası opsiyonel.
+    Guid? InstructorProfileId,
+    string? InstructorName,
     string LineLabel,
     int AvailableCredits,
     StudentLevel? Level,

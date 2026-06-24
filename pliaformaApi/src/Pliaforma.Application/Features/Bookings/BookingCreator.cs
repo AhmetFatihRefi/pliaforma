@@ -106,9 +106,11 @@ public sealed class BookingCreator
                 line = resolved;
             }
 
-            // Sprint 28C-1 HARD RULE: bireysel line grup dersine atanamaz.
-            if (line.IsIndividual && !session.IsIndividual)
-                throw new ConflictException("Bireysel pakete (satır) sahip öğrenci grup dersine eklenemez; ayrı bireysel ders gerekir.");
+            // Sprint 33 HARD RULE: kapasite tercihi varsa, kapasitesi tercihi aşan derse eklenemez (bireysel=1 özel hâl).
+            if (line.PreferredMaxCapacity is { } cap && session.Capacity > cap)
+                throw new ConflictException(cap == 1
+                    ? $"Bireysel ders tercihli sözleşme grup dersine (kapasite {session.Capacity}) eklenemez."
+                    : $"Bu sözleşmenin kapasite tercihi en fazla {cap} kişi; daha büyük bir derse (kapasite {session.Capacity}) eklenemez.");
 
             contractLineId = line.Id;
             contractId = line.StudentContractId;

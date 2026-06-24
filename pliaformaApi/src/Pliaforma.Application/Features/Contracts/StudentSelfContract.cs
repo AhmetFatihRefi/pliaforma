@@ -46,7 +46,7 @@ public sealed class GetMyContractsHandler : IQueryHandler<GetMyContractsQuery, I
             {
                 c.Id,
                 ClassTypeName = c.ClassType!.Name,
-                InstructorName = c.InstructorProfile!.DisplayName,
+                InstructorName = c.InstructorProfile != null ? c.InstructorProfile.DisplayName : null,
                 c.StartDate,
                 c.EndDate,
                 c.TotalLessonCount,

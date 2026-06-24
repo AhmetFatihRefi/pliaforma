@@ -23,16 +23,16 @@ public static class EquipmentCapacityRules
     public static int TotalCapacity(int quantity, int perUnitConcurrentUsage) => quantity * perUnitConcurrentUsage;
 
     /// <summary>
-    /// Sprint 32B: Otomatik program üretiminde (sözleşme/grup) ekipman-bağlı GRUP dersi engeli. Bu akışlar grup
-    /// seansını sınırsız (9999) kapasiteyle üretir; ekipman-bağlıda bu yasaktır ve sonlu kapasite girdisi yoktur →
-    /// 409. Bireysel (Capacity=1) ekipman-bağlı seans serbesttir (çağıran ayrıca <see cref="EquipmentCapacityGuard"/>
-    /// ile availability doğrular). Ekipmansız ders tipi etkilenmez (eski davranış).
+    /// Sprint 32B/33: Otomatik program üretiminde ekipman invariant'ı — ekipman-bağlı ders tipinde üretilecek seans
+    /// kapasitesi <b>sonlu</b> olmalı (sınırsız/9999 YASAK). Sprint 33: sonlu kapasite line'ın PreferredMaxCapacity'sinden
+    /// ya da üretim anında seçilen kapasiteden gelir → ekipman-bağlı grup üretimi artık MÜMKÜN (yeter ki kapasite sonlu).
+    /// Ekipmansız ders tipi etkilenmez. Çağıran ayrıca <see cref="EquipmentCapacityGuard"/> ile availability doğrular.
     /// </summary>
-    public static void EnsureAutoGenAllowed(ClassType classType, bool individual)
+    public static void EnsureFiniteForEquipment(ClassType classType, int effectiveCapacity)
     {
-        if (classType.EquipmentId is not null && !individual)
+        if (classType.EquipmentId is not null && effectiveCapacity >= UnlimitedCapacity)
             throw new ConflictException(
-                "Ekipman bağlı grup dersleri otomatik sözleşme programından sınırsız kapasiteyle üretilemez. Lütfen sonlu kapasiteli manuel/toplu ders oluşturma akışını kullanın.");
+                "Ekipman bağlı derslerde sınırsız kapasiteyle program üretilemez. Sözleşmede kapasite tercihi belirleyin ya da program oluştururken sonlu seans kapasitesi seçin.");
     }
 
     /// <summary>

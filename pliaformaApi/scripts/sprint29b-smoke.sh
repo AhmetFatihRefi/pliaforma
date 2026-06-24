@@ -39,7 +39,7 @@ REG_AT="${THU}T18:00:00"; S10_AT="${THU}T10:00:00"; SI2_AT="${THU}T18:00:00"; SM
 
 guestl(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\":\"Phone\"${2:+,\"level\":\"$2\"}}" "$ATOK")" | jget id; }
 # addline student instr ct slotsJSON [individual] [lessonCount] → line id
-addline(){ body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$3\",\"instructorProfileId\":\"$2\",\"startDate\":\"$TODAY\",\"endDate\":\"$END\",\"lessonCount\":${6:-4},\"pricePerLesson\":100,\"makeupAllowance\":2,\"isIndividual\":${5:-false},\"currency\":\"TRY\",\"preferredSlots\":$4}" "$ATOK")" | jget id; }
+addline(){ local cap; [ "${5:-false}" = "true" ] && cap=1 || cap=null; body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$3\",\"instructorProfileId\":\"$2\",\"startDate\":\"$TODAY\",\"endDate\":\"$END\",\"lessonCount\":${6:-4},\"pricePerLesson\":100,\"makeupAllowance\":2,\"preferredMaxCapacity\":$cap,\"currency\":\"TRY\",\"preferredSlots\":$4}" "$ATOK")" | jget id; }
 legacyline(){ post "/api/studio/students/$1/contracts" "{\"classTypeId\":\"$3\",\"instructorProfileId\":\"$2\",\"startDate\":\"$TODAY\",\"endDate\":\"$END\",\"totalLessonCount\":4,\"makeupAllowance\":2,\"price\":400,\"isIndividualDefault\":false}" "$ATOK" >/dev/null; gbody "/api/studio/students/$1/contract-lines" "$ATOK" | jq2 "d.data[0]?.id"; }
 mksess(){ body "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$1\",\"classTypeId\":\"$2\",\"startAt\":\"$3\"${4:+,\"sessionKind\":\"$4\"}}" "$ATOK")" | jget id; }
 sbook(){ pcode "/api/studio/class-sessions/$1/bookings" "{\"studentProfileId\":\"$2\"}" "$ATOK"; }

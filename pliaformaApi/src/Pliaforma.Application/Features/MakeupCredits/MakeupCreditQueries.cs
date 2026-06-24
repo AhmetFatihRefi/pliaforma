@@ -167,7 +167,7 @@ internal static class MakeupEligibleLineQuery
             .Select(l => new
             {
                 l.Id, l.ClassTypeId, ClassTypeName = l.ClassType!.Name,
-                l.InstructorProfileId, InstructorName = l.InstructorProfile!.DisplayName,
+                l.InstructorProfileId, InstructorName = l.InstructorProfile != null ? l.InstructorProfile.DisplayName : null,
                 StudentProfileId = l.StudentContract!.StudentProfileId,
                 StudentName = l.StudentContract!.StudentProfile!.FullName,
                 Level = l.StudentContract!.StudentProfile!.Level,

@@ -21,7 +21,9 @@ namespace Pliaforma.Application.Features.MakeupRequests;
 public sealed record CreateMakeupRequestCommand(
     Guid StudentContractLineId,
     DateTime StartAt,
-    string? Description = null) : ICommand<MakeupRequestDto>, IStudioWriteRequest;
+    string? Description = null,
+    // Sprint 33: line hocası null (herhangi bir hoca) ise telafi talebi için hoca BURADA belirtilir (zorunlu).
+    Guid? RequestedInstructorProfileId = null) : ICommand<MakeupRequestDto>, IStudioWriteRequest;
 
 public sealed class CreateMakeupRequestValidator : AbstractValidator<CreateMakeupRequestCommand>
 {
@@ -66,14 +68,16 @@ public sealed class CreateMakeupRequestHandler : ICommandHandler<CreateMakeupReq
         if (line.Status != StudentContractLineStatus.Active)
             throw new BusinessRuleException("Pasif/iptal satıra telafi talebi açılamaz.");
 
-        var instructorProfileId = line.InstructorProfileId;
-        // Instructor yalnız KENDİ instructorProfileId'siyle eşleşen line'a talep açabilir.
+        // Sprint 33: hoca = line tercihi ?? talepte verilen. İkisi de yoksa belirtilmeli (telafi seansının hocası olmak zorunda).
+        var instructorProfileId = line.InstructorProfileId ?? request.RequestedInstructorProfileId
+            ?? throw new BusinessRuleException("Bu sözleşmenin hocası belirtilmemiş; telafi talebi için bir hoca seçin.");
+        // Instructor yalnız KENDİsi için talep açabilir (line ona pinli ya da kendini seçmiş olmalı).
         if (isInstructor)
         {
             var ownProfileId = await SchedulingAccess.CurrentInstructorProfileIdAsync(_db, _currentUser, studioId, cancellationToken)
                 ?? throw new ForbiddenException("Hoca profiliniz bulunamadı.");
-            if (line.InstructorProfileId != ownProfileId)
-                throw new ForbiddenException("Yalnızca kendi satırlarınız için telafi talebi açabilirsiniz.");
+            if (instructorProfileId != ownProfileId)
+                throw new ForbiddenException("Yalnızca kendiniz için telafi talebi açabilirsiniz.");
         }
         else
         {

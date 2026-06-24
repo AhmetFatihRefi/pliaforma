@@ -115,7 +115,8 @@ public sealed class ContractLineResolver
                         && l.StudentContract!.StudentProfileId == studentProfileId
                         && (headerId == null || l.StudentContractId == headerId)
                         && l.ClassTypeId == classTypeId
-                        && l.InstructorProfileId == instructorProfileId
+                        // Sprint 33: line hocası null → herhangi bir hoca; dolu → eşleşme zorunlu.
+                        && (l.InstructorProfileId == null || l.InstructorProfileId == instructorProfileId)
                         && l.Status == StudentContractLineStatus.Active
                         && l.StartDate <= sessionDate && sessionDate <= l.EndDate)
             .OrderBy(l => l.EndDate).ThenBy(l => l.SequenceNo).ThenBy(l => l.CreatedAt)
@@ -153,7 +154,8 @@ public sealed class ContractLineEligibilityChecker
             return new(false, "Sözleşme satırı bu öğrenciye ait değil.", null);
         if (line.ClassTypeId != classTypeId)
             return new(false, "Sözleşme satırı bu ders grubu için geçerli değil.", null);
-        if (line.InstructorProfileId != instructorProfileId)
+        // Sprint 33: line hocası null → herhangi bir hoca; dolu → eşleşme zorunlu.
+        if (line.InstructorProfileId is { } pin && pin != instructorProfileId)
             return new(false, "Sözleşme satırı bu hoca için geçerli değil (hoca eşleşmiyor).", null);
         if (sessionDate < line.StartDate || sessionDate > line.EndDate)
             return new(false, "Ders tarihi sözleşme satırı aralığı dışında.", null);
@@ -200,22 +202,28 @@ internal static class ContractLineScheduleEngine
         IAppDbContext db, IDateTime clock, Guid studioId, Guid userId,
         StudentContractLine line, int durationMin, IReadOnlyList<ContractScheduleSlotInput> slots,
         bool reuseExistingGroup, bool generate, CancellationToken ct,
-        EquipmentCapacityGuard? equipmentGuard = null)
+        EquipmentCapacityGuard? equipmentGuard = null,
+        Guid? generationInstructorId = null, int? generationCapacity = null)
     {
         var available = await ContractLineRules.AvailableAsync(db, line, ct);
         if (available == 0)
             return new GenerateContractScheduleResultDto(0, 0, 0, 0, Array.Empty<DateTime>());
 
-        var individual = line.IsIndividual;
+        // Sprint 33: effective hoca = line tercihi ?? üretim-anı seçimi. İkisi de yoksa üretilemez (bir seansın hocası olmak zorunda).
+        var effectiveInstructor = line.InstructorProfileId ?? generationInstructorId
+            ?? throw new ConflictException("Bu sözleşmenin hocası belirtilmemiş; program oluşturmak için bir hoca seçin.");
 
-        // Sprint 32B: yalnız ÜRETİMDE (generate) ekipman kuralı. Ekipman-bağlı GRUP → 409 (sınırsız üretilemez);
-        // ekipman-bağlı BİREYSEL → her yeni seans için guard (Capacity=1, availability + havuz kilidi). Ekipmansız → eski.
-        ClassType? classType = null;
-        if (generate)
-        {
-            classType = await db.ClassTypes.FirstAsync(c => c.Id == line.ClassTypeId, ct);
-            EquipmentCapacityRules.EnsureAutoGenAllowed(classType, individual);
-        }
+        // Sprint 33: effective kapasite. PreferredMaxCapacity ?? (ekipman-bağlı → üretim kapasitesi ZORUNLU : grup-sınırsız 9999).
+        var classType = await db.ClassTypes.FirstAsync(c => c.Id == line.ClassTypeId, ct);
+        int effectiveCapacity;
+        if (line.PreferredMaxCapacity is { } pref) effectiveCapacity = pref;
+        else if (classType.EquipmentId is not null)
+            effectiveCapacity = generationCapacity
+                ?? throw new ConflictException("Ekipman bağlı ders için sınırsız program üretilemez; program oluştururken sonlu bir seans kapasitesi seçin.");
+        else effectiveCapacity = ContractScheduleEngine.GroupUnlimitedCapacity;
+        EquipmentCapacityRules.EnsureFiniteForEquipment(classType, effectiveCapacity); // 32B invariant güvencesi
+        var canReuse = effectiveCapacity > 1; // bireysel (1) → reuse yok
+
         var nowLocal = await SessionRules.StudioNowAsync(db, clock, studioId, ct);
         var closures = await db.StudioClosures.Where(cl => cl.StudioId == studioId).ToListAsync(ct);
         var candidates = BuildCandidates(line, durationMin, slots);
@@ -233,11 +241,11 @@ internal static class ContractLineScheduleEngine
             if (ContractScheduleEngine.InAnyClosure(c.StartAt, closures)) { skipped++; continue; }
 
             ClassSession? target = null;
-            if (!individual && reuseExistingGroup)
-                target = await ContractScheduleEngine.FindReusableGroupAsync(db, studioId, line.InstructorProfileId, line.ClassTypeId, c.StartAt, ct);
+            if (canReuse && reuseExistingGroup)
+                target = await ContractScheduleEngine.FindReusableGroupAsync(db, studioId, effectiveInstructor, line.ClassTypeId, c.StartAt, ct, effectiveCapacity);
 
             var instructorBusy = batchInstructor.Any(x => x.s < c.EndAt && c.StartAt < x.e)
-                || await SessionRules.HasConflictAsync(db, studioId, line.InstructorProfileId, c.StartAt, c.EndAt, null, ct);
+                || await SessionRules.HasConflictAsync(db, studioId, effectiveInstructor, c.StartAt, c.EndAt, null, ct);
             if (target is null && instructorBusy) { skipped++; continue; }
 
             var studentBusy = batchStudent.Any(x => x.s < c.EndAt && c.StartAt < x.e)
@@ -248,9 +256,9 @@ internal static class ContractLineScheduleEngine
             {
                 if (target is null)
                 {
-                    target = ContractScheduleEngine.NewSession(studioId, line.InstructorProfileId, line.ClassTypeId, c.StartAt, c.EndAt, individual, userId);
-                    // Sprint 32B: ekipman-bağlı bireysel seans → guard (Capacity=1, availability + havuz kilidi). Dolu → 409.
-                    if (classType?.EquipmentId is not null && individual && equipmentGuard is not null)
+                    target = ContractScheduleEngine.NewSession(studioId, effectiveInstructor, line.ClassTypeId, c.StartAt, c.EndAt, effectiveCapacity, userId);
+                    // Sprint 32B/33: ekipman-bağlı her yeni (sonlu kapasiteli) seans → guard (availability + havuz kilidi). Dolu → 409.
+                    if (classType.EquipmentId is not null && equipmentGuard is not null)
                         await equipmentGuard.EnsureCanReserveAsync(studioId, classType, c.StartAt, c.EndAt, target.Capacity, excludeSessionId: null, pendingOverlapCapacity: 0, ct);
                     db.ClassSessions.Add(target);
                     newSessions++;
@@ -315,8 +323,10 @@ public sealed class PreviewLineScheduleHandler : IQueryHandler<PreviewLineSchedu
             string? skip = null;
             if (c.StartAt <= nowLocal) skip = "Geçmiş zaman";
             else if (ContractScheduleEngine.InAnyClosure(c.StartAt, closures)) skip = "Stüdyo kapalı (tatil/kapanış)";
-            else if (await SessionRules.HasConflictAsync(_db, studioId, line.InstructorProfileId, c.StartAt, c.EndAt, null, ct)
-                     && (line.IsIndividual || await ContractScheduleEngine.FindReusableGroupAsync(_db, studioId, line.InstructorProfileId, line.ClassTypeId, c.StartAt, ct) is null))
+            // Sprint 33: line hocası null ise hoca çakışması önizlemede değerlendirilemez (üretimde hoca seçilir).
+            else if (line.InstructorProfileId is { } instr
+                     && await SessionRules.HasConflictAsync(_db, studioId, instr, c.StartAt, c.EndAt, null, ct)
+                     && (line.IsIndividual || await ContractScheduleEngine.FindReusableGroupAsync(_db, studioId, instr, line.ClassTypeId, c.StartAt, ct, line.PreferredMaxCapacity ?? int.MaxValue) is null))
                 skip = "Hoca çakışması";
             else if (await ContractScheduleEngine.StudentBusyAsync(_db, studioId, line.StudentContract!.StudentProfileId, c.StartAt, c.EndAt, ct))
                 skip = "Öğrenci çakışması";
@@ -331,7 +341,9 @@ public sealed class PreviewLineScheduleHandler : IQueryHandler<PreviewLineSchedu
 
 // ======================= LINE ÜRETİM =======================
 public sealed record GenerateLineScheduleCommand(
-    Guid LineId, IReadOnlyList<ContractScheduleSlotInput> Slots, bool ReuseExistingGroup)
+    Guid LineId, IReadOnlyList<ContractScheduleSlotInput> Slots, bool ReuseExistingGroup,
+    // Sprint 33: line hocası null ise üretim-anı hoca; line PreferredMaxCapacity null + ekipman-bağlı ise üretim-anı kapasite.
+    Guid? InstructorProfileId = null, int? Capacity = null)
     : ICommand<GenerateContractScheduleResultDto>, IStudioWriteRequest;
 
 public sealed class GenerateLineScheduleValidator : AbstractValidator<GenerateLineScheduleCommand>
@@ -340,6 +352,8 @@ public sealed class GenerateLineScheduleValidator : AbstractValidator<GenerateLi
     {
         RuleFor(x => x.LineId).NotEmpty();
         RuleFor(x => x.Slots).NotEmpty().WithMessage("En az bir gün/saat seçilmeli.");
+        RuleFor(x => x.Capacity).InclusiveBetween(1, 50).When(x => x.Capacity.HasValue)
+            .WithMessage("Seans kapasitesi 1 ile 50 arasında olmalıdır.");
     }
 }
 
@@ -358,6 +372,10 @@ public sealed class GenerateLineScheduleHandler : ICommandHandler<GenerateLineSc
         var userId = _currentUser.RequireUserId();
         var line = await ContractLineScheduleEngine.LoadActiveLineAsync(_db, studioId, request.LineId, ct);
         var duration = await _db.ClassTypes.Where(c => c.Id == line.ClassTypeId).Select(c => c.DefaultDurationMinutes).FirstAsync(ct);
-        return await ContractLineScheduleEngine.RunAsync(_db, _clock, studioId, userId, line, duration, request.Slots, request.ReuseExistingGroup, generate: true, ct, _equipmentGuard);
+        // Sprint 33: üretim-anı hoca seçildiyse aktif stüdyoya ait olmalı (line hocası null senaryosu).
+        if (request.InstructorProfileId is { } gi && !await _db.InstructorProfiles.AnyAsync(p => p.Id == gi && p.StudioId == studioId, ct))
+            throw new NotFoundException("Hoca", gi);
+        return await ContractLineScheduleEngine.RunAsync(_db, _clock, studioId, userId, line, duration, request.Slots, request.ReuseExistingGroup, generate: true, ct,
+            _equipmentGuard, request.InstructorProfileId, request.Capacity);
     }
 }
