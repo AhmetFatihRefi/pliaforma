@@ -12,6 +12,8 @@ import {
   type MemberDto,
   type PaymentDto,
   type PreferredSlotInput,
+  type ReplanLinePreviewDto,
+  type ReplanLineResultDto,
   type StudentContractDto,
   type StudentContractLineDto,
   type StudentDebtSummaryDto,
@@ -265,7 +267,6 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
   const [genMsg, setGenMsg] = useState<string | null>(null);
   const [slotDay, setSlotDay] = useState<DayOfWeek>("Monday");
   const [slotTime, setSlotTime] = useState("");
-  const [slotBusy, setSlotBusy] = useState(false);
   const isActive = l.status === "Active";
 
   // Sprint 33: üretim-anı hoca (line hocası null ise zorunlu) + seans kapasitesi (line tercihi null + ekipman-bağlı ise zorunlu).
@@ -281,18 +282,58 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
   const needCapacity = l.preferredMaxCapacity == null && equipmentBound;
   const capLabel = l.preferredMaxCapacity == null ? "Farketmez" : l.preferredMaxCapacity === 1 ? "Bireysel" : `En fazla ${l.preferredMaxCapacity} kişi`;
 
-  const addSlot = async () => {
-    setSlotBusy(true); setErr(null);
-    try { await contractService.addPreferredSlot(l.id, { dayOfWeek: slotDay, preferredStartTime: slotTime ? `${slotTime}:00` : null, notes: null }); setSlotTime(""); onChanged(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : "Tercih eklenemedi."); }
-    finally { setSlotBusy(false); }
+  // Sprint 34: TERCİH DÜZENLE (full-replace) — hoca/kapasite/slot. Mevcut programa dokunmaz.
+  const capModeOf = (v: number | null | undefined): "any" | "1" | "2" | "3" | "4" | "custom" =>
+    v == null ? "any" : v === 1 ? "1" : v === 2 ? "2" : v === 3 ? "3" : v === 4 ? "4" : "custom";
+  const [editInstr, setEditInstr] = useState(l.instructorProfileId ?? "");
+  const [editCapMode, setEditCapMode] = useState(capModeOf(l.preferredMaxCapacity));
+  const [editCustomCap, setEditCustomCap] = useState(l.preferredMaxCapacity && l.preferredMaxCapacity > 4 ? l.preferredMaxCapacity : 5);
+  const [editSlots, setEditSlots] = useState<PreferredSlotInput[]>(
+    l.preferredSlots.map((s) => ({ dayOfWeek: s.dayOfWeek, preferredStartTime: s.preferredStartTime ?? null, notes: null })),
+  );
+  const [prefMsg, setPrefMsg] = useState<string | null>(null);
+  const editPreferredMaxCapacity = editCapMode === "any" ? null : editCapMode === "custom" ? editCustomCap : Number(editCapMode);
+
+  // Sprint 34: REPLAN (kalan dersleri yeniden planla) — preview + apply.
+  const [replanInstr, setReplanInstr] = useState("");
+  const [replanCap, setReplanCap] = useState(2);
+  const [replanPrev, setReplanPrev] = useState<ReplanLinePreviewDto | null>(null);
+  const [replanResult, setReplanResult] = useState<ReplanLineResultDto | null>(null);
+  const [replanMsg, setReplanMsg] = useState<string | null>(null);
+
+  const addEditSlot = () => {
+    const t = slotTime ? `${slotTime}:00` : null;
+    if (editSlots.some((s) => s.dayOfWeek === slotDay && (s.preferredStartTime ?? null) === t)) { setPrefMsg("Aynı gün/saat zaten ekli."); return; }
+    setEditSlots((xs) => [...xs, { dayOfWeek: slotDay, preferredStartTime: t, notes: null }]); setSlotTime(""); setPrefMsg(null);
   };
-  const removeSlot = async (slotId: string) => {
-    setSlotBusy(true); setErr(null);
-    try { await contractService.removePreferredSlot(slotId); onChanged(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : "Tercih kaldırılamadı."); }
-    finally { setSlotBusy(false); }
+  const savePreferences = async () => {
+    if (editSlots.length === 0) { setPrefMsg("En az bir tercih gün/saat girilmeli."); return; }
+    setBusy(true); setPrefMsg(null);
+    try {
+      await contractService.updatePreferences(l.id, { instructorProfileId: editInstr || null, preferredMaxCapacity: editPreferredMaxCapacity, preferredSlots: editSlots });
+      setPrefMsg("✓ Tercihler kaydedildi. Mevcut programı etkilemez — kalan dersleri yeni tercihlere göre yeniden planlamak ister misin? (aşağıdaki bölüm)");
+      onChanged();
+    } catch (e) { setPrefMsg(e instanceof ApiError ? e.message : "Tercihler kaydedilemedi."); }
+    finally { setBusy(false); }
   };
+  const doReplanPreview = async () => {
+    setBusy(true); setReplanMsg(null); setReplanResult(null);
+    try {
+      setReplanPrev(await contractService.replanPreview(l.id, { instructorProfileId: needInstructor ? replanInstr || null : null, capacity: needCapacity ? Number(replanCap) : null }));
+    } catch (e) { setReplanMsg(e instanceof ApiError ? e.message : "Önizleme alınamadı."); }
+    finally { setBusy(false); }
+  };
+  const doReplan = async () => {
+    if (needInstructor && !replanInstr) { setReplanMsg("Bu sözleşmenin hocası belirtilmemiş; yeniden planlama için bir hoca seçin."); return; }
+    if (!(await confirm({ title: "Kalan dersleri yeniden planla", confirmLabel: "Yeniden planla", message: "Tamamlanan derslere dokunulmaz; yalnız gelecekteki planlı dersler etkilenir. Grup derslerinde başka öğrenciler etkilenmez. Uygun ders yoksa eksik planlanır." }))) return;
+    setBusy(true); setReplanMsg(null);
+    try {
+      const r = await contractService.replan(l.id, { instructorProfileId: needInstructor ? replanInstr || null : null, capacity: needCapacity ? Number(replanCap) : null });
+      setReplanResult(r); setReplanPrev(null); onChanged();
+    } catch (e) { setReplanMsg(e instanceof ApiError ? e.message : "Yeniden planlanamadı."); }
+    finally { setBusy(false); }
+  };
+
   const saveDue = async () => {
     setBusy(true); setErr(null);
     try { await contractService.updateLine(l.id, { dueDate: due || null, notes: null }); onChanged(); }
@@ -357,32 +398,72 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
           </div>
         </div>
 
-        {/* Tercih gün/saatleri */}
-        <div className="space-y-2">
-          <SectionTitle>Tercih gün/saatleri</SectionTitle>
-          {l.preferredSlots.length === 0 ? (
-            <p className="text-sm text-muted">Henüz tercih yok.</p>
-          ) : (
+        {/* Tercihleri düzenle (Sprint 34) — hoca/kapasite/gün-saat full-replace; MEVCUT programa dokunmaz */}
+        {!isActive ? (
+          <div className="space-y-2">
+            <SectionTitle>Tercih gün/saatleri</SectionTitle>
             <div className="flex flex-wrap gap-2">
-              {l.preferredSlots.map((s) => (
-                <span key={s.id} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-foreground">
-                  {dayLabels[s.dayOfWeek]}{s.preferredStartTime ? ` ${s.preferredStartTime.slice(0, 5)}` : ""}
-                  {isActive && <button type="button" disabled={slotBusy} className="text-muted hover:text-danger" onClick={() => removeSlot(s.id)}>×</button>}
-                </span>
-              ))}
+              {l.preferredSlots.length === 0 ? <span className="text-sm text-muted">Tercih yok.</span> :
+                l.preferredSlots.map((s) => (
+                  <span key={s.id} className="rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-foreground">
+                    {dayLabels[s.dayOfWeek]}{s.preferredStartTime ? ` ${s.preferredStartTime.slice(0, 5)}` : ""}
+                  </span>
+                ))}
             </div>
-          )}
-          {isActive && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Select value={slotDay} onChange={(e) => setSlotDay(e.target.value as DayOfWeek)} className="w-36">
-                {daysOfWeek.map((d) => <option key={d} value={d}>{dayLabels[d]}</option>)}
-              </Select>
-              <Input type="time" value={slotTime} onChange={(e) => setSlotTime(e.target.value)} className="w-32" />
-              <Button size="sm" variant="secondary" disabled={slotBusy} onClick={addSlot}>+ Tercih ekle</Button>
-              <span className="text-xs text-muted">Saat boş = farketmez</span>
+          </div>
+        ) : (
+          <div className="space-y-3 rounded-xl border border-border bg-surface-muted/40 p-3">
+            <SectionTitle>Tercihleri düzenle</SectionTitle>
+            <p className="text-xs text-muted">Hoca, kapasite ve gün/saat tercihleri. Kaydetmek <strong>mevcut programı değiştirmez</strong>; kalan dersleri güncellemek için aşağıdaki “Kalan dersleri yeniden planla”yı kullan.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormField label="Hoca (opsiyonel)" hint="Boş = herhangi bir hoca">
+                <Select value={editInstr} onChange={(e) => setEditInstr(e.target.value)}>
+                  <option value="">Farketmez (herhangi bir hoca)</option>
+                  {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Kapasite tercihi">
+                <Select value={editCapMode} onChange={(e) => setEditCapMode(e.target.value as typeof editCapMode)}>
+                  <option value="any">Farketmez</option>
+                  <option value="1">Bireysel (1 kişi)</option>
+                  <option value="2">En fazla 2</option>
+                  <option value="3">En fazla 3</option>
+                  <option value="4">En fazla 4</option>
+                  <option value="custom">Diğer (sayı gir)</option>
+                </Select>
+              </FormField>
+              {editCapMode === "custom" && (
+                <FormField label="En fazla kaç kişi?" hint="1–50">
+                  <Input type="number" min={1} max={50} value={editCustomCap} onChange={(e) => setEditCustomCap(Number(e.target.value))} />
+                </FormField>
+              )}
             </div>
-          )}
-        </div>
+            <div>
+              <p className="mb-1 text-xs text-muted">Gün/saat tercihleri (en az 1)</p>
+              <div className="mb-2 flex flex-wrap gap-2">
+                {editSlots.length === 0 ? <span className="text-xs text-muted">Henüz tercih yok.</span> :
+                  editSlots.map((s, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-1 text-xs text-foreground">
+                      {dayLabels[s.dayOfWeek]}{s.preferredStartTime ? ` ${s.preferredStartTime.slice(0, 5)}` : " (saat farketmez)"}
+                      <button type="button" className="text-muted hover:text-danger" onClick={() => setEditSlots((xs) => xs.filter((_, j) => j !== i))}>×</button>
+                    </span>
+                  ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={slotDay} onChange={(e) => setSlotDay(e.target.value as DayOfWeek)} className="w-36">
+                  {daysOfWeek.map((d) => <option key={d} value={d}>{dayLabels[d]}</option>)}
+                </Select>
+                <Input type="time" value={slotTime} onChange={(e) => setSlotTime(e.target.value)} className="w-32" />
+                <Button size="sm" variant="secondary" onClick={addEditSlot}>+ Ekle</Button>
+                <span className="text-xs text-muted">Saat boş = farketmez (üretimde kullanılmaz)</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button size="sm" loading={busy} onClick={savePreferences}>Tercihleri kaydet</Button>
+              {prefMsg && <p className="text-xs text-muted">{prefMsg}</p>}
+            </div>
+          </div>
+        )}
 
         {/* Programı oluştur */}
         {isActive && (
@@ -424,6 +505,56 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
               <Button size="sm" loading={busy} onClick={generate}>Oluştur ({l.availableLessonCount} ders)</Button>
             </div>
             {genMsg && <p className="text-xs text-muted">{genMsg}</p>}
+          </div>
+        )}
+
+        {/* Kalan dersleri yeniden planla (Sprint 34) — preview + apply; Completed/geçmiş dokunulmaz, grup öğrencileri etkilenmez */}
+        {isActive && (
+          <div className="space-y-2 rounded-xl border border-border bg-surface-muted/40 p-3">
+            <SectionTitle>Kalan dersleri yeniden planla</SectionTitle>
+            <p className="text-xs text-muted">Güncel tercihlere (hoca/kapasite/gün-saat) göre gelecekteki planlı dersleri yeniden oluşturur. <strong>Tamamlanan dersler korunur</strong>; grup derslerinde diğer öğrenciler etkilenmez.</p>
+            {(needInstructor || needCapacity) && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {needInstructor && (
+                  <FormField label="Hoca (zorunlu)" hint="Sözleşmede hoca belirtilmemiş.">
+                    <Select value={replanInstr} onChange={(e) => setReplanInstr(e.target.value)}>
+                      <option value="">Seçin…</option>
+                      {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                    </Select>
+                  </FormField>
+                )}
+                {needCapacity && (
+                  <FormField label="Seans kapasitesi (zorunlu)" hint="Ekipman bağlı (1–50).">
+                    <Input type="number" min={1} max={50} value={replanCap} onChange={(e) => setReplanCap(Number(e.target.value))} />
+                  </FormField>
+                )}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="secondary" loading={busy} onClick={doReplanPreview}>Önizle</Button>
+              {replanPrev && <Button size="sm" loading={busy} onClick={doReplan}>Uygula</Button>}
+            </div>
+            {replanPrev && (
+              <div className="rounded-lg border border-border bg-surface p-3 text-xs text-foreground">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <Stat label="Tamamlanan" value={replanPrev.deliveredCount} />
+                  <Stat label="İptal edilecek" value={replanPrev.futureBookingsToCancel} />
+                  <Stat label="Yeniden üretilecek" value={replanPrev.plannableCount} tone="success" />
+                  <Stat label="Planlanamayan" value={replanPrev.notPlannableCount} tone={replanPrev.notPlannableCount > 0 ? "danger" : "success"} />
+                </div>
+                {replanPrev.warnings.length > 0 && (
+                  <ul className="mt-2 list-disc pl-5 text-warning">{replanPrev.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                )}
+              </div>
+            )}
+            {replanResult && (
+              <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-xs text-foreground">
+                ✓ {replanResult.cancelledFutureBookings} ders iptal/taşındı, {replanResult.createdCount} ders yeniden planlandı
+                (yeni {replanResult.newSessionCount}, gruba bağlanan {replanResult.reusedSessionCount}).
+                {replanResult.notPlannedCount > 0 && <span className="text-danger"> {replanResult.notPlannedCount} ders uygunluk olmadığı için planlanamadı.</span>}
+              </div>
+            )}
+            {replanMsg && <p className="text-xs text-danger">{replanMsg}</p>}
           </div>
         )}
 

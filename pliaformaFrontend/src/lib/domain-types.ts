@@ -364,6 +364,36 @@ export interface ContractScheduleSlotPreviewDto { startAt: string; endAt: string
 export interface ContractSchedulePreviewDto { availableLessonCount: number; plannableCount: number; slots: ContractScheduleSlotPreviewDto[] }
 export interface GenerateContractScheduleResultDto { createdCount: number; newSessionCount: number; reusedSessionCount: number; skippedCount: number; createdStartAts: string[] }
 
+// ===== Sprint 34: tercih güncelle + kalan dersleri yeniden planla =====
+// Tercih güncelle (full-replace slot listesi). Mevcut programa dokunmaz.
+export interface ContractLinePreferencesInput {
+  instructorProfileId?: string | null;
+  preferredMaxCapacity?: number | null;
+  preferredSlots: PreferredSlotInput[];
+}
+export interface ReplanLinePreviewDto {
+  deliveredCount: number;
+  remainingLessonRight: number;
+  futureBookingsToCancel: number;
+  plannableCount: number;
+  notPlannableCount: number;
+  effectiveInstructorProfileId?: string | null;
+  effectiveInstructorName?: string | null;
+  effectiveCapacity?: number | null;
+  slots: ContractScheduleSlotPreviewDto[];
+  warnings: string[];
+}
+export interface ReplanLineResultDto {
+  cancelledFutureBookings: number;
+  emptiedSessionsCancelled: number;
+  createdCount: number;
+  newSessionCount: number;
+  reusedSessionCount: number;
+  skippedCount: number;
+  notPlannedCount: number;
+  createdStartAts: string[];
+}
+
 // ===== Sprint 23: Sözleşme ek işlemi (amendment) + borç =====
 export type ContractAmendmentKind = "ExtraLessons" | "DateExtension" | "PriceAdjustment" | "Mixed" | "Correction" | "Other";
 export const contractAmendmentKindLabels: Record<ContractAmendmentKind, string> = {

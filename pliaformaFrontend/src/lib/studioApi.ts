@@ -55,6 +55,9 @@ import type {
   ContractScheduleSlotInput,
   ContractSchedulePreviewDto,
   GenerateContractScheduleResultDto,
+  ContractLinePreferencesInput,
+  ReplanLinePreviewDto,
+  ReplanLineResultDto,
   ContractAmendmentDto,
   ContractAmendmentKind,
   StudentDebtSummaryDto,
@@ -176,6 +179,14 @@ export const contractService = {
     api<StudentContractLineDto>(`/api/studio/contract-lines/${lineId}/preferred-slots`, { method: "POST", body: input }),
   removePreferredSlot: (slotId: string) =>
     api<StudentContractLineDto>(`/api/studio/contract-lines/preferred-slots/${slotId}`, { method: "DELETE" }),
+  // Sprint 34: tercih güncelle (hoca/kapasite/slot full-replace) — programa dokunmaz.
+  updatePreferences: (lineId: string, input: ContractLinePreferencesInput) =>
+    api<StudentContractLineDto>(`/api/studio/contract-lines/${lineId}/preferences`, { method: "PUT", body: input }),
+  // Sprint 34: kalan dersleri yeniden planla — önizleme (yıkıcı değil) + uygula.
+  replanPreview: (lineId: string, input: { instructorProfileId?: string | null; capacity?: number | null }) =>
+    api<ReplanLinePreviewDto>(`/api/studio/contract-lines/${lineId}/replan/preview`, { method: "POST", body: input }),
+  replan: (lineId: string, input: { instructorProfileId?: string | null; capacity?: number | null }) =>
+    api<ReplanLineResultDto>(`/api/studio/contract-lines/${lineId}/replan`, { method: "POST", body: input }),
 };
 
 // Kullanıcı tarafı üyelik aksiyonları (/api/members)

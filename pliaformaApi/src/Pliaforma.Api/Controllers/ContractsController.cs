@@ -90,4 +90,18 @@ public sealed class ContractsController : ApiControllerBase
     [HttpDelete("contract-lines/preferred-slots/{slotId:guid}")]
     public Task<IActionResult> RemovePreferredSlot(Guid slotId, CancellationToken ct) =>
         Send(new RemoveLinePreferredSlotCommand(slotId), "Tercih kaldırıldı.", ct);
+
+    // Sprint 34: tercih güncelle (hoca/kapasite/slot full-replace) — mevcut programa DOKUNMAZ.
+    [HttpPut("contract-lines/{lineId:guid}/preferences")]
+    public Task<IActionResult> UpdateContractLinePreferences(Guid lineId, UpdateContractLinePreferencesCommand command, CancellationToken ct) =>
+        Send(command with { LineId = lineId }, "Tercihler güncellendi.", ct);
+
+    // Sprint 34: kalan dersleri yeniden planla — önizleme (yıkıcı değil) + uygula (detach + regenerate).
+    [HttpPost("contract-lines/{lineId:guid}/replan/preview")]
+    public Task<IActionResult> ReplanPreview(Guid lineId, ReplanLinePreviewQuery body, CancellationToken ct) =>
+        Send(body with { LineId = lineId }, ct: ct);
+
+    [HttpPost("contract-lines/{lineId:guid}/replan")]
+    public Task<IActionResult> Replan(Guid lineId, ReplanLineScheduleCommand body, CancellationToken ct) =>
+        Send(body with { LineId = lineId }, "Kalan dersler yeniden planlandı.", ct);
 }
