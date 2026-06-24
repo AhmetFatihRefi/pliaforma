@@ -25,6 +25,8 @@ import type {
   EquipmentDto,
   EquipmentDetailDto,
   EquipmentInput,
+  AvailabilityWindowDto,
+  AvailabilityQuery,
   CreateClosureResult,
   DayOfWeek,
   GuestInput,
@@ -101,6 +103,22 @@ export const equipmentService = {
   update: (id: string, input: EquipmentInput) =>
     api<EquipmentDto>(`/api/studio/equipment/${id}`, { method: "PUT", body: input }),
   remove: (id: string) => api<null>(`/api/studio/equipment/${id}`, { method: "DELETE" }),
+};
+
+// Sprint 32C: Boşluk bulma motoru (read-only; Owner/StudioAdmin/Instructor).
+export const availabilityService = {
+  classTypeSlots: (q: AvailabilityQuery) => {
+    const p = new URLSearchParams();
+    p.set("classTypeId", q.classTypeId);
+    p.set("durationMinutes", String(q.durationMinutes));
+    p.set("requiredCapacity", String(q.requiredCapacity));
+    if (q.date) p.set("date", q.date);
+    if (q.from) p.set("from", q.from);
+    if (q.to) p.set("to", q.to);
+    if (q.instructorId) p.set("instructorId", q.instructorId);
+    if (q.incrementMinutes) p.set("incrementMinutes", String(q.incrementMinutes));
+    return api<AvailabilityWindowDto[]>(`/api/studio/availability/class-type-slots?${p.toString()}`);
+  },
 };
 
 // Stüdyo yöneticisi tarafı üyelik yönetimi (/api/studio/memberships)

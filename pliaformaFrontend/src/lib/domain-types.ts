@@ -59,6 +59,33 @@ export interface EquipmentInput {
   isActive?: boolean;
 }
 
+// Sprint 32C: Boşluk bulma motoru (window-based). availableEquipmentCapacity null → ekipman kısıtı yok.
+export interface AvailabilityInstructorDto {
+  id: string;
+  name: string;
+}
+
+export interface AvailabilityWindowDto {
+  date: string; // YYYY-MM-DD
+  startWindowFrom: string; // ISO (en erken başlangıç)
+  startWindowTo: string; // ISO (en geç başlangıç)
+  durationMinutes: number;
+  requiredCapacity: number;
+  availableEquipmentCapacity?: number | null;
+  availableInstructors: AvailabilityInstructorDto[];
+}
+
+export interface AvailabilityQuery {
+  classTypeId: string;
+  date?: string;
+  from?: string;
+  to?: string;
+  durationMinutes: number;
+  requiredCapacity: number;
+  instructorId?: string;
+  incrementMinutes?: number;
+}
+
 export interface MemberDto {
   membershipId: string;
   userId: string;

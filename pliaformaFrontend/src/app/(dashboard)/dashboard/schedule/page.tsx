@@ -138,6 +138,21 @@ export default function SchedulePage() {
   // ---- Sürükle-bırak (taşıma) + kaydedilmemiş değişiklikler ----
   const [moves, setMoves] = useState<Record<string, { date: string; hour: number }>>({});
   const [quickAt, setQuickAt] = useState<string | null>(null);
+  // Sprint 32C: "Boşluk Bul" → "Bu saatte ders aç" derin bağlantısı (newAt + ön-dolu ders tipi/hoca/kapasite).
+  const [prefill, setPrefill] = useState<{ startAt: string; classTypeId?: string; instructorId?: string; capacity?: string } | null>(null);
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const newAt = sp.get("newAt");
+    if (!newAt) return;
+    setPrefill({
+      startAt: newAt.slice(0, 16),
+      classTypeId: sp.get("classTypeId") ?? undefined,
+      instructorId: sp.get("instructorId") ?? undefined,
+      capacity: sp.get("capacity") ?? undefined,
+    });
+    // URL'i temizle (yenilemede tekrar açılmasın).
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
   const movedIds = useMemo(() => new Set(Object.keys(moves)), [moves]);
 
   const isoDate = (iso: string) => iso.slice(0, 10);
@@ -427,6 +442,19 @@ export default function SchedulePage() {
           initialStartAt={quickAt}
           onClose={() => setQuickAt(null)}
           onDone={() => { setQuickAt(null); load(); }}
+        />
+      )}
+      {/* Sprint 32C: Boşluk Bul derin bağlantısı (ders tipi/hoca/kapasite + saat ön-dolu) */}
+      {prefill && (
+        <CreateSessionModal
+          instructors={instructors}
+          classTypes={classTypes}
+          initialStartAt={prefill.startAt}
+          initialClassTypeId={prefill.classTypeId}
+          initialInstructorId={prefill.instructorId}
+          initialCapacity={prefill.capacity}
+          onClose={() => setPrefill(null)}
+          onDone={() => { setPrefill(null); load(); }}
         />
       )}
       {bulkOpen && (
@@ -1138,12 +1166,12 @@ interface ModalProps {
   onDone: () => void;
 }
 
-function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialStartAt }: ModalProps & { initialStartAt?: string }) {
+function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialStartAt, initialClassTypeId, initialInstructorId, initialCapacity }: ModalProps & { initialStartAt?: string; initialClassTypeId?: string; initialInstructorId?: string; initialCapacity?: string }) {
   const [form, setForm] = useState({
-    instructorProfileId: instructors[0]?.id ?? "",
-    classTypeId: classTypes[0]?.id ?? "",
+    instructorProfileId: initialInstructorId ?? instructors[0]?.id ?? "",
+    classTypeId: initialClassTypeId ?? classTypes[0]?.id ?? "",
     startAt: initialStartAt ?? "",
-    capacity: "",
+    capacity: initialCapacity ?? "",
     notes: "",
     sessionKind: "Regular" as ClassSessionKind,
   });

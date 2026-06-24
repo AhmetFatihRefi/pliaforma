@@ -23,6 +23,8 @@ const nav: NavItem[] = [
   { href: "/dashboard", label: "Panel", icon: "▦" },
   { href: "/dashboard/notifications", label: "Bildirimler", icon: "🔔" },
   { href: "/dashboard/schedule", label: "Ders Programı", icon: "◷", roles: STAFF },
+  // Sprint 32C: boşluk bulma motoru (ders tipi + süre + kapasiteye göre uygun başlangıç aralıkları).
+  { href: "/dashboard/find-availability", label: "Boşluk Bul", icon: "⌖", roles: STAFF },
   // Sprint 26: Hoca müsaitlik modülü ana üründen çıkarıldı (hoca boş/dolu = ders programından).
   // Sprint 26 ek (v1.1.1): global yönetim ekranları yalnız stüdyo yetkilisine; Instructor kendi programını görür.
   { href: "/dashboard/students", label: "Öğrenciler", icon: "☺", roles: MANAGER },
