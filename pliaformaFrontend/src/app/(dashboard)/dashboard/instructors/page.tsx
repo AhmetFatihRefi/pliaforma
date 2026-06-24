@@ -130,12 +130,15 @@ export default function InstructorsPage() {
     canManage && m.role !== "Owner" && !(myRole === "StudioAdmin" && m.role === "StudioAdmin");
   const canChangeRole = (m: MemberDto) => isOwner && m.role !== "Owner";
 
+  // Bu sayfa yalnız ekip/hocaları yönetir (Owner/StudioAdmin/Instructor). Öğrenciler "Öğrenciler" sayfasında.
+  const staff = members.filter((m) => m.role !== "Student");
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Hocalar & Üyeler</h1>
-          <p className="mt-1 text-sm text-muted">Davet edin, rol belirleyin, gruplara atayın.</p>
+          <h1 className="text-2xl font-semibold text-foreground">Hocalar</h1>
+          <p className="mt-1 text-sm text-muted">Stüdyo ekibi (sahip & hocalar). Davet edin, rol belirleyin, gruplara atayın. Öğrenciler ayrı sayfada.</p>
         </div>
         {canManage && <Button onClick={() => setInviteOpen(true)}>+ Davet et</Button>}
       </div>
@@ -179,10 +182,10 @@ export default function InstructorsPage() {
         <tbody>
           {loading ? (
             <TableEmpty colSpan={canManage ? 5 : 4}>Yükleniyor…</TableEmpty>
-          ) : members.length === 0 ? (
-            <TableEmpty colSpan={canManage ? 5 : 4}>Henüz üye yok.</TableEmpty>
+          ) : staff.length === 0 ? (
+            <TableEmpty colSpan={canManage ? 5 : 4}>Henüz hoca yok.</TableEmpty>
           ) : (
-            members.map((m) => (
+            staff.map((m) => (
               <TR key={m.membershipId}>
                 <TD className="font-medium">{m.fullName}</TD>
                 <TD className="text-muted">{m.email}</TD>

@@ -247,8 +247,9 @@ export interface StudentContractLineDto {
   studentName: string;
   classTypeId: string;
   classTypeName: string;
-  instructorProfileId: string;
-  instructorName: string;
+  // Sprint 33: hoca opsiyonel (null = herhangi bir hoca).
+  instructorProfileId?: string | null;
+  instructorName?: string | null;
   startDate: string;
   endDate: string;
   lessonCount: number;
@@ -261,6 +262,8 @@ export interface StudentContractLineDto {
   makeupAllowance: number;
   dueDate?: string | null;
   isIndividual: boolean;
+  // Sprint 33: kapasite tercihi (null = farketmez; 1 = bireysel; N = en fazla N).
+  preferredMaxCapacity?: number | null;
   status: StudentContractLineStatus;
   currency: string;
   sequenceNo: number;
@@ -430,14 +433,16 @@ export interface MyDebtSummaryDto {
 export interface ContractLineInput {
   headerId?: string | null;
   classTypeId: string;
-  instructorProfileId: string;
+  // Sprint 33: hoca opsiyonel (null = herhangi bir hoca).
+  instructorProfileId?: string | null;
   startDate: string;
   endDate: string;
   lessonCount: number;
   pricePerLesson: number;
   makeupAllowance: number;
   dueDate?: string | null;
-  isIndividual: boolean;
+  // Sprint 33: "Bireysel mi?" yerine kapasite tercihi (null = farketmez; 1 = bireysel; N = en fazla N).
+  preferredMaxCapacity?: number | null;
   currency?: string | null;
   notes?: string | null;
   // Sprint 29A: yeni line'da EN AZ 1 tercih gün/saat zorunlu (aynı gün+saat tekrar edemez).

@@ -154,7 +154,7 @@ export const contractService = {
   // Sprint 28C-1: line-bazlı program üretimi (yeni kaynak — LineCard "Programı oluştur"). Bireysellik line'dan gelir.
   previewLineSchedule: (lineId: string, slots: ContractScheduleSlotInput[]) =>
     api<ContractSchedulePreviewDto>(`/api/studio/contract-lines/${lineId}/schedule/preview`, { method: "POST", body: { slots } }),
-  generateLineSchedule: (lineId: string, input: { slots: ContractScheduleSlotInput[]; reuseExistingGroup: boolean }) =>
+  generateLineSchedule: (lineId: string, input: { slots: ContractScheduleSlotInput[]; reuseExistingGroup: boolean; instructorProfileId?: string | null; capacity?: number | null }) =>
     api<GenerateContractScheduleResultDto>(`/api/studio/contract-lines/${lineId}/schedule/generate`, { method: "POST", body: input }),
   // Sprint 23: ek işlem (amendment) + borç.
   amendments: (id: string) => api<ContractAmendmentDto[]>(`/api/studio/contracts/${id}/amendments`),
