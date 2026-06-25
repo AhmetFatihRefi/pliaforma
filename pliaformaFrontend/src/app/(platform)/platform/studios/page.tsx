@@ -49,7 +49,7 @@ export default function PlatformStudiosPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Input placeholder="Ad veya slug ara…" value={search} onChange={(e) => setSearch(e.target.value)} className="sm:max-w-xs" />
-        <Select value={status} onChange={(e) => setStatus(e.target.value as StudioStatus | "")} className="sm:max-w-[180px]">
+        <Select clearable value={status} onChange={(e) => setStatus(e.target.value as StudioStatus | "")} className="sm:max-w-[180px]">
           <option value="">Tüm durumlar</option>
           <option value="Active">Aktif</option>
           <option value="Suspended">Askıda</option>

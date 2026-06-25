@@ -63,7 +63,7 @@ function PaymentsReport({ month }: { month: string }) {
         </div>
       )}
       <FormField label="Durum">
-        <Select value={status} onChange={(e) => setStatus(e.target.value as PaymentStatus | "")}>
+        <Select clearable value={status} onChange={(e) => setStatus(e.target.value as PaymentStatus | "")}>
           <option value="">Tümü</option>
           {(["Pending", "Paid", "Overdue", "Cancelled", "Refunded"] as PaymentStatus[]).map((s) => <option key={s} value={s}>{paymentStatusLabels[s]}</option>)}
         </Select>

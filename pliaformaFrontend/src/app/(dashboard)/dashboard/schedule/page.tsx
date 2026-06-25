@@ -34,11 +34,14 @@ import { errorMessage } from "@/lib/errors";
 import { WeekTimetable, MobileAgenda } from "./_components/timetable";
 import { SessionDetailDrawer } from "./_components/detail-drawer";
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+// Yerel takvim tarihini "YYYY-MM-DD" döndürür. toISOString() UTC'ye çevirip UTC+ saat dilimlerinde
+// günü bir geri kaydırdığı için KULLANILMAZ (seanslar duvar-saati anahtarlı; tek gün seçince boş kalıyordu).
+const ymd = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+const todayStr = () => ymd(new Date());
 const addDays = (d: string, n: number) => {
   const dt = new Date(d + "T00:00:00");
   dt.setDate(dt.getDate() + n);
-  return dt.toISOString().slice(0, 10);
+  return ymd(dt);
 };
 const fmtTime = (iso: string) => iso.slice(11, 16);
 const fmtDate = (iso: string) => iso.slice(0, 10);
@@ -159,7 +162,7 @@ export default function SchedulePage() {
     const out: string[] = [];
     const start = new Date(from + "T00:00:00");
     const end = new Date(to + "T00:00:00");
-    for (let d = start; d <= end; d.setDate(d.getDate() + 1)) out.push(new Date(d).toISOString().slice(0, 10));
+    for (let d = start; d <= end; d.setDate(d.getDate() + 1)) out.push(ymd(new Date(d)));
     return out.length > 0 && out.length <= 62 ? out : [from];
   }, [from, to]);
 
@@ -210,7 +213,8 @@ export default function SchedulePage() {
           durationMinutes: availDurationMinutes,
           requiredCapacity: availCapacityNum,
           instructorId: availInstructorId || undefined,
-          // Adım = ders süresi (mola dahil blok) → boşluklar ders-bloğu hizasında, temiz saatlerde.
+          // Not: pencere SINIRLARI artık gerçek müsaitlik geçişlerine göre (backend event-based); bu param
+          // yalnız geriye dönük uyum için gönderilir (slot-create başlangıç adımı ayrıca slotIncrement ile verilir).
           incrementMinutes: availDurationMinutes,
         });
         if (!cancelled) { setAvailWindows(res); setAvailError(null); }
@@ -301,7 +305,7 @@ export default function SchedulePage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Ders Programı</h1>
-          <p className="mt-1 text-sm text-muted">Haftalık ders planı — derse tıklayıp yönetin, sürükleyip taşıyın.</p>
+          <p className="mt-1 text-sm text-muted">Haftalık ders planı — aynı saatteki dersler tek grupta toplanır; karta tıklayıp yönetin.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {/* Sprint 30: "+ Telafi talebi" Telafi Talepleri sayfasına taşındı (hoca + yönetici oradan oluşturur). */}
@@ -327,12 +331,12 @@ export default function SchedulePage() {
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
           </div>
           {isManager && (
-            <Select value={instructorFilter} onChange={(e) => setInstructorFilter(e.target.value)} className="w-44">
+            <Select clearable value={instructorFilter} onChange={(e) => setInstructorFilter(e.target.value)} className="w-44">
               <option value="">Tüm hocalar</option>
               {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
             </Select>
           )}
-          <Select value={classTypeFilter} onChange={(e) => setClassTypeFilter(e.target.value)} className="w-44">
+          <Select clearable value={classTypeFilter} onChange={(e) => setClassTypeFilter(e.target.value)} className="w-44">
             <option value="">Tüm ders tipleri</option>
             {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
@@ -349,9 +353,9 @@ export default function SchedulePage() {
           </label>
           {showAvailability && (
             <span className="flex flex-wrap items-center gap-3 text-xs text-muted">
-              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-primary/40 bg-primary-soft/40" /> Ders</span>
-              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-dashed border-warning/70 bg-warning/10" /> Telafi talebi</span>
-              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-dashed border-success/60 bg-success/10" /> Boşluk</span>
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-primary/25 border-l-[3px] border-l-primary bg-primary-soft" /> Ders</span>
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-dashed border-warning/55 border-l-[3px] border-l-warning bg-warning/12" /> Telafi talebi</span>
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-dashed border-success/45 border-l-[3px] border-l-success bg-success/10" /> Boşluk</span>
             </span>
           )}
         </div>
@@ -444,7 +448,7 @@ export default function SchedulePage() {
           {sessions.length === 0 && visibleReqs.length === 0 && (
             <p className="text-center text-sm text-muted">
               {selectedInstructorName ? `${selectedInstructorName} hocanın bu aralıkta dersi yok.` : "Bu aralıkta ders seansı yok."}
-              {isManager && " Üstten “+ Yeni seans” ile veya boş bir hücreye tıklayarak ekleyebilirsiniz."}
+              {isManager && " Üstten “+ Yeni seans” ile veya gün başlığındaki “+” düğmesiyle ekleyebilirsiniz."}
             </p>
           )}
         </>
@@ -1317,8 +1321,8 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
         {err && <Alert kind="error">{err}</Alert>}
         {slotWindow && (
           <Alert kind="info">
-            Seçilen boşluk: <span className="font-medium">{fmtTime(slotWindow.startWindowFrom)}–{hhmmPlus(slotWindow.startWindowTo, slotWindow.durationMinutes)}</span> uygun aralık ·
-            {" "}{slotWindow.durationMinutes} dk{slotWindow.availableEquipmentCapacity != null ? ` · en fazla ${slotWindow.availableEquipmentCapacity} kişi` : ""}.
+            Başlangıç aralığı: <span className="font-medium">{fmtTime(slotWindow.startWindowFrom)}–{fmtTime(slotWindow.startWindowTo)}</span> ·
+            {" "}{slotWindow.durationMinutes} dk · en geç bitiş {hhmmPlus(slotWindow.startWindowTo, slotWindow.durationMinutes)}{slotWindow.availableEquipmentCapacity != null ? ` · en fazla ${slotWindow.availableEquipmentCapacity} kişi` : ""}.
           </Alert>
         )}
         <FormField label="Hoca" hint={slotWindow ? "Yalnız bu boşlukta uygun hocalar" : undefined}>

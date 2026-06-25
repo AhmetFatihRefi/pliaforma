@@ -59,7 +59,9 @@ public sealed class FindClassTypeSlotsHandler : IQueryHandler<FindClassTypeSlots
         var studioId = _currentUser.RequireStudioId();
         var duration = request.DurationMinutes;
         var required = request.RequiredCapacity;
-        var increment = request.IncrementMinutes ?? 15;
+        // Not: IncrementMinutes artık pencere SINIRLARINI belirlemez (eski sabit-ızgara modeli kaldırıldı).
+        // Pencereler GERÇEK müsaitlik geçişlerinde (busy-edge) başlar/biter; istemci başlangıç seçeneklerini
+        // pencere [from,to] aralığında kendi adımıyla üretir. Param geriye dönük uyum için kabul edilir.
 
         // ---- ClassType (tenant + aktif) ----
         var classType = await _db.ClassTypes
@@ -149,33 +151,88 @@ public sealed class FindClassTypeSlotsHandler : IQueryHandler<FindClassTypeSlots
             var dayWorkStart = date.ToDateTime(WorkStart, DateTimeKind.Unspecified);
             var dayWorkEnd = date.ToDateTime(WorkEnd, DateTimeKind.Unspecified);
 
-            // Bu gün için aday başlangıçlar (grid).
-            var cands = new List<(DateTime T, int? Cap, List<Guid> Instr)>();
-            for (var t = dayWorkStart; t.AddMinutes(duration) <= dayWorkEnd; t = t.AddMinutes(increment))
+            // Başlangıç-zamanı alanı [domain]: [en erken başlangıç, en geç başlangıç (workEnd − süre)].
+            var domainStart = dayWorkStart;
+            if (date == today && nowLocal > domainStart)
+                domainStart = nowLocal.AddTicks(-(nowLocal.Ticks % TimeSpan.TicksPerMinute)); // saniyeyi at (temiz "şu an")
+            var domainEnd = dayWorkEnd.AddMinutes(-duration);
+            if (domainStart > domainEnd) continue; // güne 1 ders bile sığmıyor
+
+            // ---- Olay noktaları: başlangıç ekseninde müsaitlik/kapasite/kapanış DEĞİŞTİĞİ anlar ----
+            // Sabit ızgara YOK → pencereler GERÇEK geçişlerde başlar/biter. Bir [bs,be) meşgul aralığı, başlangıç t
+            // için (bs−süre, be) boyunca çakışır; dolayısıyla geçiş noktaları (bs−süre) ve be'dir.
+            var events = new SortedSet<DateTime> { domainStart, domainEnd };
+            void AddEvent(DateTime t) { if (t > domainStart && t < domainEnd) events.Add(t); }
+
+            foreach (var i in instructors)
+                if (busyByInstructor.TryGetValue(i.Id, out var blocks))
+                    foreach (var (bs, be) in blocks) { AddEvent(bs.AddMinutes(-duration)); AddEvent(be); }
+            foreach (var c in closures) { AddEvent(c.StartAt.AddMinutes(-duration)); AddEvent(c.EndAt); }
+            foreach (var p in poolSessions) { AddEvent(p.Item1.AddMinutes(-duration)); AddEvent(p.Item2); }
+
+            // ---- Segmentler: ardışık olaylar arası. İÇ noktada (midpoint) değer sabit → aralık için GARANTİ. ----
+            var ev = events.ToList();
+            var daySegs = new List<(DateTime From, DateTime To, int? Cap, List<Guid> Instr)>();
+            for (var k = 0; k + 1 < ev.Count; k++)
             {
-                var qe = t.AddMinutes(duration);
-                if (date == today && t < nowLocal) continue;                                   // geçmiş başlangıç
-                if (closures.Any(c => c.StartAt < qe && t < c.EndAt)) continue;                 // kapanış/tatil
+                var a = ev[k];
+                var b = ev[k + 1];
+                if (b <= a) continue;
+                var qs = a.AddMinutes((b - a).TotalMinutes / 2); // segment iç noktası
+                var qe = qs.AddMinutes(duration);
+
+                if (closures.Any(c => c.StartAt < qe && qs < c.EndAt)) continue; // kapanış → boşluk yok
 
                 int? availCap = null;
                 if (poolTotal is { } total)
                 {
-                    var peak = PeakUsed(poolSessions, t, qe);
-                    var avail = total - peak;
-                    if (avail < required) continue;                                            // ekipman yetersiz
+                    var avail = total - PeakUsed(poolSessions, qs, qe);
+                    if (avail < required) continue; // ekipman yetersiz
                     availCap = avail;
                 }
 
-                var freeInstr = instructors.Where(i => IsFree(busyByInstructor, i.Id, t, qe)).Select(i => i.Id).ToList();
-                if (freeInstr.Count == 0) continue;                                             // uygun hoca yok
+                var freeInstr = instructors
+                    .Where(i => IsFree(busyByInstructor, i.Id, qs, qe))
+                    .Select(i => i.Id).OrderBy(x => x).ToList();
+                if (freeInstr.Count == 0) continue; // uygun hoca yok
 
-                cands.Add((t, availCap, freeInstr));
+                daySegs.Add((a, b, availCap, freeInstr));
             }
 
-            MergeWindows(cands, date, duration, required, increment, nameById, result);
+            MergeAdjacent(daySegs, date, duration, required, nameById, result);
         }
 
         return result;
+    }
+
+    /// <summary>Bitişik (To == sonraki From) ve AYNI (kapasite + hoca kümesi) segmentleri tek pencerede birleştirir;
+    /// pencerenin From/To'su geçerli başlangıç aralığını (start-range) verir.</summary>
+    private static void MergeAdjacent(
+        List<(DateTime From, DateTime To, int? Cap, List<Guid> Instr)> segs, DateOnly date, int duration, int required,
+        Dictionary<Guid, string> nameById, List<AvailabilityWindowDto> result)
+    {
+        static string Key(int? cap, List<Guid> instr) => $"{(cap?.ToString() ?? "x")}|{string.Join(",", instr)}";
+
+        var i = 0;
+        while (i < segs.Count)
+        {
+            var seg = segs[i];
+            var key = Key(seg.Cap, seg.Instr);
+            var to = seg.To;
+            var j = i + 1;
+            while (j < segs.Count && segs[j].From == to && Key(segs[j].Cap, segs[j].Instr) == key)
+            {
+                to = segs[j].To;
+                j++;
+            }
+
+            var instrDtos = seg.Instr
+                .Select(id => new AvailabilityInstructorDto(id, nameById.TryGetValue(id, out var n) ? n : ""))
+                .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            result.Add(new AvailabilityWindowDto(date, seg.From, to, duration, required, seg.Cap, instrDtos));
+            i = j;
+        }
     }
 
     /// <summary>[qs,qe) aralığında ekipman kullanım ZİRVESİ (eşzamanlı en yüksek kapasite). Sweep: zirve yalnız bir
@@ -200,37 +257,4 @@ public sealed class FindClassTypeSlotsHandler : IQueryHandler<FindClassTypeSlots
 
     private static bool IsFree(Dictionary<Guid, List<(DateTime S, DateTime E)>> busy, Guid instrId, DateTime qs, DateTime qe)
         => !busy.TryGetValue(instrId, out var list) || !list.Any(b => b.S < qe && qs < b.E);
-
-    /// <summary>Bitişik (increment kadar) aday başlangıçları, AYNI (kapasite + hoca kümesi) anahtarına göre tek
-    /// pencerede birleştirir. Anahtar değişince veya boşlukta yeni pencere açar.</summary>
-    private static void MergeWindows(
-        List<(DateTime T, int? Cap, List<Guid> Instr)> cands, DateOnly date, int duration, int required, int increment,
-        Dictionary<Guid, string> nameById, List<AvailabilityWindowDto> result)
-    {
-        static string Key(int? cap, List<Guid> instr) =>
-            $"{(cap?.ToString() ?? "x")}|{string.Join(",", instr.OrderBy(x => x))}";
-
-        var i = 0;
-        while (i < cands.Count)
-        {
-            var start = cands[i];
-            var key = Key(start.Cap, start.Instr);
-            var lastT = start.T;
-            var j = i + 1;
-            while (j < cands.Count
-                   && cands[j].T == lastT.AddMinutes(increment)
-                   && Key(cands[j].Cap, cands[j].Instr) == key)
-            {
-                lastT = cands[j].T;
-                j++;
-            }
-
-            var instrDtos = start.Instr
-                .Select(id => new AvailabilityInstructorDto(id, nameById.TryGetValue(id, out var n) ? n : ""))
-                .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            result.Add(new AvailabilityWindowDto(date, start.T, lastT, duration, required, start.Cap, instrDtos));
-            i = j;
-        }
-    }
 }

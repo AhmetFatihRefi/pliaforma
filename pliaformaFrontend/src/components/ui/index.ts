@@ -1,6 +1,7 @@
 export { Button } from "./Button";
 export { Input, Textarea } from "./Input";
 export { Select } from "./Select";
+export type { SelectProps, SelectOption } from "./Select";
 export { Card, CardHeader } from "./Card";
 export { Badge } from "./Badge";
 export { Alert } from "./Alert";

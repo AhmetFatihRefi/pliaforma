@@ -96,7 +96,7 @@ export default function MakeupRequestsPage() {
 
       <Card>
         <FormField label="Durum">
-          <Select value={status} onChange={(e) => setStatus(e.target.value as MakeupRequestStatus | "")}>
+          <Select clearable value={status} onChange={(e) => setStatus(e.target.value as MakeupRequestStatus | "")}>
             <option value="">Tümü</option>
             {STATUSES.map((s) => <option key={s} value={s}>{makeupRequestStatusLabels[s]}</option>)}
           </Select>
