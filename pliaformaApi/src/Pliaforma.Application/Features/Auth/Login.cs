@@ -1,7 +1,9 @@
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Common.Settings;
 using Pliaforma.Application.Common.Text;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -33,9 +35,10 @@ public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthOutcome>
     private readonly AuthSessionService _session;
     private readonly ISecurityAuditLogger _audit;
     private readonly ILoginAttemptStore _loginAttempts;
+    private readonly AuthSettings _auth;
 
     public LoginHandler(IAppDbContext db, IPasswordHasher hasher, IDateTime clock, AuthSessionService session,
-        ISecurityAuditLogger audit, ILoginAttemptStore loginAttempts)
+        ISecurityAuditLogger audit, ILoginAttemptStore loginAttempts, IOptions<AuthSettings> auth)
     {
         _db = db;
         _hasher = hasher;
@@ -43,6 +46,7 @@ public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthOutcome>
         _session = session;
         _audit = audit;
         _loginAttempts = loginAttempts;
+        _auth = auth.Value;
     }
 
     public async Task<AuthOutcome> Handle(LoginCommand request, CancellationToken cancellationToken)
@@ -62,7 +66,8 @@ public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthOutcome>
         }
 
         // Hesap geçici kilitli → 423 (generic mesaj; hesabın var olduğunu çok açık etmez).
-        if (user.LockoutEnd is { } until && until > now)
+        // Kilitleme kapalıysa (DEV) mevcut kilit de yok sayılır.
+        if (_auth.EnableLockout && user.LockoutEnd is { } until && until > now)
         {
             await _audit.LogAsync(SecurityAuditEventType.LoginFailed, SecurityAuditOutcome.Failure,
                 actorUserId: user.Id, actorEmail: user.Email, detail: "locked", cancellationToken: cancellationToken);

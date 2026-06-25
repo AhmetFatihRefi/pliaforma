@@ -18,6 +18,15 @@ public sealed class AuthSettings
     public bool RequireEmailVerification { get; set; } = true;
 
     /// <summary>
+    /// Hesap kilitleme (Sprint 31B-2) açık mı?
+    /// <para>true (varsayılan / PROD): eşik aşılınca hesap geçici kilitlenir.</para>
+    /// <para>false (DEV): başarısız denemeler asla kilit oluşturmaz ve mevcut kilit yok sayılır
+    /// (test sırasında bilerek yanlış parola girmek kilitlemesin diye). Dev'de kapatmak için
+    /// appsettings.Development.json → "Auth": { "EnableLockout": false }.</para>
+    /// </summary>
+    public bool EnableLockout { get; set; } = true;
+
+    /// <summary>
     /// Hesap kilitleme eşiği (Sprint 31B-2): bu kadar ardışık başarısız login denemesinden sonra hesap
     /// <see cref="LockoutMinutes"/> dakika geçici olarak kilitlenir. Varsayılan 5.
     /// </summary>

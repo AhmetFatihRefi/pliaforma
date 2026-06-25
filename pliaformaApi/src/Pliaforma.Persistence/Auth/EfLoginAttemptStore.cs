@@ -26,6 +26,10 @@ public sealed class EfLoginAttemptStore : ILoginAttemptStore
 
     public async Task<bool> RecordFailedAttemptAsync(Guid userId, CancellationToken cancellationToken = default)
     {
+        // Kilitleme kapalıysa (DEV) sayaç/kilit hiç oluşmasın → bilerek yanlış parola test edilebilir.
+        if (!_auth.EnableLockout)
+            return false;
+
         await using var ctx = new AppDbContext(_options);
         var user = await ctx.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
