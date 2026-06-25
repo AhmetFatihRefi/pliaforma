@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService } from "@/lib/studioApi";
+import { attendanceService, availabilityService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceItemDto,
+  type AvailabilityWindowDto,
   type AttendanceMarkInput,
   type AttendanceStatus,
   type ClassBookingDto,
@@ -42,6 +43,29 @@ const addDays = (d: string, n: number) => {
 const fmtTime = (iso: string) => iso.slice(11, 16);
 const fmtDate = (iso: string) => iso.slice(0, 10);
 
+// Sprint 36: bir wall-clock ISO saatine dakika ekleyip "HH:mm" döndürür (boş aralığın bitişi = en geç başlangıç + süre).
+function hhmmPlus(iso: string, min: number) {
+  const t = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16)) + min;
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+
+// Sprint 36: bir boşluk penceresi içinde incrementMinutes adımlı başlangıç saati seçenekleri (datetime-local değerleri).
+// startWindowFrom/To wall-clock (Unspecified) ISO; çalışma saatleri 07:00–23:00 olduğundan pencere gece yarısını geçmez.
+function buildStartOptions(fromIso: string, toIso: string, incrementMin: number) {
+  const datePart = fromIso.slice(0, 10);
+  const toMin = (iso: string) => Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
+  const start = toMin(fromIso);
+  const end = toMin(toIso);
+  const step = Math.max(5, incrementMin);
+  const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  const out: { value: string; label: string }[] = [];
+  for (let m = start; m <= end; m += step) out.push({ value: `${datePart}T${fmt(m)}`, label: fmt(m) });
+  // Pencere sonu adıma tam denk gelmiyorsa son seçenek olarak da ekle.
+  const endVal = `${datePart}T${fmt(end)}`;
+  if (out.length === 0 || out[out.length - 1].value !== endVal) out.push({ value: endVal, label: fmt(end) });
+  return out;
+}
+
 export default function SchedulePage() {
   const { instructors, isManager } = useInstructors();
   // Sprint 25: Instructor için useInstructors yalnız kendi profilini döndürür → kendi dersini ayırt et.
@@ -72,6 +96,16 @@ export default function SchedulePage() {
   const [detailFor, setDetailFor] = useState<ClassSessionDto | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Sprint 36: "Boşlukları Göster" overlay — Sprint 32C availability endpoint'ini schedule takvimi üzerinde kullanır.
+  const [showAvailability, setShowAvailability] = useState(false);
+  const [availClassTypeId, setAvailClassTypeId] = useState("");
+  const [availCapacity, setAvailCapacity] = useState("1");
+  const [availInstructorId, setAvailInstructorId] = useState("");
+  const [availWindows, setAvailWindows] = useState<AvailabilityWindowDto[]>([]);
+  const [availLoading, setAvailLoading] = useState(false);
+  const [availError, setAvailError] = useState<string | null>(null);
+  const [availNonce, setAvailNonce] = useState(0);
+  const [slotCreate, setSlotCreate] = useState<AvailabilityWindowDto | null>(null);
   const confirm = useConfirm();
   const toast = useToast();
   // Sprint 26: seçili hoca filtresi adı (boş/dolu programdan anlaşılır mesajı için).
@@ -135,8 +169,62 @@ export default function SchedulePage() {
   };
   const goThisWeek = () => { setFrom(todayStr()); setTo(addDays(todayStr(), 7)); };
 
-  // ---- Sürükle-bırak (taşıma) + kaydedilmemiş değişiklikler ----
-  const [moves, setMoves] = useState<Record<string, { date: string; hour: number }>>({});
+  // ---- Sprint 36: Boşlukları Göster ----
+  // Süre, create akışıyla tutarlı olsun diye SEÇİLİ DERS TİPİNİN varsayılan süresinden gelir (panelde read-only).
+  const availDurationMinutes = classTypes.find((c) => c.id === availClassTypeId)?.defaultDurationMinutes ?? 60;
+  // Backend kuralı: aralık (to − from) en fazla 31 gün. Aşılırsa fetch YOK, uyarı gösterilir.
+  const spanDays = Math.round((new Date(to + "T00:00:00").getTime() - new Date(from + "T00:00:00").getTime()) / 86_400_000);
+  const rangeTooLong = spanDays > 31;
+  const availCapacityNum = Number(availCapacity);
+  const availCapacityValid = Number.isFinite(availCapacityNum) && availCapacityNum >= 1;
+
+  const toggleAvailability = () => {
+    if (showAvailability) {
+      setShowAvailability(false);
+      setAvailWindows([]);
+      setAvailError(null);
+    } else {
+      // Boşluk ders tipi: üstteki ders tipi filtresinden ön-seed (yoksa ilk ders tipi). Ayrı alan olarak kalır.
+      if (!availClassTypeId) setAvailClassTypeId(classTypeFilter || classTypes[0]?.id || "");
+      setShowAvailability(true);
+    }
+  };
+  const refreshAvailability = useCallback(() => setAvailNonce((n) => n + 1), []);
+  // Süre kimliği (ders tipi + süre) değişince eski boşlukları ANINDA temizle → yanlış süreli kart asla takılı kalmaz.
+  const lastDurationSig = useRef("");
+
+  // Toggle açık + geçerli kriterler + aralık ≤ 31 gün iken availability çek (debounce + son-istek-kazanır).
+  useEffect(() => {
+    if (!showAvailability) return;
+    if (!availClassTypeId || rangeTooLong || !availCapacityValid) { setAvailWindows([]); return; }
+    // Ders tipi/süre değiştiyse stale boşlukları hemen düşür (yalnız "yenile" (nonce) ise mevcut kalsın).
+    const durationSig = `${availClassTypeId}|${availDurationMinutes}`;
+    if (lastDurationSig.current !== durationSig) { setAvailWindows([]); lastDurationSig.current = durationSig; }
+    let cancelled = false;
+    setAvailLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await availabilityService.classTypeSlots({
+          classTypeId: availClassTypeId,
+          from, to,
+          durationMinutes: availDurationMinutes,
+          requiredCapacity: availCapacityNum,
+          instructorId: availInstructorId || undefined,
+          // Adım = ders süresi (mola dahil blok) → boşluklar ders-bloğu hizasında, temiz saatlerde.
+          incrementMinutes: availDurationMinutes,
+        });
+        if (!cancelled) { setAvailWindows(res); setAvailError(null); }
+      } catch (e) {
+        if (!cancelled) { setAvailWindows([]); setAvailError(e instanceof ApiError ? e.message : "Boşluklar yüklenemedi."); }
+      } finally {
+        if (!cancelled) setAvailLoading(false);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAvailability, availClassTypeId, availDurationMinutes, availCapacity, availInstructorId, from, to, rangeTooLong, availNonce]);
+
+  // Sprint 36: sürükle-bırak kaldırıldı — taşıma artık derse tıklayınca açılan offcanvas'tan "Ertele" ile yapılır.
   const [quickAt, setQuickAt] = useState<string | null>(null);
   // Sprint 32C: "Boşluk Bul" → "Bu saatte ders aç" derin bağlantısı (newAt + ön-dolu ders tipi/hoca/kapasite).
   const [prefill, setPrefill] = useState<{ startAt: string; classTypeId?: string; instructorId?: string; capacity?: string } | null>(null);
@@ -153,25 +241,6 @@ export default function SchedulePage() {
     // URL'i temizle (yenilemede tekrar açılmasın).
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
-  const movedIds = useMemo(() => new Set(Object.keys(moves)), [moves]);
-
-  const isoDate = (iso: string) => iso.slice(0, 10);
-  const isoHour = (iso: string) => Number(iso.slice(11, 13));
-  const durationMin = (s: ClassSessionDto) => Math.max(0, Math.round((new Date(s.endAt).getTime() - new Date(s.startAt).getTime()) / 60000));
-  const movedStart = (s: ClassSessionDto, date: string, hour: number) => `${date}T${String(hour).padStart(2, "0")}:${s.startAt.slice(14, 16)}:00`;
-  const addMinutes = (iso: string, min: number) => {
-    const d = new Date(iso); d.setMinutes(d.getMinutes() + min);
-    const p = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
-  };
-
-  // Optimistik: taşınan dersleri yeni konumlarıyla göster.
-  const displaySessions = useMemo(() => sessions.map((s) => {
-    const mv = moves[s.id];
-    if (!mv) return s;
-    const start = movedStart(s, mv.date, mv.hour);
-    return { ...s, startAt: start, endAt: addMinutes(start, durationMin(s)) };
-  }), [sessions, moves]);
 
   // Seans → kayıtlı öğrenci adları (programda + drawer'da göstermek için).
   const studentsBySession = useMemo(() => {
@@ -182,34 +251,6 @@ export default function SchedulePage() {
     }
     return m;
   }, [bookings]);
-
-  const onDropSession = (id: string, date: string, hour: number) => {
-    const s = sessions.find((x) => x.id === id);
-    if (!s || s.status !== "Scheduled") return;
-    if (isoDate(s.startAt) === date && isoHour(s.startAt) === hour) {
-      setMoves((m) => { const { [id]: _drop, ...rest } = m; return rest; }); // orijinal hücreye geri → değişikliği kaldır
-    } else {
-      setMoves((m) => ({ ...m, [id]: { date, hour } }));
-    }
-  };
-
-  const discardMoves = () => setMoves({});
-  const saveMoves = async () => {
-    const entries = Object.entries(moves);
-    if (entries.length === 0) return;
-    setBusyId("save-moves");
-    const fails: string[] = [];
-    for (const [id, mv] of entries) {
-      const s = sessions.find((x) => x.id === id);
-      if (!s) continue;
-      try { await classSessionService.reschedule(id, { newStartAt: movedStart(s, mv.date, mv.hour), keepBookings: true }); }
-      catch (e) { fails.push(`${s.classTypeName} (${fmtTime(s.startAt)}): ${errorMessage(e, "taşınamadı")}`); }
-    }
-    setMoves({}); setBusyId(null);
-    await load();
-    if (fails.length) toast.error(`Bazı dersler taşınamadı — ${fails.join(" · ")}`);
-    else toast.success(`${entries.length} ders taşındı.`);
-  };
 
   const withdrawRequest = async (r: MakeupRequestDto) => {
     if (!(await confirm({ title: "Telafi talebini geri çek", tone: "danger", confirmLabel: "Geri çek", message: "Bu telafi talebini geri çekmek istiyor musunuz? Saat boşalır, rezerve kredi serbest kalır." }))) return;
@@ -299,6 +340,66 @@ export default function SchedulePage() {
         </div>
       </Card>
 
+      {/* Sprint 36: Boşlukları Göster — dersler + uygun boşluklar aynı takvimde. */}
+      <Card>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+            <input type="checkbox" checked={showAvailability} onChange={toggleAvailability} className="h-4 w-4 accent-[var(--primary)]" />
+            Boşlukları Göster
+          </label>
+          {showAvailability && (
+            <span className="flex flex-wrap items-center gap-3 text-xs text-muted">
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-primary/40 bg-primary-soft/40" /> Ders</span>
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-dashed border-warning/70 bg-warning/10" /> Telafi talebi</span>
+              <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-4 rounded border border-dashed border-success/60 bg-success/10" /> Boşluk</span>
+            </span>
+          )}
+        </div>
+        {showAvailability && (
+          <div className="mt-3 space-y-3 border-t border-border pt-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <FormField label="Boşluk ders tipi">
+                <Select value={availClassTypeId} onChange={(e) => setAvailClassTypeId(e.target.value)} className="w-48">
+                  <option value="">Seçin…</option>
+                  {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk{c.equipmentName ? ` · ${c.equipmentName}` : ""}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Süre">
+                <Input value={`${availDurationMinutes} dk`} readOnly disabled className="w-24" />
+              </FormField>
+              <FormField label="Kapasite">
+                <Input type="number" min={1} value={availCapacity} onChange={(e) => setAvailCapacity(e.target.value)} className="w-24" />
+              </FormField>
+              <FormField label="Hoca (ops.)">
+                <Select value={availInstructorId} onChange={(e) => setAvailInstructorId(e.target.value)} className="w-44">
+                  <option value="">Tüm uygun hocalar</option>
+                  {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </Select>
+              </FormField>
+              <Button variant="secondary" size="sm" loading={availLoading} onClick={refreshAvailability} disabled={!availClassTypeId || rangeTooLong || !availCapacityValid}>
+                Boşlukları yenile
+              </Button>
+            </div>
+            {rangeTooLong && (
+              <Alert kind="warning">Boşluk gösterimi en fazla 31 günlük aralıkta çalışır. Lütfen daha kısa bir tarih aralığı seçin.</Alert>
+            )}
+            {!rangeTooLong && !availClassTypeId && (
+              <p className="text-sm text-muted">Boşlukları görmek için bir ders tipi seçin.</p>
+            )}
+            {availError && <Alert kind="error">{availError}</Alert>}
+            {!rangeTooLong && availClassTypeId && availCapacityValid && availLoading && (
+              <p className="text-sm text-muted">Boşluklar yükleniyor…</p>
+            )}
+            {!rangeTooLong && availClassTypeId && availCapacityValid && !availLoading && !availError && availWindows.length === 0 && (
+              <p className="text-sm text-muted">Bu kriterlere uygun boşluk bulunamadı.</p>
+            )}
+            {!isManager && availWindows.length > 0 && (
+              <p className="text-xs text-muted">Boşluklar görüntüleniyor. Ders oluşturma yalnızca stüdyo yöneticisi tarafından yapılabilir.</p>
+            )}
+          </div>
+        )}
+      </Card>
+
       {error && <Alert kind="error">{error}</Alert>}
 
       {/* Sprint 26: hoca filtresi seçiliyse o hocanın programı gösterilir (boş/dolu saatler buradan anlaşılır). */}
@@ -312,29 +413,18 @@ export default function SchedulePage() {
         <Card><p className="text-sm text-muted">Yükleniyor…</p></Card>
       ) : (
         <>
-          {/* Kaydedilmemiş taşıma çubuğu */}
-          {movedIds.size > 0 && (
-            <div className="sticky top-2 z-20 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/60 bg-warning/10 px-3 py-2 shadow-sm">
-              <span className="text-sm font-medium text-foreground">{movedIds.size} ders taşındı — değişiklikler kaydedilmedi.</span>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={discardMoves}>Vazgeç</Button>
-                <Button size="sm" loading={busyId === "save-moves"} onClick={saveMoves}>Kaydet ({movedIds.size})</Button>
-              </div>
-            </div>
-          )}
-          {/* Masaüstü/tablet: takvim ızgarası (sürükle-bırak) */}
+          {/* Masaüstü/tablet: oransal takvim (derse tıkla → offcanvas) */}
           <div className="hidden md:block">
             <WeekTimetable
               days={days}
-              sessions={displaySessions}
+              sessions={sessions}
               requests={visibleReqs}
+              availabilityWindows={showAvailability && !rangeTooLong ? availWindows : undefined}
               selectedId={detailFor?.id ?? null}
-              draggable={isManager}
-              movedIds={movedIds}
               students={studentsBySession}
               onSelectSession={setDetailFor}
               onSelectRequest={(r) => { if (!isManager) withdrawRequest(r); }}
-              onDropSession={isManager ? onDropSession : undefined}
+              onSelectWindow={isManager ? setSlotCreate : undefined}
               onEmptyClick={isManager ? (date, hour) => setQuickAt(`${date}T${String(hour).padStart(2, "0")}:00`) : undefined}
             />
           </div>
@@ -342,11 +432,13 @@ export default function SchedulePage() {
           <div className="md:hidden">
             <MobileAgenda
               days={days}
-              sessions={displaySessions}
+              sessions={sessions}
               requests={visibleReqs}
+              availabilityWindows={showAvailability && !rangeTooLong ? availWindows : undefined}
               students={studentsBySession}
               onSelectSession={setDetailFor}
               onSelectRequest={(r) => { if (!isManager) withdrawRequest(r); }}
+              onSelectWindow={isManager ? setSlotCreate : undefined}
             />
           </div>
           {sessions.length === 0 && visibleReqs.length === 0 && (
@@ -370,28 +462,18 @@ export default function SchedulePage() {
             </div>
             <Button variant="ghost" size="sm" onClick={() => setFullscreen(false)}>✕ Kapat</Button>
           </div>
-          {movedIds.size > 0 && (
-            <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-warning/60 bg-warning/10 px-3 py-2">
-              <span className="text-sm font-medium text-foreground">{movedIds.size} ders taşındı — kaydedilmedi.</span>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={discardMoves}>Vazgeç</Button>
-                <Button size="sm" loading={busyId === "save-moves"} onClick={saveMoves}>Kaydet ({movedIds.size})</Button>
-              </div>
-            </div>
-          )}
           <div className="min-h-0 flex-1">
             <WeekTimetable
               days={days}
-              sessions={displaySessions}
+              sessions={sessions}
               requests={visibleReqs}
+              availabilityWindows={showAvailability && !rangeTooLong ? availWindows : undefined}
               selectedId={detailFor?.id ?? null}
-              draggable={isManager}
-              movedIds={movedIds}
               students={studentsBySession}
               maxHeight="100%"
               onSelectSession={setDetailFor}
               onSelectRequest={(r) => { if (!isManager) withdrawRequest(r); }}
-              onDropSession={isManager ? onDropSession : undefined}
+              onSelectWindow={isManager ? setSlotCreate : undefined}
               onEmptyClick={isManager ? (date, hour) => setQuickAt(`${date}T${String(hour).padStart(2, "0")}:00`) : undefined}
             />
           </div>
@@ -455,6 +537,20 @@ export default function SchedulePage() {
           initialCapacity={prefill.capacity}
           onClose={() => setPrefill(null)}
           onDone={() => { setPrefill(null); load(); }}
+        />
+      )}
+      {/* Sprint 36: boşluk kartından ders oluştur — pencere içinde increment dropdown ile başlangıç seçilir. */}
+      {slotCreate && (
+        <CreateSessionModal
+          instructors={instructors}
+          classTypes={classTypes}
+          initialClassTypeId={availClassTypeId}
+          initialCapacity={availCapacity}
+          slotWindow={slotCreate}
+          slotIncrement={availDurationMinutes}
+          onConflict={refreshAvailability}
+          onClose={() => setSlotCreate(null)}
+          onDone={() => { setSlotCreate(null); load(); refreshAvailability(); }}
         />
       )}
       {bulkOpen && (
@@ -1166,11 +1262,17 @@ interface ModalProps {
   onDone: () => void;
 }
 
-function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialStartAt, initialClassTypeId, initialInstructorId, initialCapacity }: ModalProps & { initialStartAt?: string; initialClassTypeId?: string; initialInstructorId?: string; initialCapacity?: string }) {
+function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialStartAt, initialClassTypeId, initialInstructorId, initialCapacity, slotWindow, slotIncrement, onConflict }: ModalProps & { initialStartAt?: string; initialClassTypeId?: string; initialInstructorId?: string; initialCapacity?: string; slotWindow?: AvailabilityWindowDto; slotIncrement?: number; onConflict?: () => void }) {
+  // Sprint 36: bir boşluk penceresinden açıldıysa — başlangıç incrementMinutes adımlı seçeneklerden seçilir, hoca uygun olanlarla sınırlıdır.
+  const startOptions = useMemo(
+    () => (slotWindow ? buildStartOptions(slotWindow.startWindowFrom, slotWindow.startWindowTo, slotIncrement ?? 15) : []),
+    [slotWindow, slotIncrement],
+  );
+  const instrOptions = slotWindow ? slotWindow.availableInstructors : instructors;
   const [form, setForm] = useState({
-    instructorProfileId: initialInstructorId ?? instructors[0]?.id ?? "",
+    instructorProfileId: slotWindow ? (slotWindow.availableInstructors[0]?.id ?? "") : (initialInstructorId ?? instructors[0]?.id ?? ""),
     classTypeId: initialClassTypeId ?? classTypes[0]?.id ?? "",
-    startAt: initialStartAt ?? "",
+    startAt: slotWindow ? (startOptions[0]?.value ?? "") : (initialStartAt ?? ""),
     capacity: initialCapacity ?? "",
     notes: "",
     sessionKind: "Regular" as ClassSessionKind,
@@ -1197,7 +1299,13 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
       });
       onDone();
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : "Oluşturulamadı.");
+      // Sprint 36: boşluk gösterilirken slot create anında dolmuş olabilir → 409. Kullanıcıya açıkla + boşlukları tazele.
+      if (slotWindow && e2 instanceof ApiError && e2.status === 409) {
+        setErr("Bu boşluk az önce dolmuş olabilir. Boşlukları yenileyin.");
+        onConflict?.();
+      } else {
+        setErr(e2 instanceof ApiError ? e2.message : "Oluşturulamadı.");
+      }
     } finally {
       setBusy(false);
     }
@@ -1207,13 +1315,19 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
     <Modal open onClose={onClose} title="Yeni ders seansı">
       <form onSubmit={submit} className="space-y-4">
         {err && <Alert kind="error">{err}</Alert>}
-        <FormField label="Hoca">
+        {slotWindow && (
+          <Alert kind="info">
+            Seçilen boşluk: <span className="font-medium">{fmtTime(slotWindow.startWindowFrom)}–{hhmmPlus(slotWindow.startWindowTo, slotWindow.durationMinutes)}</span> uygun aralık ·
+            {" "}{slotWindow.durationMinutes} dk{slotWindow.availableEquipmentCapacity != null ? ` · en fazla ${slotWindow.availableEquipmentCapacity} kişi` : ""}.
+          </Alert>
+        )}
+        <FormField label="Hoca" hint={slotWindow ? "Yalnız bu boşlukta uygun hocalar" : undefined}>
           <Select value={form.instructorProfileId} onChange={(e) => setForm((f) => ({ ...f, instructorProfileId: e.target.value }))}>
-            {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            {instrOptions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </Select>
         </FormField>
-        <FormField label="Grup (ClassType)" hint="Süre ve kapasite buradan gelir">
-          <Select value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))}>
+        <FormField label="Grup (ClassType)" hint={slotWindow ? "Boşluk bu ders tipi için hesaplandı" : "Süre ve kapasite buradan gelir"}>
+          <Select value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))} disabled={!!slotWindow}>
             {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk{c.equipmentName ? ` · ${c.equipmentName}` : ""}</option>)}
           </Select>
         </FormField>
@@ -1224,8 +1338,14 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
           </Alert>
         )}
         <div className="grid grid-cols-2 gap-3">
-          <FormField label="Başlangıç">
-            <Input type="datetime-local" value={form.startAt} onChange={(e) => setForm((f) => ({ ...f, startAt: e.target.value }))} required />
+          <FormField label="Başlangıç" hint={slotWindow ? "Pencere içinde seçin" : undefined}>
+            {slotWindow ? (
+              <Select value={form.startAt} onChange={(e) => setForm((f) => ({ ...f, startAt: e.target.value }))} required>
+                {startOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </Select>
+            ) : (
+              <Input type="datetime-local" value={form.startAt} onChange={(e) => setForm((f) => ({ ...f, startAt: e.target.value }))} required />
+            )}
           </FormField>
           <FormField label={equipmentBound ? "Kapasite (zorunlu)" : "Kapasite (ops.)"} hint={equipmentBound ? "Ekipman havuzu sınırlı" : undefined}>
             <Input type="number" min={1} value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))}

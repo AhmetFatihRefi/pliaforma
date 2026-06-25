@@ -29,6 +29,11 @@ const todayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 const hhmm = (iso: string) => iso.slice(11, 16);
+// Boş aralığın bitişi: en geç başlangıç + ders süresi (wall-clock dakika aritmetiği).
+const hhmmPlus = (iso: string, min: number) => {
+  const t = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16)) + min;
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+};
 
 export default function FindAvailabilityPage() {
   const toast = useToast();
@@ -45,7 +50,6 @@ export default function FindAvailabilityPage() {
     from: todayStr(),
     to: todayStr(),
     instructorId: "",
-    incrementMinutes: 15,
   });
   const [windows, setWindows] = useState<AvailabilityWindowDto[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -77,7 +81,8 @@ export default function FindAvailabilityPage() {
         durationMinutes: Number(form.durationMinutes),
         requiredCapacity: Number(form.requiredCapacity),
         instructorId: form.instructorId || undefined,
-        incrementMinutes: Number(form.incrementMinutes),
+        // Adım = ders süresi (mola dahil blok). Boşluklar ders-bloğu hizasında dilimlenir (temiz saatler).
+        incrementMinutes: Number(form.durationMinutes),
       });
       setWindows(res);
     } catch (err) {
@@ -106,7 +111,7 @@ export default function FindAvailabilityPage() {
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Boşluk Bul</h1>
         <p className="mt-1 text-sm text-muted">
-          Seçtiğiniz ders tipi, süre ve kapasiteye göre dersin açılabileceği başlangıç aralıklarını ve müsait hocaları bulun.
+          Seçtiğiniz ders tipi, süre ve kapasiteye göre dersin açılabileceği uygun boş aralıkları ve müsait hocaları bulun.
         </p>
       </div>
 
@@ -149,23 +154,15 @@ export default function FindAvailabilityPage() {
               <Input type="date" value={form.to} min={form.from} onChange={(e) => setForm((f) => ({ ...f, to: e.target.value }))} />
             </FormField>
           </div>
-          <div className="flex items-end justify-between gap-4">
-            <FormField label="Adım (dk)" hint="Başlangıç ızgarası">
-              <Select value={String(form.incrementMinutes)} onChange={(e) => setForm((f) => ({ ...f, incrementMinutes: Number(e.target.value) }))} className="w-28">
-                <option value="5">5</option>
-                <option value="10">10</option>
-                <option value="15">15</option>
-                <option value="30">30</option>
-              </Select>
-            </FormField>
+          <div className="flex items-end justify-end gap-4">
             <Button type="submit" loading={loading}>Boşluk Ara</Button>
           </div>
         </form>
       </Card>
 
       <Alert kind="info">
-        Başlangıç aralığı, seçilen süreye göre dersin başlayabileceği <span className="font-medium">en erken</span> ve{" "}
-        <span className="font-medium">en geç</span> saati gösterir. Çalışma penceresi 07:00–23:00.
+        Uygun aralık, dersin sığabileceği <span className="font-medium">boş zaman aralığını</span> gösterir (ders süresi mola dahil blok olarak çalışır).
+        Çalışma penceresi 07:00–23:00.
         {selectedCt && !selectedCt.equipmentId && " Bu ders tipi ekipmana bağlı değil; kapasite yalnız hoca müsaitliğiyle sınırlı."}
       </Alert>
 
@@ -176,7 +173,7 @@ export default function FindAvailabilityPage() {
           <THead>
             <TR>
               <TH>Tarih</TH>
-              <TH>Başlangıç aralığı</TH>
+              <TH>Uygun aralık</TH>
               <TH>Süre</TH>
               <TH>Ekipman kapasitesi</TH>
               <TH>Müsait hocalar</TH>
@@ -193,8 +190,7 @@ export default function FindAvailabilityPage() {
                 <TR key={idx}>
                   <TD>{w.date}</TD>
                   <TD>
-                    <span className="font-medium">{hhmm(w.startWindowFrom)} – {hhmm(w.startWindowTo)}</span>
-                    <span className="ml-1 text-xs text-muted">(en geç başlangıç)</span>
+                    <span className="font-medium">{hhmm(w.startWindowFrom)} – {hhmmPlus(w.startWindowTo, w.durationMinutes)}</span>
                   </TD>
                   <TD>{w.durationMinutes} dk</TD>
                   <TD>

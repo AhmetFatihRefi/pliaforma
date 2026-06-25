@@ -28,7 +28,6 @@ import {
   useToast,
 } from "@/components/ui";
 import {
-  AddContractLineModal,
   AttendanceSummaryModal,
   ContractDetailModal,
   ConvertModal,
@@ -50,7 +49,6 @@ export default function StudentDetailPage() {
   const [err, setErr] = useState<string | null>(null);
 
   const [manageId, setManageId] = useState<string | null>(null); // detay/yönetim modalı
-  const [addOpen, setAddOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
@@ -145,7 +143,7 @@ export default function StudentDetailPage() {
             <h2 className="text-lg font-semibold text-foreground">Sözleşmeler</h2>
             <p className="text-xs text-muted">Her satır bir paket/sözleşmedir. Detay için satırı açın; programı oradan oluşturabilirsiniz.</p>
           </div>
-          <Button size="sm" onClick={() => setAddOpen(true)}>+ Yeni sözleşme</Button>
+          <Link href={`/dashboard/students/${id}/contracts/new`}><Button size="sm">+ Yeni sözleşme</Button></Link>
         </div>
 
         <Table>
@@ -187,9 +185,6 @@ export default function StudentDetailPage() {
         </Table>
       </Card>
 
-      {addOpen && (
-        <AddContractLineModal studentId={id} onClose={() => setAddOpen(false)} onSaved={() => { setAddOpen(false); load(); }} />
-      )}
       {manageLine && (
         <ContractDetailModal line={manageLine} onClose={() => setManageId(null)} onChanged={load} />
       )}
