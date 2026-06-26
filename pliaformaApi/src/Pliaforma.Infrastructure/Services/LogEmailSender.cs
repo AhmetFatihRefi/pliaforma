@@ -23,14 +23,20 @@ public sealed class LogEmailSender : IEmailSender
     public Task SendEmailVerificationAsync(string toEmail, string fullName, string rawToken, CancellationToken ct = default)
     {
         var msg = EmailComposer.Verification(_settings, fullName, rawToken);
-        _logger.LogInformation("[EMAIL:Log] EmailVerification → {To} | link: {Link}", toEmail, msg.Link);
+        // Information: token/PII içermez (varsayılan/üretim-benzeri seviyede sızıntı olmaz).
+        _logger.LogInformation("[EMAIL:Log] EmailVerification gönderildi (alıcı/link gizli; ham token Debug seviyesinde).");
+        // Debug: tam link (ham token gömülü) — YALNIZ yerel geliştirme. Prod'da Log modu DI guard ile yasak (ConfigureEmail).
+        _logger.LogDebug("[EMAIL:Log] EmailVerification → {To} | link: {Link}", toEmail, msg.Link);
         return Task.CompletedTask;
     }
 
     public Task SendPasswordResetAsync(string toEmail, string fullName, string rawToken, CancellationToken ct = default)
     {
         var msg = EmailComposer.PasswordReset(_settings, fullName, rawToken);
-        _logger.LogInformation("[EMAIL:Log] PasswordReset → {To} | link: {Link}", toEmail, msg.Link);
+        // Information: token/PII içermez.
+        _logger.LogInformation("[EMAIL:Log] PasswordReset gönderildi (alıcı/link gizli; ham token Debug seviyesinde).");
+        // Debug: tam link (ham token gömülü) — YALNIZ yerel geliştirme.
+        _logger.LogDebug("[EMAIL:Log] PasswordReset → {To} | link: {Link}", toEmail, msg.Link);
         return Task.CompletedTask;
     }
 }

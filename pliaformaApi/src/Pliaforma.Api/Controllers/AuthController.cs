@@ -27,6 +27,7 @@ public sealed class AuthController : ControllerBase
 
     private string? ClientIp => HttpContext.Connection.RemoteIpAddress?.ToString();
 
+    [AllowAnonymous]
     [HttpPost("register-studio")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> RegisterStudio(RegisterStudioRequest body, CancellationToken ct)
@@ -36,6 +37,7 @@ public sealed class AuthController : ControllerBase
         return OutcomeOk(outcome, "Stüdyo oluşturuldu.");
     }
 
+    [AllowAnonymous]
     [HttpPost("register")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Register(RegisterRequest body, CancellationToken ct)
@@ -46,6 +48,7 @@ public sealed class AuthController : ControllerBase
         return AuthOk(result, mfaSetupRequired: false, "Hesap oluşturuldu.");
     }
 
+    [AllowAnonymous]
     [HttpPost("login")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Login(LoginRequest body, CancellationToken ct)
@@ -63,6 +66,8 @@ public sealed class AuthController : ControllerBase
         return Ok(ApiResponse<AuthResponse>.Ok(AuthResponse.From(result), "Stüdyo değiştirildi."));
     }
 
+    // Anonim: JWT yok, oturum httpOnly refresh cookie ile yenilenir.
+    [AllowAnonymous]
     [HttpPost("refresh")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Refresh(RefreshRequest body, CancellationToken ct)
@@ -74,6 +79,8 @@ public sealed class AuthController : ControllerBase
         return OutcomeOk(outcome, "Oturum yenilendi.");
     }
 
+    // Anonim + idempotent: access token süresi dolmuş olsa bile cookie temizlenebilmeli.
+    [AllowAnonymous]
     [HttpPost("logout")]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
@@ -93,6 +100,7 @@ public sealed class AuthController : ControllerBase
 
     // ---- Sprint 16: e-posta doğrulama + şifre sıfırlama ----
 
+    [AllowAnonymous]
     [HttpPost("verify-email")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> VerifyEmail(VerifyEmailRequest body, CancellationToken ct)
@@ -110,6 +118,7 @@ public sealed class AuthController : ControllerBase
         return Ok(ApiResponse<object?>.Ok(null, "Doğrulama e-postası gönderildi (zaten doğrulanmışsa yeni e-posta gönderilmez)."));
     }
 
+    [AllowAnonymous]
     [HttpPost("forgot-password")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest body, CancellationToken ct)
@@ -118,6 +127,7 @@ public sealed class AuthController : ControllerBase
         return Ok(ApiResponse<object?>.Ok(null, "Eğer bu e-posta ile kayıt varsa şifre sıfırlama bağlantısı gönderildi."));
     }
 
+    [AllowAnonymous]
     [HttpPost("reset-password")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> ResetPassword(ResetPasswordRequest body, CancellationToken ct)
@@ -162,6 +172,8 @@ public sealed class AuthController : ControllerBase
             "MFA etkinleştirildi. Kurtarma kodlarınızı güvenli bir yerde saklayın (bir daha gösterilmez)."));
     }
 
+    // Anonim: login 2. faktörü; kullanıcı henüz tam access token'a sahip değil (challenge token body'de).
+    [AllowAnonymous]
     [HttpPost("mfa/challenge/verify")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> MfaChallengeVerify(MfaChallengeVerifyRequest body, CancellationToken ct)
@@ -170,6 +182,8 @@ public sealed class AuthController : ControllerBase
         return AuthOk(result, mfaSetupRequired: false, "Giriş başarılı.");
     }
 
+    // Anonim: login 2. faktörü (kurtarma kodu); challenge token body'de, tam access token yok.
+    [AllowAnonymous]
     [HttpPost("mfa/recovery-code/verify")]
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> MfaRecoveryVerify(MfaRecoveryCodeVerifyRequest body, CancellationToken ct)

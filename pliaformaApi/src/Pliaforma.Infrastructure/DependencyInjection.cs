@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -85,6 +86,13 @@ public static class DependencyInjection
         {
             options.AddPolicy(AuthPolicies.PlatformAdmin, policy =>
                 policy.RequireClaim(AppClaims.GlobalRole, GlobalRole.PlatformAdmin.ToString()));
+
+            // Defense-in-depth: [Authorize]/[AllowAnonymous] taşımayan her endpoint default olarak kimlik ister.
+            // Mevcut controller'lar zaten korumalı; bu, ileride attribute eklenmesi unutulan yeni uçların
+            // sessizce anonim açık kalmasını engeller. Anonim kalması gereken uçlar explicit [AllowAnonymous] taşır.
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
         });
 
         return services;
@@ -172,6 +180,15 @@ public static class DependencyInjection
             throw new InvalidOperationException(
                 "Production'da Email:SenderMode=Disabled güvenli değildir (doğrulama/sıfırlama e-postaları gitmez). " +
                 "Bilinçliyse Email:AllowDisabledInProduction=true verin; aksi halde Email:SenderMode=Smtp kullanın.");
+        }
+
+        // LogEmailSender doğrulama/sıfırlama linkini (ham token gömülü) loglar — prod'da token/PII sızıntısı olur.
+        // appsettings.json varsayılanı Log olduğundan, env yanlış set edilse bile prod'da fail-fast (defense-in-depth).
+        if (isProduction && email.SenderMode == EmailSenderMode.Log)
+        {
+            throw new InvalidOperationException(
+                "Production'da Email:SenderMode=Log doğrulama/sıfırlama token'larını loglar (token/PII sızıntısı). " +
+                "Email:SenderMode=Smtp kullanın (Email__SenderMode=Smtp env).");
         }
 
         switch (email.SenderMode)

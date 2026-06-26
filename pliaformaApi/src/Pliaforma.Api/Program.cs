@@ -119,7 +119,8 @@ app.MapControllers();
 
 // Prometheus scrape endpoint'i: /metrics (HTTP + .NET runtime/process metrikleri). Grafana bunu okur.
 // Not: PROD'da dışarıya kapatın (nginx ile internal'e kısıtlayın); pilot/lokalde açık.
-app.MapMetrics();
+// AllowAnonymous: FallbackPolicy (RequireAuthenticatedUser) bu uçtaki scrape'i 401'e düşürmesin.
+app.MapMetrics().AllowAnonymous();
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     ResponseWriter = async (context, report) =>
