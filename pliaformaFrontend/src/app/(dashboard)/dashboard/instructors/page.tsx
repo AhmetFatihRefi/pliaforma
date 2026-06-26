@@ -28,13 +28,16 @@ import {
   THead,
   TR,
   useConfirm,
+  useToast,
 } from "@/components/ui";
+import { formatDate } from "@/lib/format";
 
 const statusTone = (s: MemberDto["status"]) =>
   s === "Active" ? "success" : s === "Pending" ? "warning" : "neutral";
 
 export default function InstructorsPage() {
   const confirm = useConfirm();
+  const toast = useToast();
   const { role: myRole, canManage } = useRole();
   const isOwner = myRole === "Owner";
 
@@ -72,12 +75,20 @@ export default function InstructorsPage() {
   }, [canManage]);
 
   const decideRequest = async (r: JoinRequestDto, accept: boolean) => {
+    const roleTr = r.requestedRole === "Instructor" ? "Hoca" : "Öğrenci";
+    const ok = await confirm(
+      accept
+        ? { title: "Katılım isteğini kabul et", confirmLabel: "Kabul et", message: `${r.applicantName} stüdyoya "${roleTr}" olarak eklenecek.` }
+        : { title: "Katılım isteğini reddet", tone: "danger", confirmLabel: "Reddet", message: `${r.applicantName} katılım isteği reddedilecek. Kişi yeniden istek göndermek zorunda kalır.` },
+    );
+    if (!ok) return;
     try {
       if (accept) await membershipService.accept(r.membershipId);
       else await membershipService.reject(r.membershipId);
       await load();
+      toast.success(accept ? "Katılım isteği kabul edildi." : "Katılım isteği reddedildi.");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "İşlem yapılamadı.");
+      toast.error(e instanceof ApiError ? e.message : "İşlem yapılamadı.");
     }
   };
 
@@ -101,6 +112,7 @@ export default function InstructorsPage() {
       setInviteOpen(false);
       setInvite({ email: "", role: "Instructor", displayName: "" });
       await load();
+      toast.success("Davet gönderildi.");
     } catch (err) {
       setInviteErr(err instanceof ApiError ? err.message : "Davet gönderilemedi.");
     } finally {
@@ -109,11 +121,20 @@ export default function InstructorsPage() {
   };
 
   const changeRole = async (m: MemberDto, role: StudioRole) => {
+    if (role === m.role) return;
+    // Rol değişimi yetki etkili → her zaman onay (danger).
+    if (!(await confirm({
+      title: "Rolü değiştir",
+      tone: "danger",
+      confirmLabel: "Değiştir",
+      message: `${m.fullName} kullanıcısının rolü "${studioRoleLabels[m.role]}" → "${studioRoleLabels[role]}" olarak değişecek. Yetkileri hemen güncellenir.`,
+    }))) return;
     try {
       await memberService.changeRole(m.membershipId, role);
       await load();
+      toast.success("Rol güncellendi.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Rol değiştirilemedi.");
+      toast.error(err instanceof ApiError ? err.message : "Rol değiştirilemedi.");
     }
   };
 
@@ -159,7 +180,7 @@ export default function InstructorsPage() {
                   <p className="text-sm font-medium text-foreground">
                     {r.applicantName} <Badge tone="rose">{r.requestedRole === "Instructor" ? "Hoca" : "Öğrenci"}</Badge>
                   </p>
-                  <p className="text-xs text-muted">{r.applicantEmail} · {r.requestedAt.slice(0, 10)}</p>
+                  <p className="text-xs text-muted">{r.applicantEmail} · {formatDate(r.requestedAt)}</p>
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" onClick={() => decideRequest(r, true)}>Kabul et</Button>
@@ -193,15 +214,15 @@ export default function InstructorsPage() {
                 <TD className="text-muted">{m.email}</TD>
                 <TD>
                   {canChangeRole(m) ? (
-                    <select
+                    <Select
                       value={m.role}
                       onChange={(e) => changeRole(m, e.target.value as StudioRole)}
-                      className="h-8 rounded-lg border border-border bg-surface px-2 text-xs text-foreground focus:border-primary focus:outline-none"
                       aria-label="Rol değiştir"
+                      className="w-40"
                     >
                       <option value="StudioAdmin">{studioRoleLabels.StudioAdmin}</option>
                       <option value="Instructor">{studioRoleLabels.Instructor}</option>
-                    </select>
+                    </Select>
                   ) : (
                     <Badge tone={m.role === "Owner" ? "rose" : "neutral"}>{studioRoleLabels[m.role]}</Badge>
                   )}
@@ -235,14 +256,14 @@ export default function InstructorsPage() {
           </FormField>
           <FormField label="Rol" hint={isOwner ? undefined : "StudioAdmin yalnızca stüdyo sahibi tarafından atanır"}>
             <Select value={invite.role} onChange={(e) => setInvite((v) => ({ ...v, role: e.target.value as StudioRole }))}>
-              {inviteRoleOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+              {inviteRoleOptions.map((r) => <option key={r} value={r}>{studioRoleLabels[r]}</option>)}
             </Select>
           </FormField>
           <FormField label="Görünen ad (opsiyonel)">
             <Input value={invite.displayName} onChange={(e) => setInvite((v) => ({ ...v, displayName: e.target.value }))} />
           </FormField>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setInviteOpen(false)}>İptal</Button>
+            <Button type="button" variant="secondary" onClick={() => setInviteOpen(false)}>Vazgeç</Button>
             <Button type="submit" loading={saving}>Davet gönder</Button>
           </div>
         </form>
@@ -254,6 +275,8 @@ export default function InstructorsPage() {
 }
 
 function AssignModal({ member, onClose }: { member: MemberDto; onClose: () => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [assigned, setAssigned] = useState<InstructorAssignmentDto[]>([]);
   const [allTypes, setAllTypes] = useState<ClassTypeDto[]>([]);
   const [selected, setSelected] = useState("");
@@ -287,6 +310,7 @@ function AssignModal({ member, onClose }: { member: MemberDto; onClose: () => vo
       await instructorService.assign(profileId, { classTypeId: selected, rateOverride: null });
       setSelected("");
       await load();
+      toast.success("Hoca gruba eklendi.");
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Atanamadı.");
     } finally {
@@ -294,11 +318,18 @@ function AssignModal({ member, onClose }: { member: MemberDto; onClose: () => vo
     }
   };
 
-  const drop = async (assignmentId: string) => {
+  const drop = async (a: InstructorAssignmentDto) => {
+    if (!(await confirm({
+      title: "Grup atamasını kaldır",
+      tone: "danger",
+      confirmLabel: "Kaldır",
+      message: `${member.fullName} "${a.classTypeName}" grubundan kaldırılacak.`,
+    }))) return;
     setBusy(true);
     try {
-      await instructorService.unassign(assignmentId);
+      await instructorService.unassign(a.id);
       await load();
+      toast.success("Grup ataması kaldırıldı.");
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Kaldırılamadı.");
     } finally {
@@ -318,7 +349,7 @@ function AssignModal({ member, onClose }: { member: MemberDto; onClose: () => vo
             assigned.map((a) => (
               <div key={a.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2">
                 <span className="text-sm text-foreground">{a.classTypeName}</span>
-                <Button variant="ghost" size="sm" onClick={() => drop(a.id)} disabled={busy}>Kaldır</Button>
+                <Button variant="danger" size="sm" onClick={() => drop(a)} disabled={busy}>Kaldır</Button>
               </div>
             ))
           )}
@@ -326,7 +357,7 @@ function AssignModal({ member, onClose }: { member: MemberDto; onClose: () => vo
 
         <div className="space-y-2 border-t border-border pt-4">
           <FormField label="Gruba ekle">
-            <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
+            <Select placeholder="Grup seç" value={selected} onChange={(e) => setSelected(e.target.value)}>
               <option value="">Grup seçin…</option>
               {available.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </Select>

@@ -13,8 +13,13 @@ import {
 } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, useConfirm, useToast } from "@/components/ui";
 import { errorMessage } from "@/lib/errors";
+import { formatDate } from "@/lib/format";
 
 const money = (n: number, c = "TRY") => `${n.toLocaleString("tr-TR")} ${c === "TRY" ? "₺" : c}`;
+// Sprint 41: çoklu para birimi — currency başına toplamları "4.500 ₺ + 120 €" gibi ayrı gösterir.
+// Tek currency'de tek değer döner (görünüm bozulmaz).
+const moneyMulti = (m: Map<string, number>) =>
+  m.size === 0 ? money(0) : [...m.entries()].map(([c, n]) => money(n, c)).join(" + ");
 const statusTone = (s: PaymentStatus) =>
   s === "Paid" ? "success" : s === "Overdue" ? "danger" : s === "Cancelled" || s === "Refunded" ? "neutral" : "warning";
 const isOpen = (p: PaymentDto) => p.status === "Pending" || p.status === "Overdue";
@@ -78,19 +83,25 @@ export default function PaymentsPage() {
     return arr;
   }, [items, onlyDebtors]);
 
-  // Tüm stüdyo özeti (üst şerit).
+  // Tüm stüdyo özeti (üst şerit). Sprint 41: toplamlar para birimine göre gruplanır (yanlış tek-currency toplamı yok).
   const totals = useMemo(() => {
     const debtors = groups.filter((g) => g.open.length > 0);
-    return {
-      debtorCount: debtors.length,
-      outstanding: debtors.reduce((s, g) => s + g.outstanding, 0),
-      overdueCount: groups.reduce((s, g) => s + g.overdue.length, 0),
-      overdueAmount: groups.reduce((s, g) => s + g.overdueAmount, 0),
-      currency: groups[0]?.currency ?? "TRY",
-    };
+    const outstanding = new Map<string, number>();
+    const overdue = new Map<string, number>();
+    let overdueCount = 0;
+    for (const g of groups) {
+      for (const p of g.open) outstanding.set(p.currency, (outstanding.get(p.currency) ?? 0) + p.amount);
+      for (const p of g.overdue) { overdue.set(p.currency, (overdue.get(p.currency) ?? 0) + p.amount); overdueCount++; }
+    }
+    return { debtorCount: debtors.length, overdueCount, outstanding, overdue };
   }, [groups]);
 
   const markPaid = async (p: PaymentDto) => {
+    if (!(await confirm({
+      title: "Ödemeyi 'ödendi' işaretle",
+      confirmLabel: "Ödendi",
+      message: `${money(p.amount, p.currency)} tutarındaki taksit 'ödendi' olarak işaretlenecek (vade ${formatDate(p.dueDate)}).`,
+    }))) return;
     try { await paymentService.markPaid(p.id); await load(); toast.success("Ödeme 'ödendi' olarak işaretlendi."); }
     catch (e) { toast.error(errorMessage(e, "İşlem başarısız.")); }
   };
@@ -113,9 +124,9 @@ export default function PaymentsPage() {
       {/* Stüdyo özeti */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryStat label="Borçlu öğrenci" value={String(totals.debtorCount)} />
-        <SummaryStat label="Ödenmemiş toplam" value={money(totals.outstanding, totals.currency)} />
+        <SummaryStat label="Ödenmemiş toplam" value={moneyMulti(totals.outstanding)} />
         <SummaryStat label="Geciken taksit" value={String(totals.overdueCount)} tone={totals.overdueCount ? "danger" : undefined} />
-        <SummaryStat label="Geciken toplam" value={money(totals.overdueAmount, totals.currency)} tone={totals.overdueAmount ? "danger" : undefined} />
+        <SummaryStat label="Geciken toplam" value={moneyMulti(totals.overdue)} tone={totals.overdueCount ? "danger" : undefined} />
       </div>
 
       <Card>
@@ -166,6 +177,18 @@ function StudentDebtCard({
   group: StudentGroup; open: boolean; onToggle: () => void;
   onPaid: (p: PaymentDto) => void; onCancel: (p: PaymentDto) => void;
 }) {
+  // Sprint 41: rozet toplamları para birimine göre (öğrencide karışık currency olabilir).
+  const openByCur = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of g.open) m.set(p.currency, (m.get(p.currency) ?? 0) + p.amount);
+    return m;
+  }, [g.open]);
+  const overdueByCur = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of g.overdue) m.set(p.currency, (m.get(p.currency) ?? 0) + p.amount);
+    return m;
+  }, [g.overdue]);
+
   // Detay: sözleşme/satır bazında grupla (hangi sözleşmeye ait olduğu görünsün; önceki sözleşmeler de ayrı satır).
   const byLine = useMemo(() => {
     const m = new Map<string, { label: string; payments: PaymentDto[] }>();
@@ -191,11 +214,11 @@ function StudentDebtCard({
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           {g.open.length > 0 ? (
-            <Badge tone="warning">{g.open.length} taksit · {money(g.outstanding, g.currency)}</Badge>
+            <Badge tone="warning">{g.open.length} taksit · {moneyMulti(openByCur)}</Badge>
           ) : (
             <Badge tone="success">Borç yok</Badge>
           )}
-          {g.overdue.length > 0 && <Badge tone="danger">Geciken {g.overdue.length} · {money(g.overdueAmount, g.currency)}</Badge>}
+          {g.overdue.length > 0 && <Badge tone="danger">Geciken {g.overdue.length} · {moneyMulti(overdueByCur)}</Badge>}
         </div>
       </button>
 
@@ -208,14 +231,14 @@ function StudentDebtCard({
               <div key={i} className="rounded-xl border border-border">
                 <div className="flex items-center justify-between gap-2 border-b border-border bg-surface-muted px-3 py-1.5">
                   <span className="truncate text-xs font-medium text-foreground">{line.label}</span>
-                  {lineOpen.length > 0 && <span className="shrink-0 text-xs font-semibold text-warning">{lineOpen.length} taksit · {money(lineSum, g.currency)}</span>}
+                  {lineOpen.length > 0 && <span className="shrink-0 text-xs font-semibold text-warning">{lineOpen.length} taksit · {money(lineSum, lineOpen[0]?.currency ?? g.currency)}</span>}
                 </div>
                 <ul className="divide-y divide-border">
                   {line.payments.map((p) => (
                     <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                       <div className="flex items-center gap-2">
                         <Badge tone={statusTone(p.status)}>{paymentStatusLabels[p.status]}</Badge>
-                        <span className="text-muted">Vade {p.dueDate}</span>
+                        <span className="text-muted">Vade {formatDate(p.dueDate)}</span>
                         {p.method && <span className="text-muted">· {paymentMethodLabels[p.method]}</span>}
                         {p.notes && <span className="text-muted">· {p.notes}</span>}
                       </div>
@@ -224,7 +247,7 @@ function StudentDebtCard({
                         {isOpen(p) && (
                           <div className="flex gap-1.5">
                             <Button variant="ghost" size="sm" onClick={() => onPaid(p)}>Ödendi</Button>
-                            <Button variant="ghost" size="sm" onClick={() => onCancel(p)}>İptal</Button>
+                            <Button variant="danger" size="sm" onClick={() => onCancel(p)}>İptal et</Button>
                           </div>
                         )}
                       </div>
@@ -269,7 +292,7 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
   }, [student]);
 
   const lineLabel = (l: StudentContractLineDto) =>
-    `${l.classTypeName} · ${l.startDate} – ${l.endDate} · kalan borç ${money(l.remaining, l.currency)}`;
+    `${l.classTypeName} · ${formatDate(l.startDate)} – ${formatDate(l.endDate)} · kalan borç ${money(l.remaining, l.currency)}`;
 
   const pickLine = (id: string) => {
     const l = lines.find((x) => x.id === id);
@@ -327,7 +350,7 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
             ) : lines.length === 0 ? (
               <Alert kind="info">Bu öğrencinin aktif sözleşme satırı yok. Önce Öğrenciler ekranından sözleşme satırı ekleyin.</Alert>
             ) : (
-              <Select value={form.lineId} onChange={(e) => pickLine(e.target.value)} required>
+              <Select placeholder="Paket seç" value={form.lineId} onChange={(e) => pickLine(e.target.value)} required>
                 <option value="">— Satır seçin —</option>
                 {lines.map((l) => <option key={l.id} value={l.id}>{lineLabel(l)}</option>)}
               </Select>
@@ -341,7 +364,7 @@ function CreatePaymentModal({ onClose, onDone }: { onClose: () => void; onDone: 
         </div>
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Yöntem (ops.)">
-            <Select value={form.method} onChange={(e) => setForm((f) => ({ ...f, method: e.target.value as PaymentMethod | "" }))}>
+            <Select placeholder="Yöntem seç" value={form.method} onChange={(e) => setForm((f) => ({ ...f, method: e.target.value as PaymentMethod | "" }))}>
               <option value="">—</option>
               {(["Cash", "Card", "BankTransfer", "Other"] as PaymentMethod[]).map((m) => <option key={m} value={m}>{paymentMethodLabels[m]}</option>)}
             </Select>

@@ -11,9 +11,10 @@ import {
   type StudioClosureDto,
   closureActionLabels,
 } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Select } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, useConfirm, useToast } from "@/components/ui";
+import { formatDateTime } from "@/lib/format";
 
-const fmt = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+const fmt = (iso: string) => formatDateTime(iso);
 
 export default function ClosuresPage() {
   const [items, setItems] = useState<StudioClosureDto[]>([]);
@@ -85,6 +86,8 @@ export default function ClosuresPage() {
 const todayStr = () => new Date().toISOString().slice(0, 16);
 
 function CreateClosureModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const { instructors } = useInstructors();
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
   const [form, setForm] = useState({
@@ -107,6 +110,14 @@ function CreateClosureModal({ onClose, onDone }: { onClose: () => void; onDone: 
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.endAt < form.startAt) { setErr("Bitiş zamanı, başlangıçtan sonra olmalı."); return; }
+    // Toplu, geri-alınamaz, kredi etkili işlem → açık uyarı (kesin sayı backend dry-run gerektirir, uydurulmaz).
+    if (!(await confirm({
+      title: "Toplu işlemi uygula",
+      tone: "danger",
+      confirmLabel: "Uygula",
+      message: "Bu işlem seçili tarih aralığındaki dersleri etkileyebilir (iptal/erteleme; öğrencilere telafi kredisi verilebilir). İşlem geri alınamaz — etkilenen dersleri uyguladıktan sonra sonuç ekranında göreceksiniz.",
+    }))) return;
     setBusy(true);
     setErr(null);
     try {
@@ -121,6 +132,7 @@ function CreateClosureModal({ onClose, onDone }: { onClose: () => void; onDone: 
         affectedClassTypeId: form.affectedClassTypeId || undefined,
       });
       setResult(r);
+      toast.success("Toplu işlem uygulandı.");
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "İşlem uygulanamadı.");
     } finally {

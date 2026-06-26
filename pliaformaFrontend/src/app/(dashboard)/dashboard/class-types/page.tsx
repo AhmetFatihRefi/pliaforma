@@ -22,6 +22,7 @@ import {
   Textarea,
   TR,
   useConfirm,
+  useToast,
 } from "@/components/ui";
 
 // Sprint 28A: ders tipi sadeleşti → ad + süre + açıklama. Sprint 32A: opsiyonel ekipman havuzu bağı (equipmentId).
@@ -35,6 +36,7 @@ const empty: ClassTypeInput = {
 
 export default function ClassTypesPage() {
   const confirm = useConfirm();
+  const toast = useToast();
   const { canManage } = useRole();
   const [items, setItems] = useState<ClassTypeDto[]>([]);
   const [equipments, setEquipments] = useState<EquipmentDto[]>([]);
@@ -85,10 +87,12 @@ export default function ClassTypesPage() {
     setSaving(true);
     setFormError(null);
     try {
+      const isEdit = !!editingId;
       if (editingId) await classTypeService.update(editingId, form);
       else await classTypeService.create(form);
       setOpen(false);
       await load();
+      toast.success(isEdit ? "Grup güncellendi." : "Grup oluşturuldu.");
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : "Kaydedilemedi.");
     } finally {
@@ -101,8 +105,9 @@ export default function ClassTypesPage() {
     try {
       await classTypeService.remove(c.id);
       await load();
+      toast.success("Grup silindi.");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Silinemedi.");
+      toast.error(err instanceof ApiError ? err.message : "Silinemedi.");
     }
   };
 
@@ -172,7 +177,7 @@ export default function ClassTypesPage() {
           <FormField label="Açıklama (opsiyonel)">
             <Textarea value={form.description ?? ""} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
           </FormField>
-          <FormField label="Ekipman (opsiyonel)" hint="Bu grubu bir ekipman havuzuna bağlayın. Kapasite kontrolü sonraki aşamada gelecek.">
+          <FormField label="Ekipman (opsiyonel)" hint="Bu grubu bir ekipman havuzuna bağlayın.">
             <Select
               value={form.equipmentId ?? ""}
               onChange={(e) => setForm((f) => ({ ...f, equipmentId: e.target.value || null }))}
@@ -190,7 +195,7 @@ export default function ClassTypesPage() {
             </label>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>İptal</Button>
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Vazgeç</Button>
             <Button type="submit" loading={saving}>{editingId ? "Kaydet" : "Oluştur"}</Button>
           </div>
         </form>

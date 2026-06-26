@@ -652,7 +652,10 @@ function FooterCol({ title, links }: { title: string; links: { href: string; lab
       <div className="text-xs font-extrabold uppercase tracking-[0.08em] text-muted">{title}</div>
       <div className="mt-3.5 flex flex-col gap-2.5">
         {links.map((l) =>
-          l.href.startsWith("#") ? (
+          l.href === "#" ? (
+            // Henüz gerçek bir hedefi olmayan öğeler link gibi gösterilmez (yanıltıcı ölü link olmasın).
+            <span key={l.label} className="text-[14.5px] font-semibold text-muted">{l.label}</span>
+          ) : l.href.startsWith("#") ? (
             <a key={l.label} href={l.href} className="text-[14.5px] font-semibold text-foreground transition-colors hover:text-primary">{l.label}</a>
           ) : (
             <Link key={l.label} href={l.href} className="text-[14.5px] font-semibold text-foreground transition-colors hover:text-primary">{l.label}</Link>

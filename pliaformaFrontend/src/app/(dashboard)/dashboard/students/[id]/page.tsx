@@ -25,8 +25,10 @@ import {
   TH,
   THead,
   TR,
+  useConfirm,
   useToast,
 } from "@/components/ui";
+import { formatDate } from "@/lib/format";
 import {
   AttendanceSummaryModal,
   ContractDetailModal,
@@ -42,6 +44,7 @@ export default function StudentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { canManage } = useRole();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [student, setStudent] = useState<StudentDto | null>(null);
   const [lines, setLines] = useState<StudentContractLineDto[]>([]);
@@ -75,10 +78,27 @@ export default function StudentDetailPage() {
 
   const toggleActive = async () => {
     if (!student) return;
+    const deactivating = student.isActive;
+    const ok = await confirm(
+      deactivating
+        ? {
+            title: "Öğrenciyi pasifleştir",
+            tone: "danger",
+            confirmLabel: "Pasifleştir",
+            message: `${student.fullName} pasif olarak işaretlenecek; yeni rezervasyon/sözleşme oluşturulamaz. İstediğiniz zaman tekrar aktifleştirebilirsiniz.`,
+          }
+        : {
+            title: "Öğrenciyi aktifleştir",
+            confirmLabel: "Aktifleştir",
+            message: `${student.fullName} tekrar aktif edilecek.`,
+          },
+    );
+    if (!ok) return;
     try {
-      if (student.isActive) await studentService.deactivate(id);
+      if (deactivating) await studentService.deactivate(id);
       else await studentService.reactivate(id);
       await load();
+      toast.success(deactivating ? "Öğrenci pasifleştirildi." : "Öğrenci aktifleştirildi.");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "İşlem başarısız.");
     }
@@ -125,7 +145,7 @@ export default function StudentDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)}>Düzenle</Button>
             {student.status === "Guest" && <Button variant="secondary" size="sm" onClick={() => setConvertOpen(true)}>Hesaba bağla</Button>}
-            <Button variant="ghost" size="sm" onClick={toggleActive}>{student.isActive ? "Pasifleştir" : "Aktifleştir"}</Button>
+            <Button variant={student.isActive ? "danger" : "secondary"} size="sm" onClick={toggleActive}>{student.isActive ? "Pasifleştir" : "Aktifleştir"}</Button>
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
@@ -171,7 +191,7 @@ export default function StudentDetailPage() {
                     )}
                   </TD>
                   <TD className="text-muted">{l.instructorName ?? "Herhangi"}</TD>
-                  <TD className="text-muted">{l.startDate} → {l.endDate}</TD>
+                  <TD className="text-muted">{formatDate(l.startDate)} → {formatDate(l.endDate)}</TD>
                   <TD>{l.remainingLessonRight}/{l.lessonCount}</TD>
                   <TD className={l.remaining > 0 ? "text-danger" : "text-success"}>{money(l.remaining, l.currency)}</TD>
                   <TD><Badge tone={l.status === "Active" ? "success" : "neutral"}>{studentContractStatusLabels[l.status]}</Badge></TD>

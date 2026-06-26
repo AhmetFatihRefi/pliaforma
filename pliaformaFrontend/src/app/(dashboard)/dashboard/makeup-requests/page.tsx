@@ -14,9 +14,10 @@ import {
   makeupRequestStatusLabels,
   studentLevelLabels,
 } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR, useConfirm } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR, useConfirm, useToast } from "@/components/ui";
+import { formatDateTime } from "@/lib/format";
 
-const fmt = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+const fmt = (iso: string) => formatDateTime(iso);
 const STATUSES: MakeupRequestStatus[] = ["Pending", "Approved", "Rejected", "Withdrawn"];
 const conflictLabel = (r?: string | null) =>
   r === "instructor" ? "hoca dolu" : r === "student" ? "öğrenci dolu" :
@@ -24,6 +25,7 @@ const conflictLabel = (r?: string | null) =>
 
 export default function MakeupRequestsPage() {
   const confirm = useConfirm();
+  const toast = useToast();
   const { canManage } = useRole();
   const { instructors } = useInstructors();
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
@@ -31,7 +33,6 @@ export default function MakeupRequestsPage() {
   const [rows, setRows] = useState<MakeupRequestDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [banner, setBanner] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editApprove, setEditApprove] = useState<MakeupRequestDto | null>(null);
   const [rejectFor, setRejectFor] = useState<MakeupRequestDto | null>(null);
@@ -56,15 +57,27 @@ export default function MakeupRequestsPage() {
   useEffect(() => { load(); }, [load]);
 
   const approve = async (r: MakeupRequestDto) => {
-    if (!(await confirm({ title: "Telafi talebini onayla", confirmLabel: "Onayla", message: "Gerçek telafi dersi oluşturulacak ve 1 telafi kredisi kullanılacak." }))) return;
+    // Çakışma uyarısı onay metnine yansır (yanlış onayı engeller).
+    if (!(await confirm({
+      title: "Telafi talebini onayla",
+      tone: r.hasConflict ? "danger" : "default",
+      confirmLabel: "Onayla",
+      message: (
+        <>
+          Gerçek telafi dersi oluşturulacak ve 1 telafi kredisi kullanılacak.
+          {r.hasConflict && (
+            <span className="mt-1 block font-medium text-danger">⚠ Çakışma var ({conflictLabel(r.conflictReason)}). Yine de onaylamak istiyor musunuz?</span>
+          )}
+        </>
+      ),
+    }))) return;
     setBusyId(r.id);
-    setError(null);
     try {
       await makeupRequestService.approve(r.id);
-      setBanner(`${r.studentName} için telafi dersi onaylandı.`);
       await load();
+      toast.success(`${r.studentName} için telafi dersi onaylandı.`);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Onaylanamadı.");
+      toast.error(e instanceof ApiError ? e.message : "Onaylanamadı.");
     } finally {
       setBusyId(null);
     }
@@ -74,9 +87,8 @@ export default function MakeupRequestsPage() {
   const withdraw = async (r: MakeupRequestDto) => {
     if (!(await confirm({ title: "Telafi talebini geri çek", tone: "danger", confirmLabel: "Geri çek", message: "Talep geri çekilecek; saat boşalır ve rezerve telafi hakkı serbest kalır." }))) return;
     setBusyId(r.id);
-    setError(null);
-    try { await makeupRequestService.withdraw(r.id); setBanner("Telafi talebi geri çekildi."); await load(); }
-    catch (e) { setError(e instanceof ApiError ? e.message : "Geri çekilemedi."); }
+    try { await makeupRequestService.withdraw(r.id); await load(); toast.success("Telafi talebi geri çekildi."); }
+    catch (e) { toast.error(e instanceof ApiError ? e.message : "Geri çekilemedi."); }
     finally { setBusyId(null); }
   };
 
@@ -104,7 +116,6 @@ export default function MakeupRequestsPage() {
       </Card>
 
       {error && <Alert kind="error">{error}</Alert>}
-      {banner && <Alert kind="success">{banner}</Alert>}
 
       <Card>
         <Table>
@@ -156,20 +167,20 @@ export default function MakeupRequestsPage() {
           instructors={instructors}
           classTypes={classTypes}
           onClose={() => setEditApprove(null)}
-          onDone={() => { setEditApprove(null); setBanner("Telafi talebi düzenlenerek onaylandı."); load(); }}
+          onDone={() => { setEditApprove(null); toast.success("Telafi talebi düzenlenerek onaylandı."); load(); }}
         />
       )}
       {rejectFor && (
         <RejectModal
           request={rejectFor}
           onClose={() => setRejectFor(null)}
-          onDone={() => { setRejectFor(null); setBanner("Telafi talebi reddedildi."); load(); }}
+          onDone={() => { setRejectFor(null); toast.success("Telafi talebi reddedildi."); load(); }}
         />
       )}
       {requestOpen && (
         <MakeupRequestModal
           onClose={() => setRequestOpen(false)}
-          onDone={() => { setRequestOpen(false); setBanner("Telafi talebi oluşturuldu."); load(); }}
+          onDone={() => { setRequestOpen(false); toast.success("Telafi talebi oluşturuldu."); load(); }}
         />
       )}
     </div>

@@ -12,12 +12,14 @@ import {
   creditReasonLabels,
   creditTypeLabels,
 } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR, useToast } from "@/components/ui";
+import { formatDateTime } from "@/lib/format";
 
-const fmt = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
+const fmt = (iso: string) => formatDateTime(iso);
 
 export default function MakeupCreditsPage() {
   const { canManage } = useRole();
+  const toast = useToast();
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<StudentDto[]>([]);
   const [selected, setSelected] = useState<StudentDto | null>(null);
@@ -166,7 +168,7 @@ export default function MakeupCreditsPage() {
           lineOptions={studentLines.map((l) => ({ lineId: l.id, label: `${l.classTypeName} · ${l.startDate}–${l.endDate}${l.isIndividual ? " · Bireysel" : ""}` }))}
           onClose={() => setGrantOpen(false)}
           onSubmit={(lineId, amount, notes) => makeupCreditService.grant(selected.id, { studentContractLineId: lineId, amount, notes })}
-          onDone={(c) => { setCredits(c); setGrantOpen(false); }}
+          onDone={(c) => { setCredits(c); setGrantOpen(false); toast.success("Telafi kredisi verildi."); }}
         />
       )}
       {revokeOpen && selected && credits && (
@@ -176,7 +178,7 @@ export default function MakeupCreditsPage() {
           lineOptions={credits.byLine.filter((l) => l.available > 0).map((l) => ({ lineId: l.lineId, label: `${l.lineLabel} (kalan ${l.available})` }))}
           onClose={() => setRevokeOpen(false)}
           onSubmit={(lineId, amount, notes) => makeupCreditService.revoke(selected.id, { studentContractLineId: lineId, amount, notes })}
-          onDone={(c) => { setCredits(c); setRevokeOpen(false); }}
+          onDone={(c) => { setCredits(c); setRevokeOpen(false); toast.success("Telafi kredisi geri alındı."); }}
         />
       )}
     </div>
@@ -283,9 +285,9 @@ function PolicyCard() {
       {!editing ? (
         <div className="mt-3 grid gap-2 text-sm text-muted sm:grid-cols-2">
           <p>Aylık manuel kredi limiti: <span className="text-foreground">{policy.monthlyManualCreditLimit}</span></p>
-          <p>Varsayılan geçerlilik (gün): <span className="text-foreground">{policy.defaultCreditValidityDays}</span> <span className="text-xs">(şu an uygulanmıyor)</span></p>
+          <p>Varsayılan geçerlilik (gün): <span className="text-foreground">{policy.defaultCreditValidityDays}</span></p>
           <p>Hoca manuel kredi verebilir: <span className="text-foreground">{policy.allowInstructorManualGrant ? "Evet" : "Hayır"}</span></p>
-          <p>Kredisiz makeup (yönetici): <span className="text-foreground">{policy.allowMakeupBookingWithoutCreditByAdmin ? "Evet" : "Hayır"}</span> <span className="text-xs">(Sprint 20: artık kullanılmıyor — telafi hakkı zorunlu)</span></p>
+          <p>Kredisiz makeup (yönetici): <span className="text-foreground">{policy.allowMakeupBookingWithoutCreditByAdmin ? "Evet" : "Hayır"}</span></p>
         </div>
       ) : (
         <form onSubmit={save} className="mt-3 space-y-3">
@@ -294,7 +296,7 @@ function PolicyCard() {
               <Input type="number" min={0} max={100} value={policy.monthlyManualCreditLimit}
                 onChange={(e) => setPolicy({ ...policy, monthlyManualCreditLimit: Number(e.target.value) })} />
             </FormField>
-            <FormField label="Varsayılan geçerlilik (gün)" hint="Şu an yalnızca kaydedilir; expiry henüz uygulanmıyor">
+            <FormField label="Varsayılan geçerlilik (gün)">
               <Input type="number" min={0} max={3650} value={policy.defaultCreditValidityDays}
                 onChange={(e) => setPolicy({ ...policy, defaultCreditValidityDays: Number(e.target.value) })} />
             </FormField>

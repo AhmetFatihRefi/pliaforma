@@ -273,15 +273,21 @@ export function Select(props: SelectProps) {
     [multiple, emitMulti, emitSingle],
   );
 
-  // Açılınca arama kutusuna odaklan (yalnızca DOM yan etkisi).
+  // Açılınca arama kutusuna odaklan. preventScroll: sayfa açılışta zıplamasın (özellikle sayfa altındaki / modal içi Select'ler).
   useEffect(() => {
-    if (open && showSearch) queueMicrotask(() => searchRef.current?.focus());
+    if (open && showSearch) queueMicrotask(() => searchRef.current?.focus({ preventScroll: true }));
   }, [open, showSearch]);
 
-  // Aktif öğeyi görünür alana kaydır.
+  // Aktif öğeyi YALNIZ popover listesi içinde kaydır (asla sayfayı/window'u kaydırma — scrollIntoView ekranı zıplatıyordu).
   useEffect(() => {
     if (!open) return;
-    listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+    const ul = listRef.current;
+    const el = ul?.querySelector<HTMLElement>('[data-active="true"]');
+    if (!ul || !el) return;
+    const elTop = el.offsetTop - ul.offsetTop;
+    const elBottom = elTop + el.offsetHeight;
+    if (elTop < ul.scrollTop) ul.scrollTop = elTop;
+    else if (elBottom > ul.scrollTop + ul.clientHeight) ul.scrollTop = elBottom - ul.clientHeight;
   }, [active, open]);
 
   const moveActive = useCallback(
@@ -337,7 +343,7 @@ export function Select(props: SelectProps) {
       case "Escape":
         e.preventDefault();
         closeMenu();
-        triggerEl?.focus();
+        triggerEl?.focus({ preventScroll: true });
         break;
       case "Tab":
         closeMenu();

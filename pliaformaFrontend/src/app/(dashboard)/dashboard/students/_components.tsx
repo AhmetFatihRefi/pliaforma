@@ -41,8 +41,10 @@ import {
   Select,
   Textarea,
   useConfirm,
+  useToast,
 } from "@/components/ui";
 import { PaymentPlanEditor, planMatches, planMoney } from "./_payment-plan";
+import { formatDate } from "@/lib/format";
 
 const installmentTone = (s: InstallmentStatus): "success" | "warning" | "danger" | "neutral" =>
   s === "Paid" ? "success" : s === "PartiallyPaid" ? "warning" : s === "Overdue" ? "danger" : "neutral";
@@ -81,6 +83,7 @@ const SectionTitle = ({ children }: { children: React.ReactNode }) => (
 // ============================================================================
 export function ContractDetailModal({ line: l, onClose, onChanged }: { line: StudentContractLineDto; onClose: () => void; onChanged: () => void }) {
   const confirm = useConfirm();
+  const toast = useToast();
   const { instructors } = useInstructors();
   const [err, setErr] = useState<string | null>(null);
   const [due, setDue] = useState(l.dueDate ?? "");
@@ -188,7 +191,7 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
   const cancelLine = async () => {
     if (!(await confirm({ title: "Sözleşmeyi iptal et", tone: "danger", confirmLabel: "İptal et", message: "Bu sözleşme iptal edilecek. (bağlı ödeme/ders/telafi varsa engellenir)" }))) return;
     setBusy(true); setErr(null);
-    try { await contractService.cancelLine(l.id); onChanged(); onClose(); }
+    try { await contractService.cancelLine(l.id); toast.success("Sözleşme iptal edildi."); onChanged(); onClose(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "İptal edilemedi."); }
     finally { setBusy(false); }
   };
@@ -222,7 +225,7 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={isActive ? "success" : "neutral"}>{studentContractStatusLabels[l.status]}</Badge>
           <Badge tone="rose">{capLabel}</Badge>
-          <span className="text-sm text-muted">{l.instructorName ?? "Herhangi bir hoca"} · {l.startDate} → {l.endDate}</span>
+          <span className="text-sm text-muted">{l.instructorName ?? "Herhangi bir hoca"} · {formatDate(l.startDate)} → {formatDate(l.endDate)}</span>
         </div>
 
         {/* Ders özeti */}
@@ -278,7 +281,7 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <Badge tone="neutral">{plan.planType === "Cash" ? "Peşin" : `Taksitli (${plan.installments.length})`}</Badge>
                 {plan.overdueAmount > 0 && <Badge tone="danger">Geciken {planMoney(plan.overdueAmount, plan.currency)}</Badge>}
-                {plan.nextDueDate && <span className="text-muted">Sonraki ödeme: {plan.nextDueDate} · {planMoney(plan.nextDueAmount ?? 0, plan.currency)}</span>}
+                {plan.nextDueDate && <span className="text-muted">Sonraki ödeme: {formatDate(plan.nextDueDate)} · {planMoney(plan.nextDueAmount ?? 0, plan.currency)}</span>}
                 {plan.overpaidAmount > 0 && <Badge tone="success">Fazla ödeme {planMoney(plan.overpaidAmount, plan.currency)}</Badge>}
                 <span className="text-muted">{plan.paidCount}/{plan.installments.length} ödendi</span>
               </div>
@@ -287,7 +290,7 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
                   <li key={i.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
                     <div className="flex items-center gap-2">
                       <Badge tone={installmentTone(i.status)}>{installmentStatusLabels[i.status]}</Badge>
-                      <span className="text-muted">{i.sequenceNo}. Vade {i.dueDate}</span>
+                      <span className="text-muted">{i.sequenceNo}. Vade {formatDate(i.dueDate)}</span>
                     </div>
                     <span className="text-foreground">
                       {planMoney(i.paidAmount, plan.currency)} / {planMoney(i.amount, plan.currency)}
@@ -318,7 +321,7 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
             <p className="text-xs text-muted">Hoca, kapasite ve gün/saat tercihleri. Kaydetmek <strong>mevcut programı değiştirmez</strong>; kalan dersleri güncellemek için aşağıdaki “Kalan dersleri yeniden planla”yı kullan.</p>
             <div className="grid gap-3 sm:grid-cols-2">
               <FormField label="Hoca (opsiyonel)" hint="Boş = herhangi bir hoca">
-                <Select value={editInstr} onChange={(e) => setEditInstr(e.target.value)}>
+                <Select placeholder="Hoca seç" value={editInstr} onChange={(e) => setEditInstr(e.target.value)}>
                   <option value="">Farketmez (herhangi bir hoca)</option>
                   {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                 </Select>
@@ -394,7 +397,7 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
               <div className="grid gap-3 sm:grid-cols-2">
                 {needInstructor && (
                   <FormField label="Hoca (zorunlu)" hint="Sözleşmede hoca belirtilmemiş.">
-                    <Select value={genInstructor} onChange={(e) => setGenInstructor(e.target.value)}>
+                    <Select placeholder="Hoca seç" value={genInstructor} onChange={(e) => setGenInstructor(e.target.value)}>
                       <option value="">Seçin…</option>
                       {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                     </Select>
@@ -423,7 +426,7 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
               <div className="grid gap-3 sm:grid-cols-2">
                 {needInstructor && (
                   <FormField label="Hoca (zorunlu)" hint="Sözleşmede hoca belirtilmemiş.">
-                    <Select value={replanInstr} onChange={(e) => setReplanInstr(e.target.value)}>
+                    <Select placeholder="Hoca seç" value={replanInstr} onChange={(e) => setReplanInstr(e.target.value)}>
                       <option value="">Seçin…</option>
                       {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                     </Select>
@@ -486,6 +489,8 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
 // Finans (ödemeler + borç) modalı.
 // ============================================================================
 export function StudentFinanceModal({ student, onClose }: { student: StudentDto; onClose: () => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [payments, setPayments] = useState<PaymentDto[]>([]);
   const [debt, setDebt] = useState<StudentDebtSummaryDto | null>(null);
   const [lines, setLines] = useState<StudentContractLineDto[]>([]);
@@ -509,16 +514,33 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
   }, [student.id]);
   useEffect(() => { load(); }, [load]);
 
-  const wrap = async (fn: () => Promise<unknown>) => {
+  const wrap = async (fn: () => Promise<unknown>, successMsg?: string) => {
     setBusy(true); setErr(null);
-    try { await fn(); await load(); }
+    try { await fn(); await load(); if (successMsg) toast.success(successMsg); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "İşlem başarısız."); }
     finally { setBusy(false); }
+  };
+  const markPaid = async (p: PaymentDto) => {
+    if (!(await confirm({
+      title: "Ödemeyi 'ödendi' işaretle",
+      confirmLabel: "Ödendi",
+      message: `${money(p.amount, p.currency)} tutarındaki taksit 'ödendi' olarak işaretlenecek (vade ${formatDate(p.dueDate)}).`,
+    }))) return;
+    wrap(() => paymentService.markPaid(p.id), "Ödeme 'ödendi' olarak işaretlendi.");
+  };
+  const cancelPayment = async (p: PaymentDto) => {
+    if (!(await confirm({
+      title: "Ödemeyi iptal et",
+      tone: "danger",
+      confirmLabel: "İptal et",
+      message: `${money(p.amount, p.currency)} tutarındaki ödeme kaydı iptal edilecek. Bu işlem geri alınamaz.`,
+    }))) return;
+    wrap(() => paymentService.cancel(p.id), "Ödeme iptal edildi.");
   };
   const createPayment = () => {
     if (!payAmount) { setErr("Tutar girin."); return; }
     if (!payLineId) { setErr("Ödeme için bir sözleşme satırı (paket) seçin."); return; }
-    wrap(() => paymentService.create(student.id, { amount: Number(payAmount), dueDate: payDue, studentContractLineId: payLineId }))
+    wrap(() => paymentService.create(student.id, { amount: Number(payAmount), dueDate: payDue, studentContractLineId: payLineId }), "Ödeme eklendi.")
       .then(() => { setPayAmount(""); setPayLineId(""); });
   };
   const activeLines = lines.filter((l) => l.status === "Active");
@@ -562,13 +584,13 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
           <div className="space-y-2">
             {payments.length === 0 ? <p className="text-sm text-muted">Ödeme yok.</p> : payments.map((p) => (
               <div key={p.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm">
-                <span>{p.amount.toLocaleString("tr-TR")} {p.currency} · <span className="text-muted">vade {p.dueDate}</span> · <span className="text-muted">{p.lineLabel ?? "Diğer ödeme"}</span></span>
+                <span>{p.amount.toLocaleString("tr-TR")} {p.currency} · <span className="text-muted">vade {formatDate(p.dueDate)}</span> · <span className="text-muted">{p.lineLabel ?? "Diğer ödeme"}</span></span>
                 <div className="flex items-center gap-2">
                   <Badge tone={p.status === "Paid" ? "success" : p.status === "Overdue" ? "danger" : "warning"}>{paymentStatusLabels[p.status]}</Badge>
                   {(p.status === "Pending" || p.status === "Overdue") && (
                     <>
-                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => wrap(() => paymentService.markPaid(p.id))}>Ödendi</Button>
-                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => wrap(() => paymentService.cancel(p.id))}>İptal</Button>
+                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => markPaid(p)}>Ödendi</Button>
+                      <Button variant="danger" size="sm" disabled={busy} onClick={() => cancelPayment(p)}>İptal et</Button>
                     </>
                   )}
                 </div>
@@ -581,9 +603,9 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
             <div className="mt-2 flex flex-wrap gap-2">
               <Input type="number" min={0} step="0.01" placeholder="Tutar" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28" />
               <Input type="date" value={payDue} onChange={(e) => setPayDue(e.target.value)} className="w-40" />
-              <Select value={payLineId} onChange={(e) => setPayLineId(e.target.value)} className="w-56">
+              <Select placeholder="Paket seç" value={payLineId} onChange={(e) => setPayLineId(e.target.value)} className="w-56">
                 <option value="">Paket seçin…</option>
-                {activeLines.map((l) => <option key={l.id} value={l.id}>{l.classTypeName} · {l.startDate} ({l.currency})</option>)}
+                {activeLines.map((l) => <option key={l.id} value={l.id}>{l.classTypeName} · {formatDate(l.startDate)} ({l.currency})</option>)}
               </Select>
               <Button size="sm" disabled={busy} onClick={createPayment}>Ödeme ekle</Button>
             </div>
@@ -643,6 +665,7 @@ function SumStat({ label, value }: { label: string; value: number | string }) {
 // Öğrenci ekle/düzenle modalı.
 // ============================================================================
 export function GuestFormModal({ student, onClose, onSaved }: { student: StudentDto | null; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
   const [form, setForm] = useState<GuestInput>(
     student
       ? {
@@ -666,6 +689,7 @@ export function GuestFormModal({ student, onClose, onSaved }: { student: Student
       const payload: GuestInput = { ...form, birthDate: form.birthDate || null };
       if (student) await studentService.update(student.id, payload);
       else await studentService.createGuest(payload);
+      toast.success(student ? "Öğrenci güncellendi." : "Öğrenci oluşturuldu.");
       onSaved();
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "Kaydedilemedi.");
@@ -688,7 +712,7 @@ export function GuestFormModal({ student, onClose, onSaved }: { student: Student
             </Select>
           </FormField>
           <FormField label="Seviye">
-            <Select value={form.level ?? ""} onChange={(e) => setForm((f) => ({ ...f, level: (e.target.value || null) as StudentLevel | null }))}>
+            <Select placeholder="Seviye seç" value={form.level ?? ""} onChange={(e) => setForm((f) => ({ ...f, level: (e.target.value || null) as StudentLevel | null }))}>
               <option value="">Belirtilmemiş</option>
               {Object.entries(studentLevelLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </Select>
@@ -702,7 +726,7 @@ export function GuestFormModal({ student, onClose, onSaved }: { student: Student
           <Textarea value={form.healthNotes ?? ""} onChange={set("healthNotes")} />
         </FormField>
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>İptal</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
           <Button type="submit" loading={saving}>{student ? "Kaydet" : "Oluştur"}</Button>
         </div>
       </form>
@@ -714,6 +738,7 @@ export function GuestFormModal({ student, onClose, onSaved }: { student: Student
 // Misafir → kullanıcı hesabına bağlama modalı.
 // ============================================================================
 export function ConvertModal({ student, onClose, onDone }: { student: StudentDto; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
   const [email, setEmail] = useState(student.email ?? "");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -722,7 +747,7 @@ export function ConvertModal({ student, onClose, onDone }: { student: StudentDto
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr(null);
-    try { await studentService.convertToUser(student.id, { email, initialPassword: password || undefined }); onDone(); }
+    try { await studentService.convertToUser(student.id, { email, initialPassword: password || undefined }); toast.success("Öğrenci bir kullanıcı hesabına bağlandı."); onDone(); }
     catch (e2) { setErr(e2 instanceof ApiError ? e2.message : "Dönüştürülemedi."); }
     finally { setBusy(false); }
   };
@@ -737,7 +762,7 @@ export function ConvertModal({ student, onClose, onDone }: { student: StudentDto
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
         </FormField>
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>İptal</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
           <Button type="submit" loading={busy}>Bağla</Button>
         </div>
       </form>

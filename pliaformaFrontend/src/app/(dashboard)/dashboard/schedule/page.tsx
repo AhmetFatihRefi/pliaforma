@@ -79,6 +79,10 @@ export default function SchedulePage() {
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
   const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(addDays(todayStr(), 7));
+  // Tarih filtresi draft'ı: input'lar burada tutulur; fetch'i besleyen from/to yalnız GEÇERLİ tarih commit edilince
+  // (blur / Enter / hafta navigasyonu) güncellenir → elle yazarken ara/geçersiz değerlerle istek atılmaz.
+  const [fromInput, setFromInput] = useState(from);
+  const [toInput, setToInput] = useState(to);
   const [instructorFilter, setInstructorFilter] = useState("");
   const [classTypeFilter, setClassTypeFilter] = useState("");
   const [sessions, setSessions] = useState<ClassSessionDto[]>([]);
@@ -151,6 +155,15 @@ export default function SchedulePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Uygulanan aralık (hafta navigasyonu vb.) değişince input draft'larını eşitle.
+  useEffect(() => { setFromInput(from); }, [from]);
+  useEffect(() => { setToInput(to); }, [to]);
+
+  const isValidDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+  // Geçerli + değişmişse commit (tek fetch); geçersiz/boşsa uygulanan değere geri dön (istek atma).
+  const commitFrom = () => { if (isValidDate(fromInput)) { if (fromInput !== from) setFrom(fromInput); } else setFromInput(from); };
+  const commitTo = () => { if (isValidDate(toInput)) { if (toInput !== to) setTo(toInput); } else setToInput(to); };
 
   // Sprint 27: telafi talepleri seçili tarih aralığında + (varsa) hoca/ders tipi filtresine göre süzülür.
   const fromD = from, toD = to;
@@ -331,17 +344,17 @@ export default function SchedulePage() {
             <Button variant="ghost" size="sm" onClick={() => shiftWeek(7)} aria-label="Sonraki hafta">›</Button>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-40" />
+            <Input type="date" value={fromInput} onChange={(e) => setFromInput(e.target.value)} onBlur={commitFrom} onKeyDown={(e) => { if (e.key === "Enter") commitFrom(); }} className="w-40" />
             <span className="text-muted">–</span>
-            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-40" />
+            <Input type="date" value={toInput} onChange={(e) => setToInput(e.target.value)} onBlur={commitTo} onKeyDown={(e) => { if (e.key === "Enter") commitTo(); }} className="w-40" />
           </div>
           {isManager && (
-            <Select clearable value={instructorFilter} onChange={(e) => setInstructorFilter(e.target.value)} className="w-44">
+            <Select clearable placeholder="Tüm hocalar" value={instructorFilter} onChange={(e) => setInstructorFilter(e.target.value)} className="w-44">
               <option value="">Tüm hocalar</option>
               {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
             </Select>
           )}
-          <Select clearable value={classTypeFilter} onChange={(e) => setClassTypeFilter(e.target.value)} className="w-44">
+          <Select clearable placeholder="Tüm ders tipleri" value={classTypeFilter} onChange={(e) => setClassTypeFilter(e.target.value)} className="w-44">
             <option value="">Tüm ders tipleri</option>
             {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
@@ -368,7 +381,7 @@ export default function SchedulePage() {
           <div className="mt-3 space-y-3 border-t border-border pt-3">
             <div className="flex flex-wrap items-end gap-3">
               <FormField label="Boşluk ders tipi">
-                <Select value={availClassTypeId} onChange={(e) => setAvailClassTypeId(e.target.value)} className="w-48">
+                <Select placeholder="Ders tipi seç" value={availClassTypeId} onChange={(e) => setAvailClassTypeId(e.target.value)} className="w-48">
                   <option value="">Seçin…</option>
                   {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk{c.equipmentName ? ` · ${c.equipmentName}` : ""}</option>)}
                 </Select>
@@ -380,7 +393,7 @@ export default function SchedulePage() {
                 <Input type="number" min={1} value={availCapacity} onChange={(e) => setAvailCapacity(e.target.value)} className="w-24" />
               </FormField>
               <FormField label="Hoca (ops.)">
-                <Select value={availInstructorId} onChange={(e) => setAvailInstructorId(e.target.value)} className="w-44">
+                <Select placeholder="Tüm uygun hocalar" value={availInstructorId} onChange={(e) => setAvailInstructorId(e.target.value)} className="w-44">
                   <option value="">Tüm uygun hocalar</option>
                   {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                 </Select>
@@ -1204,6 +1217,8 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
 }
 
 function SessionBookingsModal({ session, onClose, onChanged }: { session: ClassSessionDto; onClose: () => void; onChanged: () => void }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const [items, setItems] = useState<ClassBookingDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -1224,10 +1239,17 @@ function SessionBookingsModal({ session, onClose, onChanged }: { session: ClassS
   }, [load]);
 
   const cancel = async (b: ClassBookingDto) => {
+    if (!(await confirm({
+      title: "Rezervasyonu iptal et",
+      tone: "danger",
+      confirmLabel: "İptal et",
+      message: `${b.studentName} bu dersten çıkarılacak. Öğrencinin ders hakkı/telafi durumu etkilenebilir.`,
+    }))) return;
     try {
       await bookingService.cancel(b.id);
       await load();
       onChanged();
+      toast.success("Rezervasyon iptal edildi.");
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "İptal edilemedi.");
     }
@@ -1255,7 +1277,7 @@ function SessionBookingsModal({ session, onClose, onChanged }: { session: ClassS
                     </div>
                   </TD>
                   <TD className="text-right">
-                    {b.status === "Booked" && <Button variant="ghost" size="sm" onClick={() => cancel(b)}>İptal</Button>}
+                    {b.status === "Booked" && <Button variant="danger" size="sm" onClick={() => cancel(b)}>İptal et</Button>}
                   </TD>
                 </TR>
               ))
@@ -1334,12 +1356,12 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
           </Alert>
         )}
         <FormField label="Hoca" hint={slotWindow ? "Yalnız bu boşlukta uygun hocalar" : undefined}>
-          <Select value={form.instructorProfileId} onChange={(e) => setForm((f) => ({ ...f, instructorProfileId: e.target.value }))}>
+          <Select placeholder="Hoca seç" value={form.instructorProfileId} onChange={(e) => setForm((f) => ({ ...f, instructorProfileId: e.target.value }))}>
             {instrOptions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </Select>
         </FormField>
         <FormField label="Grup (ClassType)" hint={slotWindow ? "Boşluk bu ders tipi için hesaplandı" : "Süre ve kapasite buradan gelir"}>
-          <Select value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))} disabled={!!slotWindow}>
+          <Select placeholder="Ders tipi seç" value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))} disabled={!!slotWindow}>
             {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk{c.equipmentName ? ` · ${c.equipmentName}` : ""}</option>)}
           </Select>
         </FormField>
@@ -1352,7 +1374,7 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
         <div className="grid grid-cols-2 gap-3">
           <FormField label="Başlangıç" hint={slotWindow ? "Pencere içinde seçin" : undefined}>
             {slotWindow ? (
-              <Select value={form.startAt} onChange={(e) => setForm((f) => ({ ...f, startAt: e.target.value }))} required>
+              <Select placeholder="Saat seç" value={form.startAt} onChange={(e) => setForm((f) => ({ ...f, startAt: e.target.value }))} required>
                 {startOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
             ) : (
@@ -1446,12 +1468,12 @@ function BulkModal({ instructors, classTypes, onClose, onDone }: ModalProps) {
           </Alert>
         )}
         <FormField label="Hoca">
-          <Select value={form.instructorProfileId} onChange={(e) => setForm((f) => ({ ...f, instructorProfileId: e.target.value }))}>
+          <Select placeholder="Hoca seç" value={form.instructorProfileId} onChange={(e) => setForm((f) => ({ ...f, instructorProfileId: e.target.value }))}>
             {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </Select>
         </FormField>
         <FormField label="Ders grubu">
-          <Select value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))}>
+          <Select placeholder="Ders grubu seç" value={form.classTypeId} onChange={(e) => setForm((f) => ({ ...f, classTypeId: e.target.value }))}>
             {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk</option>)}
           </Select>
         </FormField>

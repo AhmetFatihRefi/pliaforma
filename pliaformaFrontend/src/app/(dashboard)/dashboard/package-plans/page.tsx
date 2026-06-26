@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { packagePlanService, classTypeService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
 import type { PackagePlanDto, ClassTypeDto, PackagePlanInput } from "@/lib/domain-types";
-import { Alert, Badge, Button, Card, FormField, Input, Modal, Table, TableEmpty, TD, TH, THead, TR, Textarea, useConfirm } from "@/components/ui";
+import { Alert, Badge, Button, Card, FormField, Input, Modal, Table, TableEmpty, TD, TH, THead, TR, Textarea, useConfirm, useToast } from "@/components/ui";
 
 export default function PackagePlansPage() {
   const confirm = useConfirm();
+  const toast = useToast();
   const [items, setItems] = useState<PackagePlanDto[]>([]);
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,12 +35,13 @@ export default function PackagePlansPage() {
   }, [load]);
 
   const remove = async (p: PackagePlanDto) => {
-    if (!(await confirm({ title: "Planı sil", tone: "danger", confirmLabel: "Sil", message: `"${p.name}" planı silinecek.` }))) return;
+    if (!(await confirm({ title: "Planı sil", tone: "danger", confirmLabel: "Sil", message: `"${p.name}" planı silinecek. Bu plana bağlı stüdyo/abonelik varsa işlem engellenebilir. Geri alınamaz.` }))) return;
     try {
       await packagePlanService.remove(p.id);
       await load();
+      toast.success("Plan silindi.");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Silinemedi.");
+      toast.error(e instanceof ApiError ? e.message : "Silinemedi.");
     }
   };
 
@@ -90,7 +92,7 @@ export default function PackagePlansPage() {
                 <TD className="text-right">
                   <div className="flex justify-end gap-2">
                     <Button variant="ghost" size="sm" onClick={() => { setEditing(p); setFormOpen(true); }}>Düzenle</Button>
-                    <Button variant="ghost" size="sm" onClick={() => remove(p)}>Sil</Button>
+                    <Button variant="danger" size="sm" onClick={() => remove(p)}>Sil</Button>
                   </div>
                 </TD>
               </TR>
@@ -131,6 +133,7 @@ function PlanModal({ plan, classTypes, onClose, onDone }: {
   });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const toast = useToast();
 
   const toggleClassType = (id: string) =>
     setForm((f) => ({
@@ -140,6 +143,16 @@ function PlanModal({ plan, classTypes, onClose, onDone }: {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Gelecek fiyat: ikisi de gerekli — biri boşsa sessizce yutma, uyar.
+    if ((form.futurePrice !== "") !== (form.futureEffectiveFrom !== "")) {
+      setErr("Gelecek fiyat için hem yeni fiyat hem geçerlilik tarihi girilmeli (ya da ikisini de boş bırakın).");
+      return;
+    }
+    // Kapsam: 'tüm gruplar' kapalıysa en az bir grup seçilmeli.
+    if (!form.allowAllClassTypes && form.classTypeIds.length === 0) {
+      setErr("En az bir ders grubu seçin veya 'Tüm ders gruplarında geçerli'yi işaretleyin.");
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -157,6 +170,7 @@ function PlanModal({ plan, classTypes, onClose, onDone }: {
       };
       if (plan) await packagePlanService.update(plan.id, { ...body, isActive: form.isActive });
       else await packagePlanService.create(body);
+      toast.success(plan ? "Plan kaydedildi." : "Plan oluşturuldu.");
       onDone();
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : "Kaydedilemedi.");

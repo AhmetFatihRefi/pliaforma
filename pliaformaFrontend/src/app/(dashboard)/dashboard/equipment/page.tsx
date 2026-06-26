@@ -139,7 +139,7 @@ export default function EquipmentPage() {
 
       <Alert kind="info">
         <span className="font-medium">Toplam kapasite = Adet × Aynı anda kullanım.</span>{" "}
-        Örn: 4 reformer × 1 = 4 kişi. Kapasite kontrolü sonraki aşamada (ders oluştururken) devreye girecek.
+        Örn: 4 reformer × 1 = 4 kişi.
       </Alert>
 
       <Table>
@@ -213,7 +213,7 @@ export default function EquipmentPage() {
             </label>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>İptal</Button>
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Vazgeç</Button>
             <Button type="submit" loading={saving}>{editingId ? "Kaydet" : "Oluştur"}</Button>
           </div>
         </form>
