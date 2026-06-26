@@ -21,7 +21,9 @@ public sealed record CreateClassSessionCommand(
     DateTime StartAt,
     int? Capacity,
     string? Notes,
-    ClassSessionKind SessionKind = ClassSessionKind.Regular) : ICommand<ClassSessionDto>, IStudioWriteRequest;
+    ClassSessionKind SessionKind = ClassSessionKind.Regular,
+    // Sprint 42: yalnız geçmiş-zaman engelini aşar (manuel backfill). Default false; true sadece UI onayıyla gelir.
+    bool AllowPastSession = false) : ICommand<ClassSessionDto>, IStudioWriteRequest;
 
 public sealed class CreateClassSessionValidator : AbstractValidator<CreateClassSessionCommand>
 {
@@ -40,13 +42,15 @@ public sealed class CreateClassSessionHandler : ICommandHandler<CreateClassSessi
     private readonly ICurrentUserService _currentUser;
     private readonly IDateTime _clock;
     private readonly EquipmentCapacityGuard _equipmentGuard;
+    private readonly ISecurityAuditLogger _audit;
 
-    public CreateClassSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, EquipmentCapacityGuard equipmentGuard)
+    public CreateClassSessionHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock, EquipmentCapacityGuard equipmentGuard, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
         _clock = clock;
         _equipmentGuard = equipmentGuard;
+        _audit = audit;
     }
 
     public async Task<ClassSessionDto> Handle(CreateClassSessionCommand request, CancellationToken cancellationToken)
@@ -66,7 +70,7 @@ public sealed class CreateClassSessionHandler : ICommandHandler<CreateClassSessi
         var capacity = request.Capacity ?? 9999;
         if (capacity < 1) capacity = 1;
 
-        await SessionRules.EnsureValidAsync(_db, _clock, studioId, profile.Id, startAt, endAt, excludeId: null, cancellationToken);
+        await SessionRules.EnsureValidAsync(_db, _clock, studioId, profile.Id, startAt, endAt, excludeId: null, cancellationToken, allowPast: request.AllowPastSession);
 
         // Sprint 37: seans tamamen stüdyo çalışma saatleri içinde olmalı (kapalı gün/saat dışı/kapanış aşımı → 409).
         var workingHours = await StudioWorkingHoursService.LoadAsync(_db, studioId, cancellationToken);
@@ -90,6 +94,13 @@ public sealed class CreateClassSessionHandler : ICommandHandler<CreateClassSessi
 
         _db.ClassSessions.Add(entity);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Sprint 42: geçmiş tarihli (backfill) ders oluşturma denetim kaydı (best-effort; PII yok).
+        if (request.AllowPastSession)
+            await _audit.LogAsync(SecurityAuditEventType.PastSessionCreated, SecurityAuditOutcome.Success,
+                actorUserId: userId, studioId: studioId,
+                targetType: "ClassSession", targetId: entity.Id,
+                detail: $"startAt={startAt:yyyy-MM-ddTHH:mm}", cancellationToken: cancellationToken);
 
         return ClassSessionDto.From(entity, profile.DisplayName, classType.Name);
     }

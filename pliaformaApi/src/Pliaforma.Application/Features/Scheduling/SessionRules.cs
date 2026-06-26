@@ -119,13 +119,15 @@ internal static class SessionRules
     /// Tek seans oluşturma/güncellemede HARD kuralları zorlar (hata fırlatır): geçmiş-zaman + hoca-çakışma.
     /// Sprint 26: hoca "müsaitlik penceresi" kontrolü KALDIRILDI — sistem availability'ye göre engel koymaz;
     /// hocanın boş/dolu saatleri ders programından anlaşılır. Yalnız gerçek çakışma + geçmiş engellenir.
+    /// Sprint 42: <paramref name="allowPast"/> true ise YALNIZ geçmiş-zaman engeli atlanır (manuel backfill,
+    /// Owner/StudioAdmin + UI onayı); çakışma ve pending-telafi blokları HER DURUMDA zorlanmaya devam eder.
     /// </summary>
     public static async Task EnsureValidAsync(
         IAppDbContext db, IDateTime clock, Guid studioId, Guid instructorProfileId,
-        DateTime startAt, DateTime endAt, Guid? excludeId, CancellationToken ct)
+        DateTime startAt, DateTime endAt, Guid? excludeId, CancellationToken ct, bool allowPast = false)
     {
         var nowLocal = await StudioNowAsync(db, clock, studioId, ct);
-        if (startAt < nowLocal)
+        if (!allowPast && startAt < nowLocal)
             throw new BusinessRuleException("Geçmiş bir zamana ders oluşturulamaz.");
 
         if (await HasConflictAsync(db, studioId, instructorProfileId, startAt, endAt, excludeId, ct))

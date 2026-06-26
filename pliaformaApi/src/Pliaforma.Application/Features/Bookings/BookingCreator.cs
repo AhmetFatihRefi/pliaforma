@@ -43,15 +43,18 @@ public sealed class BookingCreator
 
     /// <param name="studentContractId">Sprint 18a: header (back-compat) → bu header'ın uygun line'ı çözülür.</param>
     /// <param name="studentContractLineId">Sprint 28C-1: doğrudan line seçimi (staff line seçtiyse). null → resolver line bulur.</param>
+    /// <param name="allowPast">Sprint 42: true ise YALNIZ "geçmiş seansa rezervasyon" engeli atlanır (staff backfill,
+    /// Owner/StudioAdmin + UI onayı). Diğer tüm guard'lar (kapasite, line uygunluk/tarih, çakışma, bireysellik) korunur.
+    /// Self-booking yolu HER ZAMAN false geçirir.</param>
     public async Task<ClassBooking> CreateAsync(
         Guid studioId, ClassSession session, StudentProfile student, Guid bookedByUserId, StudioRole bookerRole,
-        CancellationToken ct, Guid? studentContractId = null, Guid? studentContractLineId = null)
+        CancellationToken ct, Guid? studentContractId = null, Guid? studentContractLineId = null, bool allowPast = false)
     {
         if (session.Status != ClassSessionStatus.Scheduled)
             throw new BusinessRuleException("Yalnızca planlı (Scheduled) seanslara rezervasyon yapılabilir.");
 
         var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, ct);
-        if (session.StartAt <= nowLocal)
+        if (!allowPast && session.StartAt <= nowLocal)
             throw new BusinessRuleException("Geçmiş seansa rezervasyon yapılamaz.");
 
         // Friendly çift-rezervasyon ön kontrolü (race koruması filtered unique index'tedir).

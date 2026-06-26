@@ -13,7 +13,9 @@ namespace Pliaforma.Application.Features.Bookings;
 /// oluşturduğu öğrenci için.
 /// </summary>
 public sealed record StaffCreateBookingCommand(
-    Guid ClassSessionId, Guid StudentProfileId, Guid? StudentContractId = null, Guid? StudentContractLineId = null)
+    Guid ClassSessionId, Guid StudentProfileId, Guid? StudentContractId = null, Guid? StudentContractLineId = null,
+    // Sprint 42: yalnız "geçmiş seansa rezervasyon" engelini aşar (staff backfill). Default false; true sadece UI onayıyla.
+    bool AllowPastBooking = false)
     : ICommand<ClassBookingDto>, IStudioWriteRequest;
 
 public sealed class StaffCreateBookingValidator : AbstractValidator<StaffCreateBookingCommand>
@@ -30,12 +32,14 @@ public sealed class StaffCreateBookingHandler : ICommandHandler<StaffCreateBooki
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly BookingCreator _creator;
+    private readonly ISecurityAuditLogger _audit;
 
-    public StaffCreateBookingHandler(IAppDbContext db, ICurrentUserService currentUser, BookingCreator creator)
+    public StaffCreateBookingHandler(IAppDbContext db, ICurrentUserService currentUser, BookingCreator creator, ISecurityAuditLogger audit)
     {
         _db = db;
         _currentUser = currentUser;
         _creator = creator;
+        _audit = audit;
     }
 
     public async Task<ClassBookingDto> Handle(StaffCreateBookingCommand request, CancellationToken cancellationToken)
@@ -82,7 +86,14 @@ public sealed class StaffCreateBookingHandler : ICommandHandler<StaffCreateBooki
         }
 
         var bookerRole = _currentUser.StudioRole ?? StudioRole.Instructor;
-        var booking = await _creator.CreateAsync(studioId, session, student, userId, bookerRole, cancellationToken, request.StudentContractId, request.StudentContractLineId);
+        var booking = await _creator.CreateAsync(studioId, session, student, userId, bookerRole, cancellationToken, request.StudentContractId, request.StudentContractLineId, allowPast: request.AllowPastBooking);
+
+        // Sprint 42: geçmiş seansa (backfill) öğrenci ekleme denetim kaydı (best-effort; PII yok).
+        if (request.AllowPastBooking)
+            await _audit.LogAsync(SecurityAuditEventType.PastBookingCreated, SecurityAuditOutcome.Success,
+                actorUserId: userId, studioId: studioId,
+                targetType: "ClassBooking", targetId: booking.Id,
+                detail: $"sessionStartAt={session.StartAt:yyyy-MM-ddTHH:mm}", cancellationToken: cancellationToken);
 
         var classTypeName = await _db.ClassTypes.Where(c => c.Id == session.ClassTypeId).Select(c => c.Name).FirstAsync(cancellationToken);
         var instructorName = await _db.InstructorProfiles.Where(p => p.Id == session.InstructorProfileId).Select(p => p.DisplayName).FirstAsync(cancellationToken);

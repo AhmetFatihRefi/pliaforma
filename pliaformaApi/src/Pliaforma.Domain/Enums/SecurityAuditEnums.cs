@@ -48,6 +48,10 @@ public enum SecurityAuditEventType
 
     // Sprint 31D-1 — retention purge meta olayı (tur başına ≤1; PII yok)
     AuditRetentionPurge = 28,
+
+    // Sprint 42 — geçmiş tarihli backfill (manuel, bilinçli; Owner/StudioAdmin + UI onayı)
+    PastSessionCreated = 29,
+    PastBookingCreated = 30,
 }
 
 /// <summary>Denetim olayının sonucu.</summary>

@@ -244,7 +244,8 @@ export const classSessionService = {
     const qs = q.toString();
     return api<ClassSessionDto[]>(`/api/studio/class-sessions${qs ? `?${qs}` : ""}`);
   },
-  create: (input: { instructorProfileId: string; classTypeId: string; startAt: string; capacity?: number; notes?: string; sessionKind?: ClassSessionKind }) =>
+  // Sprint 42: allowPastSession yalnız UI onayıyla true; geçmiş tarih guard'ını aşar (backfill).
+  create: (input: { instructorProfileId: string; classTypeId: string; startAt: string; capacity?: number; notes?: string; sessionKind?: ClassSessionKind; allowPastSession?: boolean }) =>
     api<ClassSessionDto>("/api/studio/class-sessions", { method: "POST", body: input }),
   // Ders güncelle (zaman/kapasite/not). Eğitmen/ders tipi değiştirilemez (backend kısıtı).
   update: (id: string, input: { startAt?: string; capacity?: number | null; notes?: string | null }) =>
@@ -495,8 +496,9 @@ export const bookingService = {
   },
   forSession: (sessionId: string) => api<ClassBookingDto[]>(`/api/studio/class-sessions/${sessionId}/bookings`),
   // Sprint 28C-1: Regular rezervasyonda opsiyonel line seçimi (verilmezse backend resolver line bulur).
-  create: (sessionId: string, studentProfileId: string, studentContractLineId?: string | null) =>
-    api<ClassBookingDto>(`/api/studio/class-sessions/${sessionId}/bookings`, { method: "POST", body: { studentProfileId, studentContractLineId: studentContractLineId ?? null } }),
+  // Sprint 42: allowPastBooking yalnız staff + UI onayıyla true; "geçmiş seansa rezervasyon" guard'ını aşar (backfill).
+  create: (sessionId: string, studentProfileId: string, studentContractLineId?: string | null, allowPastBooking?: boolean) =>
+    api<ClassBookingDto>(`/api/studio/class-sessions/${sessionId}/bookings`, { method: "POST", body: { studentProfileId, studentContractLineId: studentContractLineId ?? null, allowPastBooking: allowPastBooking ?? false } }),
   cancel: (id: string) => api<null>(`/api/studio/bookings/${id}/cancel`, { method: "POST", body: {} }),
 };
 

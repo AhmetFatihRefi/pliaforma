@@ -1086,6 +1086,9 @@ function RescheduleModal({ session, onClose, onDone, isManager }: {
 function StaffBookingModal({ session, onClose, onDone }: { session: ClassSessionDto; onClose: () => void; onDone: () => void }) {
   // Sprint 29B: aday öğrenciler backend candidate uçlarından gelir (Regular: tercih gün/saat sıralı; Makeup: telafi bazlı).
   const isMakeup = session.sessionKind === "Makeup";
+  const confirm = useConfirm();
+  // Sprint 42: seans geçmişteyse staff backfill → ekleme öncesi onay + allowPastBooking.
+  const isPast = new Date(session.startAt) < new Date();
   const [search, setSearch] = useState("");
   const [level, setLevel] = useState<StudentLevel | "">("");
   const [regular, setRegular] = useState<RegularCandidateDto[]>([]);
@@ -1117,8 +1120,15 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
 
   // Her satır o satırın LineId'iyle booking yapar (line seçtirme modalı yok — her uygun line ayrı satır).
   const book = async (studentProfileId: string, lineId: string) => {
+    // Geçmiş seans: onaysız istek gitmez; onaylanırsa allowPastBooking=true.
+    if (isPast && !(await confirm({
+      title: "Geçmiş derse öğrenci eklensin mi?",
+      tone: "danger",
+      confirmLabel: "Evet, öğrenci ekle",
+      message: "Bu öğrenci geçmiş tarihli bir derse eklenecek. Bu işlem ders hakkı, katılım ve raporları etkileyebilir. Verileri geriye dönük doldurmak için kullanılmalıdır.",
+    }))) return;
     setBusyId(lineId); setErr(null);
-    try { await bookingService.create(session.id, studentProfileId, lineId); onDone(); }
+    try { await bookingService.create(session.id, studentProfileId, lineId, isPast); onDone(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Rezervasyon yapılamadı."); setBusyId(null); }
   };
 
@@ -1318,8 +1328,19 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
   const selectedCt = classTypes.find((c) => c.id === form.classTypeId);
   const equipmentBound = !!selectedCt?.equipmentId;
 
+  const confirm = useConfirm();
+  // Sprint 42: seçilen başlangıç şu andan önceyse (yerel) → geçmiş tarihli backfill → uyarı + onay.
+  const isPast = !!form.startAt && new Date(form.startAt) < new Date();
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Geçmiş tarih: onaysız API'ye istek gitmez; onaylanırsa allowPastSession=true.
+    if (isPast && !(await confirm({
+      title: "Geçmiş tarihli ders oluşturulsun mu?",
+      tone: "danger",
+      confirmLabel: "Evet, geçmiş ders oluştur",
+      message: "Geçmiş tarihli ders oluşturuyorsunuz. Bu işlem katılım, ders hakkı ve raporları etkileyebilir. Verileri geriye dönük doldurmak için kullanılmalıdır.",
+    }))) return;
     setBusy(true);
     setErr(null);
     try {
@@ -1330,6 +1351,7 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
         capacity: form.capacity ? Number(form.capacity) : undefined,
         notes: form.notes || undefined,
         sessionKind: form.sessionKind,
+        allowPastSession: isPast,
       });
       onDone();
     } catch (e2) {
@@ -1399,8 +1421,13 @@ function CreateSessionModal({ instructors, classTypes, onClose, onDone, initialS
             <Input value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
           </FormField>
         </div>
+        {isPast && (
+          <Alert kind="warning">
+            Geçmiş tarihli ders oluşturuyorsunuz. Bu ders raporlara, katılım durumuna ve öğrencilerin ders haklarına etki edebilir.
+          </Alert>
+        )}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="secondary" onClick={onClose}>İptal</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
           <Button type="submit" loading={busy}>Oluştur</Button>
         </div>
       </form>
