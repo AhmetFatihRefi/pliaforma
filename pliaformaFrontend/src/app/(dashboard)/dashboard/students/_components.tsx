@@ -177,7 +177,10 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
         instructorProfileId: needInstructor ? genInstructor : null,
         capacity: needCapacity ? Number(genCapacity) : null,
       });
-      setGenMsg(`✓ ${r.createdCount} ders oluşturuldu (yeni ${r.newSessionCount}, gruba bağlanan ${r.reusedSessionCount}, atlanan ${r.skippedCount}).`);
+      const whNote = r.skippedOutsideWorkingHoursCount > 0
+        ? ` ${r.skippedOutsideWorkingHoursCount} ders çalışma saatleri dışında kaldığı için planlanamadı.`
+        : "";
+      setGenMsg(`✓ ${r.createdCount} ders oluşturuldu (yeni ${r.newSessionCount}, gruba bağlanan ${r.reusedSessionCount}, atlanan ${r.skippedCount}).${whNote}`);
       onChanged();
     } catch (e) { setGenMsg(e instanceof ApiError ? e.message : "Program oluşturulamadı."); }
     finally { setBusy(false); }
@@ -375,6 +378,7 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
                 ✓ {replanResult.cancelledFutureBookings} ders iptal/taşındı, {replanResult.createdCount} ders yeniden planlandı
                 (yeni {replanResult.newSessionCount}, gruba bağlanan {replanResult.reusedSessionCount}).
                 {replanResult.notPlannedCount > 0 && <span className="text-danger"> {replanResult.notPlannedCount} ders uygunluk olmadığı için planlanamadı.</span>}
+                {replanResult.skippedOutsideWorkingHoursCount > 0 && <span className="text-warning"> {replanResult.skippedOutsideWorkingHoursCount} ders çalışma saatleri dışında kaldı.</span>}
               </div>
             )}
             {replanMsg && <p className="text-xs text-danger">{replanMsg}</p>}

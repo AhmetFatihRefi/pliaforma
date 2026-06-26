@@ -32,6 +32,9 @@ public interface IAppDbContext
     DbSet<MakeupCreditTransaction> MakeupCreditTransactions { get; }
     DbSet<MakeupRequest> MakeupRequests { get; }
     DbSet<StudioClosure> StudioClosures { get; }
+
+    /// <summary>Stüdyonun haftalık çalışma saatleri (Sprint 37). Kayıt yoksa fallback 07:00–23:00.</summary>
+    DbSet<StudioWorkingHour> StudioWorkingHours { get; }
     DbSet<StudioMakeupPolicy> StudioMakeupPolicies { get; }
     DbSet<Attendance> Attendances { get; }
     DbSet<PackagePlan> PackagePlans { get; }

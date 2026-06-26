@@ -30,6 +30,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<MakeupCreditTransaction> MakeupCreditTransactions => Set<MakeupCreditTransaction>();
     public DbSet<MakeupRequest> MakeupRequests => Set<MakeupRequest>();
     public DbSet<StudioClosure> StudioClosures => Set<StudioClosure>();
+    public DbSet<StudioWorkingHour> StudioWorkingHours => Set<StudioWorkingHour>();
     public DbSet<StudioMakeupPolicy> StudioMakeupPolicies => Set<StudioMakeupPolicy>();
     public DbSet<Attendance> Attendances => Set<Attendance>();
     public DbSet<PackagePlan> PackagePlans => Set<PackagePlan>();

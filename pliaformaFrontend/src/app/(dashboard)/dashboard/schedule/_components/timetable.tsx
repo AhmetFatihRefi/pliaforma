@@ -6,7 +6,7 @@
 // Aynı anda (zamanı çakışan) dersler yan yana DEĞİL, tek bir "eşzamanlı grup" kutusunda altlı üstlü toplanır →
 // bir arada oldukları netçe hissedilir. Boşluk (availability window) kartları da aynı gruba katılır.
 import { useMemo } from "react";
-import { type AvailabilityWindowDto, type ClassSessionDto, type MakeupRequestDto, isUnlimitedCapacity, sessionKindLabels } from "@/lib/domain-types";
+import { type AvailabilityWindowDto, type ClassSessionDto, type DayOfWeek, type MakeupRequestDto, type WorkingHourDayDto, isUnlimitedCapacity, sessionKindLabels } from "@/lib/domain-types";
 
 const DAY_W = 208; // gün sütunu genişliği (px) — kartlar tam genişlik kullanır
 const ADD_HOUR = 9; // gün başlığından "+" ile hızlı ekleme varsayılan saati
@@ -23,6 +23,21 @@ const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${St
 function dayHeading(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   return { full: TR_DAYS[d.getDay()], dm: `${d.getDate()} ${TR_MONTHS[d.getMonth()]}` };
+}
+
+// Sprint 37: tarihten haftanın günü → çalışma saati etiketi ("09:00–22:00" / "Kapalı").
+const JS_DOW: DayOfWeek[] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+type WorkingHoursMap = Map<DayOfWeek, WorkingHourDayDto>;
+function toWorkingHoursMap(days?: WorkingHourDayDto[]): WorkingHoursMap | undefined {
+  if (!days) return undefined;
+  return new Map(days.map((d) => [d.dayOfWeek, d]));
+}
+function workingHoursLabel(dateStr: string, wh?: WorkingHoursMap): { closed: boolean; label: string } | null {
+  if (!wh) return null;
+  const d = wh.get(JS_DOW[new Date(dateStr + "T00:00:00").getDay()]);
+  if (!d) return null;
+  if (d.isClosed) return { closed: true, label: "Kapalı" };
+  return { closed: false, label: `${(d.opensAt ?? "").slice(0, 5)}–${(d.closesAt ?? "").slice(0, 5)}` };
 }
 
 // ---- Boşluk (availability window) etiketleri ----
@@ -225,12 +240,13 @@ function buildItemsByDay(sessions: ClassSessionDto[], requests: MakeupRequestDto
 
 /* ------------------------------------------------------------- Mobil ajanda */
 export function MobileAgenda({
-  days, sessions, requests, availabilityWindows, students, onSelectSession, onSelectRequest, onSelectWindow,
+  days, sessions, requests, availabilityWindows, workingHours, students, onSelectSession, onSelectRequest, onSelectWindow,
 }: {
   days: string[];
   sessions: ClassSessionDto[];
   requests: MakeupRequestDto[];
   availabilityWindows?: AvailabilityWindowDto[];
+  workingHours?: WorkingHourDayDto[];
   students?: Map<string, string[]>;
   onSelectSession: (s: ClassSessionDto) => void;
   onSelectRequest?: (r: MakeupRequestDto) => void;
@@ -238,6 +254,7 @@ export function MobileAgenda({
 }) {
   const todayStr = localToday();
   const itemsByDay = buildItemsByDay(sessions, requests, availabilityWindows ?? []);
+  const whMap = toWorkingHoursMap(workingHours);
   const ctx: RenderCtx = { selectedId: null, students, onSelectSession, onSelectRequest, onSelectWindow };
 
   return (
@@ -247,9 +264,13 @@ export function MobileAgenda({
         if (items.length === 0) return null;
         const h = dayHeading(date);
         const isToday = date === todayStr;
+        const wh = workingHoursLabel(date, whMap);
         return (
           <div key={date}>
-            <h3 className={`mb-2 text-sm font-semibold ${isToday ? "text-primary" : "text-foreground"}`}>{h.full}, {h.dm}{isToday && " · bugün"}</h3>
+            <h3 className={`mb-2 text-sm font-semibold ${isToday ? "text-primary" : "text-foreground"}`}>
+              {h.full}, {h.dm}{isToday && " · bugün"}
+              {wh && <span className={`ml-2 text-xs font-normal ${wh.closed ? "text-muted/70" : "text-muted"}`}>· {wh.label}</span>}
+            </h3>
             <div className="space-y-2">
               <DayBody items={items} ctx={ctx} />
             </div>
@@ -267,6 +288,8 @@ export interface TimetableProps {
   requests: MakeupRequestDto[];
   /** Sprint 36: "Boşlukları Göster" overlay'i — dashed "Boşluk" kartı olarak render edilir. */
   availabilityWindows?: AvailabilityWindowDto[];
+  /** Sprint 37: stüdyo çalışma saatleri — gün başlığında "09:00–22:00" / "Kapalı" etiketi. */
+  workingHours?: WorkingHourDayDto[];
   selectedId: string | null;
   students?: Map<string, string[]>;
   /** Dikey kaydırma için kapsayıcı yüksekliği (sticky gün başlığı buna göre sabitlenir). */
@@ -279,13 +302,14 @@ export interface TimetableProps {
 }
 
 export function WeekTimetable({
-  days, sessions, requests, availabilityWindows, selectedId, students, maxHeight = "70vh",
+  days, sessions, requests, availabilityWindows, workingHours, selectedId, students, maxHeight = "70vh",
   onSelectSession, onSelectRequest, onSelectWindow, onEmptyClick,
 }: TimetableProps) {
   const itemsByDay = useMemo(
     () => buildItemsByDay(sessions, requests, availabilityWindows ?? []),
     [sessions, requests, availabilityWindows],
   );
+  const whMap = useMemo(() => toWorkingHoursMap(workingHours), [workingHours]);
   const ctx: RenderCtx = { selectedId, students, onSelectSession, onSelectRequest, onSelectWindow };
   const todayStr = localToday();
   const cols = `repeat(${days.length}, minmax(${DAY_W}px, 1fr))`;
@@ -298,10 +322,14 @@ export function WeekTimetable({
           {days.map((date) => {
             const h = dayHeading(date);
             const isToday = date === todayStr;
+            const wh = workingHoursLabel(date, whMap);
             return (
               <div key={date} className={`relative border-r border-border px-2 py-2 text-center last:border-r-0 ${isToday ? "bg-primary-soft" : ""}`}>
                 <div className={`text-sm font-semibold ${isToday ? "text-primary" : "text-foreground"}`}>{h.full}</div>
                 <div className="text-xs text-muted">{h.dm}{isToday && " · bugün"}</div>
+                {wh && (
+                  <div className={`text-[10px] ${wh.closed ? "font-semibold text-muted/70" : "text-muted"}`}>{wh.label}</div>
+                )}
                 {onEmptyClick && (
                   <button
                     type="button"

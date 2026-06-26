@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.Equipments;
+using Pliaforma.Application.Features.Studios;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -66,6 +67,10 @@ public sealed class CreateClassSessionHandler : ICommandHandler<CreateClassSessi
         if (capacity < 1) capacity = 1;
 
         await SessionRules.EnsureValidAsync(_db, _clock, studioId, profile.Id, startAt, endAt, excludeId: null, cancellationToken);
+
+        // Sprint 37: seans tamamen stüdyo çalışma saatleri içinde olmalı (kapalı gün/saat dışı/kapanış aşımı → 409).
+        var workingHours = await StudioWorkingHoursService.LoadAsync(_db, studioId, cancellationToken);
+        StudioWorkingHoursService.EnsureWithin(workingHours, startAt, endAt);
 
         // Sprint 32B: ekipman-bağlı ders tipinde kapasite guard (sınırsız yasak, ≤toplam, ≤available; havuz kilidi).
         await _equipmentGuard.EnsureCanReserveAsync(studioId, classType, startAt, endAt, capacity, excludeSessionId: null, pendingOverlapCapacity: 0, cancellationToken);

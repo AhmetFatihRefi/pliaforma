@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.Equipments;
+using Pliaforma.Application.Features.Studios;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -87,6 +88,9 @@ public sealed class BulkGenerateClassSessionsHandler
 
         var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, cancellationToken);
 
+        // Sprint 37: stüdyo çalışma saatleri (kayıt yoksa fallback 07:00–23:00). Pencere dışı slotlar atlanır.
+        var workingHours = await StudioWorkingHoursService.LoadAsync(_db, studioId, cancellationToken);
+
         // O günkü mevcut Scheduled seanslar (çakışma için, in-memory).
         var dayStart = request.Date.ToDateTime(TimeOnly.MinValue);
         var dayEnd = request.Date.AddDays(1).ToDateTime(TimeOnly.MinValue);
@@ -108,6 +112,8 @@ public sealed class BulkGenerateClassSessionsHandler
             var end = start.AddMinutes(duration);
 
             if (start < nowLocal) { skipped.Add(new SkippedSlotDto(start, "past")); continue; }
+            // Sprint 37: çalışma saati dışı (kapalı gün / pencere dışı / kapanış aşımı) → atla.
+            if (!workingHours.Fits(start, end)) { skipped.Add(new SkippedSlotDto(start, "outside-working-hours")); continue; }
             if (existing.Any(x => x.StartAt < end && start < x.EndAt)
                 || created.Any(c => c.StartAt < end && start < c.EndAt))
             {

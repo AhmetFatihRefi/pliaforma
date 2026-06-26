@@ -79,6 +79,8 @@ import type {
   StudioClosureActionType,
   StudioClosureDto,
   StudioDto,
+  StudioWorkingHoursDto,
+  WorkingHourDayInput,
 } from "./domain-types";
 import type { StudioRole } from "./types";
 
@@ -86,6 +88,10 @@ export const studioService = {
   getMine: () => api<StudioDto>("/api/studio"),
   update: (input: Omit<StudioDto, "id" | "slug" | "isActive">) =>
     api<StudioDto>("/api/studio", { method: "PUT", body: input }),
+  // Sprint 37: çalışma saatleri (okuma tüm roller; yazma Owner/StudioAdmin).
+  getWorkingHours: () => api<StudioWorkingHoursDto>("/api/studio/working-hours"),
+  updateWorkingHours: (days: WorkingHourDayInput[]) =>
+    api<StudioWorkingHoursDto>("/api/studio/working-hours", { method: "PUT", body: { days } }),
 };
 
 export const classTypeService = {

@@ -4,6 +4,7 @@ using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Application.Features.Scheduling;
+using Pliaforma.Application.Features.Studios;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
 
@@ -40,8 +41,7 @@ public sealed class FindClassTypeSlotsValidator : AbstractValidator<FindClassTyp
 public sealed class FindClassTypeSlotsHandler : IQueryHandler<FindClassTypeSlotsQuery, IReadOnlyList<AvailabilityWindowDto>>
 {
     private const int MaxRangeDays = 31;
-    private static readonly TimeOnly WorkStart = new(7, 0);   // 07:00 (32C sabit; stüdyo WorkingHours ayarı post-MVP)
-    private static readonly TimeOnly WorkEnd = new(23, 0);    // 23:00
+    // Sprint 37: çalışma penceresi artık stüdyo bazlı (StudioWorkingHours). Kayıt yoksa fallback 07:00–23:00.
 
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
@@ -77,6 +77,9 @@ public sealed class FindClassTypeSlotsHandler : IQueryHandler<FindClassTypeSlots
 
         var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, ct);
         var today = DateOnly.FromDateTime(nowLocal);
+
+        // Sprint 37: stüdyo çalışma saatleri (kayıt yoksa fallback 07:00–23:00). Kapalı günde boşluk dönmez.
+        var workingHours = await StudioWorkingHoursService.LoadAsync(_db, studioId, ct);
 
         // ---- Tarih aralığı: date (tek gün) | from/to | yoksa bugün ----
         DateOnly fromD, toD;
@@ -148,8 +151,11 @@ public sealed class FindClassTypeSlotsHandler : IQueryHandler<FindClassTypeSlots
         {
             if (date < today) continue; // tamamı geçmiş gün → atla
 
-            var dayWorkStart = date.ToDateTime(WorkStart, DateTimeKind.Unspecified);
-            var dayWorkEnd = date.ToDateTime(WorkEnd, DateTimeKind.Unspecified);
+            // Sprint 37: o günün çalışma penceresi. Kapalı gün → o gün hiç boşluk yok.
+            var window = workingHours.WindowFor(date.DayOfWeek);
+            if (window is not { } wh) continue;
+            var dayWorkStart = date.ToDateTime(wh.Open, DateTimeKind.Unspecified);
+            var dayWorkEnd = date.ToDateTime(wh.Close, DateTimeKind.Unspecified);
 
             // Başlangıç-zamanı alanı [domain]: [en erken başlangıç, en geç başlangıç (workEnd − süre)].
             var domainStart = dayWorkStart;

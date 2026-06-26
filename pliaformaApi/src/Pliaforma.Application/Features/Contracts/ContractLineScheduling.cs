@@ -4,6 +4,7 @@ using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Application.Features.Scheduling;
+using Pliaforma.Application.Features.Studios;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -207,7 +208,7 @@ internal static class ContractLineScheduleEngine
     {
         var available = await ContractLineRules.AvailableAsync(db, line, ct);
         if (available == 0)
-            return new GenerateContractScheduleResultDto(0, 0, 0, 0, Array.Empty<DateTime>());
+            return new GenerateContractScheduleResultDto(0, 0, 0, 0, Array.Empty<DateTime>(), 0);
 
         // Sprint 33: effective hoca = line tercihi ?? üretim-anı seçimi. İkisi de yoksa üretilemez (bir seansın hocası olmak zorunda).
         var effectiveInstructor = line.InstructorProfileId ?? generationInstructorId
@@ -226,11 +227,13 @@ internal static class ContractLineScheduleEngine
 
         var nowLocal = await SessionRules.StudioNowAsync(db, clock, studioId, ct);
         var closures = await db.StudioClosures.Where(cl => cl.StudioId == studioId).ToListAsync(ct);
+        // Sprint 37: çalışma saatleri (kayıt yoksa fallback 07:00–23:00). Pencere dışı adaylar ayrı sayaçta atlanır.
+        var workingHours = await StudioWorkingHoursService.LoadAsync(db, studioId, ct);
         var candidates = BuildCandidates(line, durationMin, slots);
         var studentProfileId = line.StudentContract!.StudentProfileId;
 
         var created = new List<DateTime>();
-        int newSessions = 0, reusedSessions = 0, skipped = 0;
+        int newSessions = 0, reusedSessions = 0, skipped = 0, skippedOutsideHours = 0;
         var batchInstructor = new List<(DateTime s, DateTime e)>();
         var batchStudent = new List<(DateTime s, DateTime e)>();
 
@@ -239,6 +242,8 @@ internal static class ContractLineScheduleEngine
             if (created.Count >= available) break;
             if (c.StartAt <= nowLocal) { skipped++; continue; }
             if (ContractScheduleEngine.InAnyClosure(c.StartAt, closures)) { skipped++; continue; }
+            // Sprint 37: çalışma saati dışı (kapalı gün / pencere dışı / kapanış aşımı) → ayrı sayaç.
+            if (!workingHours.Fits(c.StartAt, c.EndAt)) { skippedOutsideHours++; continue; }
 
             ClassSession? target = null;
             if (canReuse && reuseExistingGroup)
@@ -278,7 +283,7 @@ internal static class ContractLineScheduleEngine
         }
 
         if (generate) await db.SaveChangesAsync(ct);
-        return new GenerateContractScheduleResultDto(created.Count, newSessions, reusedSessions, skipped, created);
+        return new GenerateContractScheduleResultDto(created.Count, newSessions, reusedSessions, skipped, created, skippedOutsideHours);
     }
 
     public static async Task<StudentContractLine> LoadActiveLineAsync(IAppDbContext db, Guid studioId, Guid lineId, CancellationToken ct)
@@ -313,6 +318,7 @@ public sealed class PreviewLineScheduleHandler : IQueryHandler<PreviewLineSchedu
         var available = await ContractLineRules.AvailableAsync(_db, line, ct);
         var nowLocal = await SessionRules.StudioNowAsync(_db, _clock, studioId, ct);
         var closures = await _db.StudioClosures.Where(cl => cl.StudioId == studioId).ToListAsync(ct);
+        var workingHours = await StudioWorkingHoursService.LoadAsync(_db, studioId, ct);
         var candidates = ContractLineScheduleEngine.BuildCandidates(line, duration, request.Slots);
 
         var slots = new List<ContractScheduleSlotPreviewDto>();
@@ -323,6 +329,7 @@ public sealed class PreviewLineScheduleHandler : IQueryHandler<PreviewLineSchedu
             string? skip = null;
             if (c.StartAt <= nowLocal) skip = "Geçmiş zaman";
             else if (ContractScheduleEngine.InAnyClosure(c.StartAt, closures)) skip = "Stüdyo kapalı (tatil/kapanış)";
+            else if (!workingHours.Fits(c.StartAt, c.EndAt)) skip = "Çalışma saati dışında";
             // Sprint 33: line hocası null ise hoca çakışması önizlemede değerlendirilemez (üretimde hoca seçilir).
             else if (line.InstructorProfileId is { } instr
                      && await SessionRules.HasConflictAsync(_db, studioId, instr, c.StartAt, c.EndAt, null, ct)

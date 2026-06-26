@@ -2074,6 +2074,47 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("StudioMemberships", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudioWorkingHour", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<TimeOnly?>("ClosesAt")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DayOfWeek")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsClosed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<TimeOnly?>("OpensAt")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudioId", "DayOfWeek");
+
+                    b.ToTable("StudioWorkingHours", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.SubscriptionPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2920,6 +2961,17 @@ namespace Pliaforma.Persistence.Migrations
                     b.Navigation("Studio");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.StudioWorkingHour", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Studio");
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.UserMfaSettings", b =>

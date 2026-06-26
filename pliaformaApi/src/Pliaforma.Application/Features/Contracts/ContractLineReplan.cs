@@ -4,6 +4,7 @@ using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Features.Equipments;
 using Pliaforma.Application.Features.Scheduling;
+using Pliaforma.Application.Features.Studios;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -195,6 +196,7 @@ public sealed class ReplanLinePreviewHandler : IQueryHandler<ReplanLinePreviewQu
             var instr = effInstr!.Value;
             var duration = classType.DefaultDurationMinutes;
             var closures = await _db.StudioClosures.Where(cl => cl.StudioId == studioId).ToListAsync(ct);
+            var workingHours = await StudioWorkingHoursService.LoadAsync(_db, studioId, ct);
             var candidates = ContractLineScheduleEngine.BuildCandidates(line, duration, slots);
 
             // İptal edilecek seansları çakışma kontrolünden HARİÇ tut (apply'da zaten ayrılacaklar) → doğru tahmin.
@@ -212,12 +214,15 @@ public sealed class ReplanLinePreviewHandler : IQueryHandler<ReplanLinePreviewQu
                 string? skip = null;
                 if (c.StartAt <= nowLocal) skip = "Geçmiş zaman";
                 else if (ContractScheduleEngine.InAnyClosure(c.StartAt, closures)) skip = "Stüdyo kapalı (tatil/kapanış)";
+                else if (!workingHours.Fits(c.StartAt, c.EndAt)) skip = "Çalışma saati dışında";
                 else if (await InstrBusy(c.StartAt, c.EndAt)) skip = "Hoca çakışması";
                 else if (await StudBusy(c.StartAt, c.EndAt)) skip = "Öğrenci çakışması";
 
                 slotDtos.Add(new ContractScheduleSlotPreviewDto(c.StartAt, c.EndAt, skip is null, skip));
                 if (skip is null) plannable++;
             }
+            if (slotDtos.Any(s => s.SkipReason == "Çalışma saati dışında"))
+                warnings.Add("Bazı tercih slotları stüdyo çalışma saatleri dışında; bu dersler planlanamaz.");
         }
 
         var notPlannable = Math.Max(0, availableAfter - plannable);
@@ -237,7 +242,8 @@ public sealed record ReplanLineResultDto(
     int ReusedSessionCount,
     int SkippedCount,
     int NotPlannedCount,                // iptal sonrası planlanamayan kalan ders
-    IReadOnlyList<DateTime> CreatedStartAts);
+    IReadOnlyList<DateTime> CreatedStartAts,
+    int SkippedOutsideWorkingHoursCount = 0);  // Sprint 37: çalışma saati dışı kalan aday sayısı
 
 public sealed record ReplanLineScheduleCommand(
     Guid LineId,
@@ -324,6 +330,6 @@ public sealed class ReplanLineScheduleHandler : ICommandHandler<ReplanLineSchedu
         var notPlanned = Math.Max(0, availableBefore - gen.CreatedCount);
         return new ReplanLineResultDto(
             toRemove.Count, emptied, gen.CreatedCount, gen.NewSessionCount, gen.ReusedSessionCount, gen.SkippedCount,
-            notPlanned, gen.CreatedStartAts);
+            notPlanned, gen.CreatedStartAts, gen.SkippedOutsideWorkingHoursCount);
     }
 }

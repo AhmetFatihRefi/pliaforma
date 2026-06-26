@@ -172,15 +172,16 @@ public sealed class GenerateContractScheduleHandler : ICommandHandler<GenerateCo
             .Where(l => l.StudioId == studioId && l.StudentContractId == contract.Id && l.Status == StudentContractLineStatus.Active)
             .OrderBy(l => l.SequenceNo).ToListAsync(ct);
 
-        int created = 0, newSessions = 0, reusedSessions = 0, skipped = 0;
+        int created = 0, newSessions = 0, reusedSessions = 0, skipped = 0, skippedOutsideHours = 0;
         var startAts = new List<DateTime>();
         foreach (var line in lines)
         {
             var duration = await _db.ClassTypes.Where(c => c.Id == line.ClassTypeId).Select(c => c.DefaultDurationMinutes).FirstAsync(ct);
             var r = await ContractLineScheduleEngine.RunAsync(_db, _clock, studioId, userId, line, duration, request.Slots, request.ReuseExistingGroup, generate: true, ct, _equipmentGuard);
             created += r.CreatedCount; newSessions += r.NewSessionCount; reusedSessions += r.ReusedSessionCount; skipped += r.SkippedCount;
+            skippedOutsideHours += r.SkippedOutsideWorkingHoursCount;
             startAts.AddRange(r.CreatedStartAts);
         }
-        return new GenerateContractScheduleResultDto(created, newSessions, reusedSessions, skipped, startAts);
+        return new GenerateContractScheduleResultDto(created, newSessions, reusedSessions, skipped, startAts, skippedOutsideHours);
     }
 }

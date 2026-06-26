@@ -40,13 +40,14 @@ public sealed record ContractSchedulePreviewDto(
     int PlannableCount,
     IReadOnlyList<ContractScheduleSlotPreviewDto> Slots);
 
-/// <summary>Program üretim sonucu.</summary>
+/// <summary>Program üretim sonucu. Sprint 37: çalışma saati dışı atlananlar ayrı sayaçta (SkippedCount'a karışmaz).</summary>
 public sealed record GenerateContractScheduleResultDto(
     int CreatedCount,
     int NewSessionCount,
     int ReusedSessionCount,
     int SkippedCount,
-    IReadOnlyList<DateTime> CreatedStartAts);
+    IReadOnlyList<DateTime> CreatedStartAts,
+    int SkippedOutsideWorkingHoursCount = 0);
 
 // ---------------------------------------------------------------------------------------------------
 // Sprint 23 — Amendment (ek işlem) + borç DTO'ları.

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, availabilityService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService } from "@/lib/studioApi";
+import { attendanceService, availabilityService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService, studioService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceItemDto,
@@ -23,6 +23,7 @@ import {
   type SessionAttendanceDto,
   type StudentDto,
   type StudentLevel,
+  type WorkingHourDayDto,
   attendanceStatusLabels,
   bookingStatusLabels,
   dayLabels,
@@ -114,8 +115,12 @@ export default function SchedulePage() {
   // Sprint 26: seçili hoca filtresi adı (boş/dolu programdan anlaşılır mesajı için).
   const selectedInstructorName = instructorFilter ? instructors.find((i) => i.id === instructorFilter)?.name ?? null : null;
 
+  // Sprint 37: gün başlığında çalışma saati etiketi için stüdyo çalışma saatlerini bir kez yükle.
+  const [workingHours, setWorkingHours] = useState<WorkingHourDayDto[] | undefined>(undefined);
+
   useEffect(() => {
     classTypeService.list(true).then(setClassTypes).catch(() => setClassTypes([]));
+    studioService.getWorkingHours().then((wh) => setWorkingHours(wh.days)).catch(() => setWorkingHours(undefined));
   }, []);
 
   const load = useCallback(async () => {
@@ -424,6 +429,7 @@ export default function SchedulePage() {
               sessions={sessions}
               requests={visibleReqs}
               availabilityWindows={showAvailability && !rangeTooLong ? availWindows : undefined}
+              workingHours={workingHours}
               selectedId={detailFor?.id ?? null}
               students={studentsBySession}
               onSelectSession={setDetailFor}
@@ -439,6 +445,7 @@ export default function SchedulePage() {
               sessions={sessions}
               requests={visibleReqs}
               availabilityWindows={showAvailability && !rangeTooLong ? availWindows : undefined}
+              workingHours={workingHours}
               students={studentsBySession}
               onSelectSession={setDetailFor}
               onSelectRequest={(r) => { if (!isManager) withdrawRequest(r); }}
@@ -472,6 +479,7 @@ export default function SchedulePage() {
               sessions={sessions}
               requests={visibleReqs}
               availabilityWindows={showAvailability && !rangeTooLong ? availWindows : undefined}
+              workingHours={workingHours}
               selectedId={detailFor?.id ?? null}
               students={studentsBySession}
               maxHeight="100%"

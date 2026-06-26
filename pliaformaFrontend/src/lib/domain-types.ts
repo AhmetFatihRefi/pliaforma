@@ -362,7 +362,7 @@ export interface StudentContractDto {
 export interface ContractScheduleSlotInput { dayOfWeek: DayOfWeek; startTime: string }
 export interface ContractScheduleSlotPreviewDto { startAt: string; endAt: string; plannable: boolean; skipReason?: string | null }
 export interface ContractSchedulePreviewDto { availableLessonCount: number; plannableCount: number; slots: ContractScheduleSlotPreviewDto[] }
-export interface GenerateContractScheduleResultDto { createdCount: number; newSessionCount: number; reusedSessionCount: number; skippedCount: number; createdStartAts: string[] }
+export interface GenerateContractScheduleResultDto { createdCount: number; newSessionCount: number; reusedSessionCount: number; skippedCount: number; createdStartAts: string[]; skippedOutsideWorkingHoursCount: number }
 
 // ===== Sprint 34: tercih güncelle + kalan dersleri yeniden planla =====
 // Tercih güncelle (full-replace slot listesi). Mevcut programa dokunmaz.
@@ -392,6 +392,23 @@ export interface ReplanLineResultDto {
   skippedCount: number;
   notPlannedCount: number;
   createdStartAts: string[];
+  skippedOutsideWorkingHoursCount: number;
+}
+
+// ===== Sprint 37: Stüdyo çalışma saatleri (haftalık) =====
+export interface WorkingHourDayDto {
+  dayOfWeek: DayOfWeek;
+  isClosed: boolean;
+  opensAt?: string | null;   // "HH:mm:ss" | null
+  closesAt?: string | null;
+}
+// isConfigured=false → stüdyo henüz kaydetmedi; days fallback 07:00–23:00 (uygulanan + öneri).
+export interface StudioWorkingHoursDto { isConfigured: boolean; days: WorkingHourDayDto[] }
+export interface WorkingHourDayInput {
+  dayOfWeek: DayOfWeek;
+  isClosed: boolean;
+  opensAt?: string | null;
+  closesAt?: string | null;
 }
 
 // ===== Sprint 23: Sözleşme ek işlemi (amendment) + borç =====
