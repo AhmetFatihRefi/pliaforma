@@ -1,5 +1,5 @@
 // Sprint 1 backend DTO'larının birebir karşılığı (senkron sözleşme).
-import type { StudioRole, MembershipStatus } from "./types";
+import type { StudioRole, MembershipStatus, GlobalRole } from "./types";
 
 export type EquipmentType = "Mat" | "Reformer" | "Cadillac" | "Chair" | "Barrel";
 export type ClassCapacityType = "Private" | "Duo" | "Group";
@@ -1207,6 +1207,71 @@ export const billingPeriodLabels: Record<BillingPeriod, string> = {
   Monthly: "Aylık",
   Yearly: "Yıllık",
 };
+
+// Sprint 40: kullanıcıya görünen rol/üyelik/audit metinleri (yalnız UI; backend enum value'ları sabit).
+export const studioRoleLabels: Record<StudioRole, string> = {
+  Owner: "Sahip",
+  StudioAdmin: "Stüdyo Yöneticisi",
+  Instructor: "Eğitmen",
+  Student: "Öğrenci",
+};
+
+export const globalRoleLabels: Record<GlobalRole, string> = {
+  Standard: "Standart",
+  PlatformAdmin: "Platform Yöneticisi",
+};
+
+export const membershipStatusLabels: Record<MembershipStatus, string> = {
+  Pending: "Bekliyor",
+  Active: "Aktif",
+  Rejected: "Reddedildi",
+  Removed: "Çıkarıldı",
+};
+
+export const securityAuditOutcomeLabels: Record<string, string> = {
+  Success: "Başarılı",
+  Failure: "Başarısız",
+};
+
+// Güvenlik denetimi olay tipleri. Backend yeni tip eklerse → ham değere fallback (aşağıdaki helper).
+export const securityAuditEventTypeLabels: Record<string, string> = {
+  LoginSucceeded: "Giriş başarılı",
+  LoginFailed: "Giriş başarısız",
+  AccountLockedOut: "Hesap kilitlendi",
+  Logout: "Çıkış",
+  PasswordResetRequested: "Şifre sıfırlama istendi",
+  PasswordResetCompleted: "Şifre sıfırlandı",
+  PasswordChanged: "Şifre değiştirildi",
+  MFASetupStarted: "MFA kurulumu başladı",
+  MFASetupCompleted: "MFA kurulumu tamamlandı",
+  MFAChallengeCreated: "MFA doğrulaması oluşturuldu",
+  MFASucceeded: "MFA başarılı",
+  MFAFailed: "MFA başarısız",
+  MFARecoveryCodeUsed: "MFA kurtarma kodu kullanıldı",
+  MFAResetCompleted: "MFA sıfırlandı",
+  RoleChanged: "Rol değiştirildi",
+  MemberInvited: "Üye davet edildi",
+  MembershipAccepted: "Üyelik kabul edildi",
+  MembershipRejected: "Üyelik reddedildi",
+  MemberRemoved: "Üye çıkarıldı",
+  PaymentCreated: "Ödeme oluşturuldu",
+  PaymentUpdated: "Ödeme güncellendi",
+  PaymentMarkedPaid: "Ödeme 'ödendi' işaretlendi",
+  PaymentCancelled: "Ödeme iptal edildi",
+  ContractCreated: "Sözleşme oluşturuldu",
+  ContractAmended: "Sözleşme değiştirildi",
+  ContractCancelled: "Sözleşme iptal edildi",
+  StudentDataListed: "Öğrenci verisi listelendi",
+  HealthNotesAccessed: "Sağlık notlarına erişildi",
+};
+
+/** Bilinen anahtar için Türkçe; bilinmeyende ham değeri döndürür (güvenli fallback). */
+export function securityAuditEventLabel(eventType: string): string {
+  return securityAuditEventTypeLabels[eventType] ?? eventType;
+}
+export function securityAuditOutcomeLabel(outcome: string): string {
+  return securityAuditOutcomeLabels[outcome] ?? outcome;
+}
 
 export interface PlatformOverviewDto {
   totalStudios: number;

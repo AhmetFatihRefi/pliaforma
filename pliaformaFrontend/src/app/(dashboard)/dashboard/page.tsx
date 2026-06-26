@@ -9,6 +9,7 @@ import {
   type StudentDashboardDto,
   type StudioDashboardDto,
   attendanceStatusLabels,
+  studioRoleLabels,
 } from "@/lib/domain-types";
 import { Alert, Badge, Card } from "@/components/ui";
 
@@ -29,7 +30,7 @@ export default function DashboardPage() {
             Merhaba, {user?.fullName?.split(" ")[0] ?? "tekrar hoş geldiniz"} 🌸
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {activeStudio ? `${activeStudio.studioName} · ${role}` : "Henüz bir stüdyo bağlamı seçili değil."}
+            {activeStudio ? `${activeStudio.studioName} · ${role ? studioRoleLabels[role] : ""}` : "Henüz bir stüdyo bağlamı seçili değil."}
           </p>
         </div>
         <input

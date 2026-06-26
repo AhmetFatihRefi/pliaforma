@@ -169,6 +169,7 @@ function Popover({ anchor, onClose, children }: PopoverProps) {
     <div
       ref={ref}
       style={style}
+      data-select-popover=""
       className="z-50 flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg shadow-black/5 ring-1 ring-black/5 animate-in"
     >
       {children}

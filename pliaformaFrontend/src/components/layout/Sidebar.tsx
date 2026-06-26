@@ -6,53 +6,7 @@ import { usePathname } from "next/navigation";
 import { Brand, PliaformaMark } from "./Brand";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/lib/auth";
-import type { StudioRole } from "@/lib/types";
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: string;
-  /** Bu navı görebilecek roller. Boşsa herkese görünür. */
-  roles?: StudioRole[];
-}
-
-const MANAGER: StudioRole[] = ["Owner", "StudioAdmin"];
-const STAFF: StudioRole[] = ["Owner", "StudioAdmin", "Instructor"];
-
-const nav: NavItem[] = [
-  { href: "/dashboard", label: "Panel", icon: "▦" },
-  { href: "/dashboard/notifications", label: "Bildirimler", icon: "🔔" },
-  { href: "/dashboard/schedule", label: "Ders Programı", icon: "◷", roles: STAFF },
-  // Sprint 32C: boşluk bulma motoru (ders tipi + süre + kapasiteye göre uygun başlangıç aralıkları).
-  { href: "/dashboard/find-availability", label: "Boşluk Bul", icon: "⌖", roles: STAFF },
-  // Sprint 26: Hoca müsaitlik modülü ana üründen çıkarıldı (hoca boş/dolu = ders programından).
-  // Sprint 26 ek (v1.1.1): global yönetim ekranları yalnız stüdyo yetkilisine; Instructor kendi programını görür.
-  { href: "/dashboard/students", label: "Öğrenciler", icon: "☺", roles: MANAGER },
-  { href: "/dashboard/makeup-credits", label: "Telafi Kredileri", icon: "♺", roles: MANAGER },
-  // Sprint 27/30: telafi dersi talepleri. Hoca da kendi öğrencisi için talep OLUŞTURUR/takip eder (onay yöneticide).
-  { href: "/dashboard/makeup-requests", label: "Telafi Talepleri", icon: "⏳", roles: STAFF },
-  { href: "/dashboard/reports", label: "Raporlar", icon: "▣", roles: MANAGER },
-  // Sprint 18b: Paket Planları ana akıştan kaldırıldı (paket modeli dormant; onboarding sözleşme tabanlı).
-  { href: "/dashboard/payments", label: "Ödemeler", icon: "₺", roles: MANAGER },
-  { href: "/dashboard/closures", label: "Kapalı Günler", icon: "⊘", roles: MANAGER },
-  { href: "/dashboard/instructors", label: "Hocalar", icon: "✦", roles: MANAGER },
-  // Sprint 26 ek: ders tipi/grup tanımı stüdyo yetkilisinin işi (Instructor görmez).
-  { href: "/dashboard/class-types", label: "Gruplar", icon: "❀", roles: MANAGER },
-  // Sprint 32A: ekipman/envanter havuzu (reformer, mat, vb.) — ders tipine bağlanabilir.
-  { href: "/dashboard/equipment", label: "Ekipman", icon: "▥", roles: MANAGER },
-  { href: "/dashboard/subscription", label: "Abonelik", icon: "◈", roles: ["Owner"] },
-  { href: "/dashboard/settings", label: "Ayarlar", icon: "⚙", roles: MANAGER },
-  // Sprint 18b: öğrenci self-booking kaldırıldı ("Ders Bul" yok); öğrenci yalnız programını görür.
-  { href: "/dashboard/my-bookings", label: "Programım", icon: "✓", roles: ["Student"] },
-  { href: "/dashboard/my-contracts", label: "Sözleşmelerim", icon: "▤", roles: ["Student"] },
-  { href: "/dashboard/my-makeup-credits", label: "Telafi Kredilerim", icon: "♺", roles: ["Student"] },
-  { href: "/dashboard/my-attendance", label: "Katılım Geçmişim", icon: "✔", roles: ["Student"] },
-  { href: "/dashboard/my-payments", label: "Ödemelerim", icon: "₺", roles: ["Student"] },
-  { href: "/dashboard/my-profile", label: "Profilim", icon: "♡", roles: ["Student"] },
-];
-
-// Sprint 30: Rehber en ALTA sabitlenir (herkese görünür).
-const GUIDE: NavItem = { href: "/dashboard/guide", label: "Rehber", icon: "📖" };
+import { dashboardGuide as GUIDE, dashboardNav, filterNavByRole, isNavActive, type NavItem } from "./nav-items";
 
 const STORAGE_KEY = "pf-sidebar-collapsed";
 
@@ -67,10 +21,10 @@ export function Sidebar() {
   const toggle = () =>
     setCollapsed((c) => { const n = !c; try { localStorage.setItem(STORAGE_KEY, n ? "1" : "0"); } catch {} return n; });
 
-  const visible = nav.filter((item) => !item.roles || (role != null && item.roles.includes(role)));
+  const visible = filterNavByRole(dashboardNav, role);
 
   const link = (item: NavItem, opts?: { primary?: boolean }) => {
-    const active = pathname === item.href;
+    const active = isNavActive(pathname, item.href);
     return (
       <Link
         key={item.href}

@@ -9,6 +9,8 @@ import {
   type InstructorAssignmentDto,
   type JoinRequestDto,
   type MemberDto,
+  studioRoleLabels,
+  membershipStatusLabels,
 } from "@/lib/domain-types";
 import type { StudioRole } from "@/lib/types";
 import {
@@ -197,14 +199,14 @@ export default function InstructorsPage() {
                       className="h-8 rounded-lg border border-border bg-surface px-2 text-xs text-foreground focus:border-primary focus:outline-none"
                       aria-label="Rol değiştir"
                     >
-                      <option value="StudioAdmin">StudioAdmin</option>
-                      <option value="Instructor">Instructor</option>
+                      <option value="StudioAdmin">{studioRoleLabels.StudioAdmin}</option>
+                      <option value="Instructor">{studioRoleLabels.Instructor}</option>
                     </select>
                   ) : (
-                    <Badge tone={m.role === "Owner" ? "rose" : "neutral"}>{m.role}</Badge>
+                    <Badge tone={m.role === "Owner" ? "rose" : "neutral"}>{studioRoleLabels[m.role]}</Badge>
                   )}
                 </TD>
-                <TD><Badge tone={statusTone(m.status)}>{m.status}</Badge></TD>
+                <TD><Badge tone={statusTone(m.status)}>{membershipStatusLabels[m.status]}</Badge></TD>
                 {canManage && (
                   <TD className="text-right">
                     <div className="flex justify-end gap-2">

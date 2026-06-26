@@ -7,16 +7,10 @@ import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/cn";
 import { Brand } from "@/components/layout/Brand";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { platformNav as nav, isNavActive } from "@/components/layout/nav-items";
 import { Button, ConfirmProvider, ToastProvider } from "@/components/ui";
 import { FullscreenLoader } from "@/components/layout/FullscreenLoader";
-
-const nav = [
-  { href: "/platform", label: "Genel Bakış", icon: "▦" },
-  { href: "/platform/studios", label: "Stüdyolar", icon: "❖" },
-  { href: "/platform/plans", label: "Planlar", icon: "◈" },
-  { href: "/platform/health", label: "Sistem Sağlığı", icon: "✚" },
-  { href: "/platform/security-audit", label: "Güvenlik Denetimi", icon: "🛡" },
-];
 
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, mfaSetupRequired } = useAuth();
@@ -50,7 +44,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
         </div>
         <nav className="flex-1 space-y-1 px-3">
           {nav.map((item) => {
-            const active = item.href === "/platform" ? pathname === item.href : pathname.startsWith(item.href);
+            const active = isNavActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
@@ -70,9 +64,12 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between border-b border-border bg-surface px-6">
-          <span className="text-sm font-medium text-foreground">Platform Yönetim Paneli</span>
-          <div className="flex items-center gap-3">
+        <header className="flex h-16 items-center justify-between gap-2 border-b border-border bg-surface px-4 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            <MobileNav items={nav} />
+            <span className="truncate text-sm font-medium text-foreground">Platform Yönetim Paneli</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
             <ThemeToggle />
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium text-foreground">{user.fullName}</p>

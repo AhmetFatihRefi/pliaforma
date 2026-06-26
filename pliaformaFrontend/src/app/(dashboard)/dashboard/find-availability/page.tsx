@@ -162,7 +162,7 @@ export default function FindAvailabilityPage() {
 
       <Alert kind="info">
         Uygun aralık, dersin sığabileceği <span className="font-medium">boş zaman aralığını</span> gösterir (ders süresi mola dahil blok olarak çalışır).
-        Çalışma penceresi 07:00–23:00.
+        Sistem, stüdyonun çalışma saatlerine göre uygun başlangıçları gösterir.
         {selectedCt && !selectedCt.equipmentId && " Bu ders tipi ekipmana bağlı değil; kapasite yalnız hoca müsaitliğiyle sınırlı."}
       </Alert>
 

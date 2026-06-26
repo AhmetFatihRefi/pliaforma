@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { platformService, type SecurityAuditQuery } from "@/lib/platformApi";
 import { ApiError } from "@/lib/api";
-import type { SecurityAuditLogPageDto } from "@/lib/domain-types";
+import { type SecurityAuditLogPageDto, securityAuditEventLabel, securityAuditOutcomeLabel } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card, Input, Select, Table, THead, TR, TH, TD, TableEmpty } from "@/components/ui";
 
 // Backend SecurityAuditEventType (string). Filtre dropdown'u için.
@@ -89,15 +89,15 @@ export default function SecurityAuditPage() {
             <span className="text-xs font-medium text-muted">Olay türü</span>
             <Select value={eventType} onChange={(e) => setEventType(e.target.value)}>
               <option value="">Tümü</option>
-              {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              {EVENT_TYPES.map((t) => <option key={t} value={t}>{securityAuditEventLabel(t)}</option>)}
             </Select>
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-muted">Sonuç</span>
             <Select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
               <option value="">Tümü</option>
-              <option value="Success">Success</option>
-              <option value="Failure">Failure</option>
+              <option value="Success">{securityAuditOutcomeLabel("Success")}</option>
+              <option value="Failure">{securityAuditOutcomeLabel("Failure")}</option>
             </Select>
           </label>
           <label className="space-y-1">
@@ -147,9 +147,9 @@ export default function SecurityAuditPage() {
             data.items.map((r) => (
               <TR key={r.id}>
                 <TD className="whitespace-nowrap text-xs text-muted">{fmt(r.occurredAt)}</TD>
-                <TD className="whitespace-nowrap font-medium">{r.eventType}</TD>
+                <TD className="whitespace-nowrap font-medium">{securityAuditEventLabel(r.eventType)}</TD>
                 <TD>
-                  <Badge tone={r.outcome === "Success" ? "success" : "danger"}>{r.outcome}</Badge>
+                  <Badge tone={r.outcome === "Success" ? "success" : "danger"}>{securityAuditOutcomeLabel(r.outcome)}</Badge>
                 </TD>
                 <TD className="text-xs">{r.actorEmailMasked ?? (r.actorUserId ? r.actorUserId.slice(0, 8) : "—")}</TD>
                 <TD className="text-xs">{r.studioName ?? (r.studioId ? r.studioId.slice(0, 8) : "—")}</TD>

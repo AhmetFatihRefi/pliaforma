@@ -1,7 +1,7 @@
 import { cn } from "@/lib/cn";
 
 const fieldClasses =
-  "w-full h-10 rounded-xl border border-border bg-surface px-3.5 text-sm text-foreground placeholder:text-muted transition-colors focus:border-primary focus:outline-none";
+  "w-full h-10 rounded-xl border border-border bg-surface px-3.5 text-sm text-foreground placeholder:text-muted transition-colors focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
 
 export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(fieldClasses, className)} {...props} />;
