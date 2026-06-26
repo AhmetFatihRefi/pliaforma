@@ -28,6 +28,9 @@ public interface IAppDbContext
     DbSet<StudentContract> StudentContracts { get; }
     DbSet<StudentContractLine> StudentContractLines { get; }
     DbSet<StudentContractLinePreferredSlot> StudentContractLinePreferredSlots { get; }
+
+    /// <summary>Sözleşme satırı ödeme planı taksitleri (Sprint 38). Plan yoksa satır yok (eski davranış).</summary>
+    DbSet<ContractLinePaymentInstallment> ContractLinePaymentInstallments { get; }
     DbSet<ContractAmendment> ContractAmendments { get; }
     DbSet<MakeupCreditTransaction> MakeupCreditTransactions { get; }
     DbSet<MakeupRequest> MakeupRequests { get; }

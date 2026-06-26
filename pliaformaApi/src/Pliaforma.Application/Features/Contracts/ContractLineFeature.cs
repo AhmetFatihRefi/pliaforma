@@ -220,7 +220,9 @@ public sealed record CreateStudentContractLineCommand(
     string? Currency,
     string? Notes,
     // Sprint 29A: yeni line'da EN AZ 1 tercih gün/saat zorunlu (gün zorunlu, saat opsiyonel; aynı gün+saat tekrar edemez).
-    IReadOnlyList<PreferredSlotInput>? PreferredSlots = null) : ICommand<StudentContractLineDto>, IStudioWriteRequest;
+    IReadOnlyList<PreferredSlotInput>? PreferredSlots = null,
+    // Sprint 38: opsiyonel ödeme planı (peşin = 1 taksit; taksitli = 2+). Verilirse Σ == TotalPrice; line.DueDate = en erken vade.
+    IReadOnlyList<InstallmentInput>? PaymentPlan = null) : ICommand<StudentContractLineDto>, IStudioWriteRequest;
 
 public sealed class CreateStudentContractLineValidator : AbstractValidator<CreateStudentContractLineCommand>
 {
@@ -242,6 +244,14 @@ public sealed class CreateStudentContractLineValidator : AbstractValidator<Creat
         RuleFor(x => x.PreferredSlots)
             .Must(s => !PreferredSlotRules.HasInternalDuplicates(s!)).When(x => x.PreferredSlots is { Count: > 0 })
             .WithMessage("Aynı gün ve saat tercihi tekrar edemez.");
+        // Sprint 38: ödeme planı verildiyse her taksit > 0 ve Σ == TotalPrice (= LessonCount × PricePerLesson).
+        RuleFor(x => x.PaymentPlan)
+            .Must(p => PaymentInstallmentRules.AllPositive(p!)).When(x => x.PaymentPlan is { Count: > 0 })
+            .WithMessage("Taksit tutarı 0'dan büyük olmalı.");
+        RuleFor(x => x)
+            .Must(x => PaymentInstallmentRules.SumMatches(x.PaymentPlan!, decimal.Round(x.LessonCount * x.PricePerLesson, 2)))
+            .When(x => x.PaymentPlan is { Count: > 0 })
+            .WithMessage("Taksit toplamı sözleşme tutarına eşit olmalı.");
     }
 }
 
@@ -334,6 +344,14 @@ public sealed class CreateStudentContractLineHandler : ICommandHandler<CreateStu
         var slots = request.PreferredSlots ?? System.Array.Empty<PreferredSlotInput>();
         foreach (var s in PreferredSlotRules.Build(studioId, line.Id, userId, slots))
             _db.StudentContractLinePreferredSlots.Add(s);
+
+        // Sprint 38: opsiyonel ödeme planı (validator Σ==TotalPrice + amount>0 garanti eder). line.DueDate = en erken vade.
+        if (request.PaymentPlan is { Count: > 0 } plan)
+        {
+            foreach (var inst in PaymentInstallmentRules.Build(studioId, line.Id, userId, plan))
+                _db.ContractLinePaymentInstallments.Add(inst);
+            line.DueDate = PaymentInstallmentRules.EarliestDueDate(plan);
+        }
 
         await _db.SaveChangesAsync(ct);
 

@@ -11,6 +11,7 @@ import { useRole } from "@/lib/useRole";
 import {
   type ClassTypeDto,
   type DayOfWeek,
+  type InstallmentInput,
   type MemberDto,
   type PreferredSlotInput,
   type StudentContractDto,
@@ -19,6 +20,7 @@ import {
   dayLabels,
 } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card, FormField, Input, Select, useToast } from "@/components/ui";
+import { PaymentPlanEditor, planMatches } from "../../../_payment-plan";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const plus = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
@@ -56,6 +58,9 @@ export default function NewContractPage() {
   const [prefSlots, setPrefSlots] = useState<PreferredSlotInput[]>([]);
   const [slotDay, setSlotDay] = useState<DayOfWeek>("Monday");
   const [slotTime, setSlotTime] = useState("");
+  // Sprint 38: opsiyonel ödeme planı.
+  const [planEnabled, setPlanEnabled] = useState(false);
+  const [plan, setPlan] = useState<InstallmentInput[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -92,6 +97,7 @@ export default function NewContractPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (prefSlots.length === 0) { setErr("En az bir tercih gün/saat ekleyin."); return; }
+    if (planEnabled && !planMatches(plan, computedTotal)) { setErr("Taksit toplamı sözleşme tutarına eşit olmalı."); return; }
     setErr(null); setBusy(true);
     try {
       await contractService.addLine(id, {
@@ -107,6 +113,7 @@ export default function NewContractPage() {
         preferredMaxCapacity,
         currency: form.currency || "TRY",
         preferredSlots: prefSlots,
+        paymentPlan: planEnabled && plan.length > 0 ? plan : null,
       });
       toast.success("Sözleşme eklendi.");
       router.push(backHref);
@@ -196,8 +203,24 @@ export default function NewContractPage() {
               <FormField label="Toplam ücret" hint="ders sayısı × ders başı (otomatik)">
                 <Input value={`${computedTotal.toLocaleString("tr-TR")} ${form.currency}`} readOnly disabled />
               </FormField>
-              <FormField label="Son ödeme tarihi (ops.)"><Input type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} /></FormField>
+              <FormField label="Son ödeme tarihi (ops.)" hint="Ödeme planı eklenirse en erken taksit vadesiyle güncellenir."><Input type="date" value={form.dueDate} onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))} /></FormField>
             </div>
+          </Section>
+
+          <Section title="Ödeme planı (opsiyonel)">
+            <label className="inline-flex items-center gap-1.5 text-sm text-foreground">
+              <input type="checkbox" checked={planEnabled} onChange={(e) => setPlanEnabled(e.target.checked)} />
+              Ödeme planı (peşin / taksitli) tanımla
+            </label>
+            {planEnabled ? (
+              computedTotal > 0 ? (
+                <PaymentPlanEditor total={computedTotal} currency={form.currency || "TRY"} value={plan} onChange={setPlan} />
+              ) : (
+                <p className="text-xs text-warning">Önce ders sayısı ve ders başı ücreti girin (toplam 0 olamaz).</p>
+              )
+            ) : (
+              <p className="text-xs text-muted">Plan eklenmezse satır tek vade (yukarıdaki son ödeme tarihi) ile çalışır.</p>
+            )}
           </Section>
 
           <Section title="Haftalık ders gün/saatleri (en az 1)">

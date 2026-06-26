@@ -7,8 +7,11 @@ import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceSummaryDto,
   type ClassTypeDto,
+  type ContractLinePaymentPlanDto,
   type DayOfWeek,
   type GuestInput,
+  type InstallmentInput,
+  type InstallmentStatus,
   type MemberDto,
   type PaymentDto,
   type PreferredSlotInput,
@@ -22,6 +25,7 @@ import {
   type StudentSource,
   daysOfWeek,
   dayLabels,
+  installmentStatusLabels,
   paymentStatusLabels,
   studentContractStatusLabels,
   studentLevelLabels,
@@ -38,6 +42,10 @@ import {
   Textarea,
   useConfirm,
 } from "@/components/ui";
+import { PaymentPlanEditor, planMatches, planMoney } from "./_payment-plan";
+
+const installmentTone = (s: InstallmentStatus): "success" | "warning" | "danger" | "neutral" =>
+  s === "Paid" ? "success" : s === "PartiallyPaid" ? "warning" : s === "Overdue" ? "danger" : "neutral";
 
 export const emptyGuest: GuestInput = {
   fullName: "", phone: "", email: "", source: "Phone", level: null, notes: "", healthNotes: "",
@@ -117,6 +125,26 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
   const [replanPrev, setReplanPrev] = useState<ReplanLinePreviewDto | null>(null);
   const [replanResult, setReplanResult] = useState<ReplanLineResultDto | null>(null);
   const [replanMsg, setReplanMsg] = useState<string | null>(null);
+
+  // Sprint 38: ödeme planı (taksit/vade) — yükle/düzenle.
+  const [plan, setPlan] = useState<ContractLinePaymentPlanDto | null>(null);
+  const [planEditing, setPlanEditing] = useState(false);
+  const [planEdit, setPlanEdit] = useState<InstallmentInput[]>([]);
+  const [planMsg, setPlanMsg] = useState<string | null>(null);
+  const loadPlan = useCallback(() => {
+    contractService.getPaymentPlan(l.id).then(setPlan).catch(() => setPlan(null));
+  }, [l.id]);
+  // Ödeme değişince (l.paid) yeniden hesapla.
+  useEffect(() => { loadPlan(); }, [loadPlan, l.paid]);
+  const savePlan = async () => {
+    if (!planMatches(planEdit, l.totalPrice)) { setPlanMsg("Taksit toplamı sözleşme tutarına eşit olmalı."); return; }
+    setBusy(true); setPlanMsg(null);
+    try {
+      const res = await contractService.updatePaymentPlan(l.id, planEdit);
+      setPlan(res); setPlanEditing(false); onChanged();
+    } catch (e) { setPlanMsg(e instanceof ApiError ? e.message : "Ödeme planı kaydedilemedi."); }
+    finally { setBusy(false); }
+  };
 
   const addEditSlot = () => {
     const t = slotTime ? `${slotTime}:00` : null;
@@ -217,6 +245,58 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
             <Stat label="Kalan" value={money(l.remaining, l.currency)} tone={l.remaining > 0 ? "danger" : "success"} />
             <Stat label="Telafi hakkı" value={l.makeupAllowance} />
           </div>
+        </div>
+
+        {/* Ödeme planı (Sprint 38) — taksit/vade takibi. Plan ≠ Payment (plan beklenen takvim). */}
+        <div>
+          <div className="flex items-center justify-between gap-2">
+            <SectionTitle>Ödeme planı</SectionTitle>
+            {isActive && !planEditing && (
+              <Button size="sm" variant="secondary" onClick={() => { setPlanEdit(plan?.installments.map((i) => ({ dueDate: i.dueDate, amount: i.amount, notes: i.notes ?? null })) ?? []); setPlanMsg(null); setPlanEditing(true); }}>
+                {plan?.isConfigured ? "Planı düzenle" : "Plan oluştur"}
+              </Button>
+            )}
+          </div>
+
+          {planMsg && <p className="mt-1 text-xs text-danger">{planMsg}</p>}
+
+          {planEditing ? (
+            <div className="mt-2 space-y-3">
+              {(plan?.totalPaidAmount ?? 0) > 0 && (
+                <Alert kind="warning">Bu sözleşme satırında ödeme var. Plan değişirse ödeme dağılımı yeniden hesaplanır.</Alert>
+              )}
+              <PaymentPlanEditor total={l.totalPrice} currency={l.currency} value={planEdit} onChange={setPlanEdit} />
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setPlanEditing(false)}>Vazgeç</Button>
+                <Button size="sm" loading={busy} disabled={!planMatches(planEdit, l.totalPrice)} onClick={savePlan}>Planı kaydet</Button>
+              </div>
+            </div>
+          ) : !plan?.isConfigured ? (
+            <p className="mt-2 text-sm text-muted">Ödeme planı yok. {isActive ? "“Plan oluştur” ile peşin/taksitli plan tanımlayabilirsiniz." : ""}</p>
+          ) : (
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge tone="neutral">{plan.planType === "Cash" ? "Peşin" : `Taksitli (${plan.installments.length})`}</Badge>
+                {plan.overdueAmount > 0 && <Badge tone="danger">Geciken {planMoney(plan.overdueAmount, plan.currency)}</Badge>}
+                {plan.nextDueDate && <span className="text-muted">Sonraki ödeme: {plan.nextDueDate} · {planMoney(plan.nextDueAmount ?? 0, plan.currency)}</span>}
+                {plan.overpaidAmount > 0 && <Badge tone="success">Fazla ödeme {planMoney(plan.overpaidAmount, plan.currency)}</Badge>}
+                <span className="text-muted">{plan.paidCount}/{plan.installments.length} ödendi</span>
+              </div>
+              <ul className="divide-y divide-border rounded-xl border border-border">
+                {plan.installments.map((i) => (
+                  <li key={i.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Badge tone={installmentTone(i.status)}>{installmentStatusLabels[i.status]}</Badge>
+                      <span className="text-muted">{i.sequenceNo}. Vade {i.dueDate}</span>
+                    </div>
+                    <span className="text-foreground">
+                      {planMoney(i.paidAmount, plan.currency)} / {planMoney(i.amount, plan.currency)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* Tercihleri düzenle (Sprint 34) — hoca/kapasite/gün-saat full-replace; MEVCUT programa dokunmaz */}

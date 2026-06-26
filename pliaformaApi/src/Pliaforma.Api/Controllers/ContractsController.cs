@@ -104,4 +104,13 @@ public sealed class ContractsController : ApiControllerBase
     [HttpPost("contract-lines/{lineId:guid}/replan")]
     public Task<IActionResult> Replan(Guid lineId, ReplanLineScheduleCommand body, CancellationToken ct) =>
         Send(body with { LineId = lineId }, "Kalan dersler yeniden planlandı.", ct);
+
+    // ---- Sprint 38: ödeme planı (taksit/vade) — hesaplanmış durum + full-replace. Owner/StudioAdmin. ----
+    [HttpGet("contract-lines/{lineId:guid}/payment-plan")]
+    public Task<IActionResult> GetPaymentPlan(Guid lineId, CancellationToken ct) =>
+        Send(new GetContractLinePaymentPlanQuery(lineId), ct: ct);
+
+    [HttpPut("contract-lines/{lineId:guid}/payment-plan")]
+    public Task<IActionResult> UpdatePaymentPlan(Guid lineId, UpdateContractLinePaymentPlanCommand command, CancellationToken ct) =>
+        Send(command with { LineId = lineId }, "Ödeme planı güncellendi.", ct);
 }

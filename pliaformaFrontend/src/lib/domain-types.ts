@@ -494,6 +494,43 @@ export interface ContractLineInput {
   notes?: string | null;
   // Sprint 29A: yeni line'da EN AZ 1 tercih gün/saat zorunlu (aynı gün+saat tekrar edemez).
   preferredSlots: PreferredSlotInput[];
+  // Sprint 38: opsiyonel ödeme planı (peşin = 1 taksit; taksitli = 2+). Σ amount == toplam ücret.
+  paymentPlan?: InstallmentInput[] | null;
+}
+
+// ===== Sprint 38: Ödeme planı / taksit takibi =====
+export interface InstallmentInput { dueDate: string; amount: number; notes?: string | null }
+export type InstallmentStatus = "Planned" | "PartiallyPaid" | "Paid" | "Overdue";
+export const installmentStatusLabels: Record<InstallmentStatus, string> = {
+  Planned: "Bekliyor", PartiallyPaid: "Kısmi", Paid: "Ödendi", Overdue: "Gecikti",
+};
+export type PaymentPlanKind = "None" | "Cash" | "Installment";
+export interface PaymentInstallmentDto {
+  id: string;
+  sequenceNo: number;
+  dueDate: string;
+  amount: number;
+  paidAmount: number;
+  status: InstallmentStatus;
+  notes?: string | null;
+}
+export interface ContractLinePaymentPlanDto {
+  lineId: string;
+  currency: string;
+  isConfigured: boolean;       // false → plan yok (eski davranış)
+  planType: PaymentPlanKind;   // None / Cash / Installment
+  totalPlannedAmount: number;
+  totalPaidAmount: number;
+  remainingAmount: number;
+  overdueAmount: number;
+  overpaidAmount: number;      // yalnız bilgi (iade/credit yok)
+  nextDueDate?: string | null;
+  nextDueAmount?: number | null;
+  paidCount: number;
+  partialCount: number;
+  overdueCount: number;
+  upcomingCount: number;
+  installments: PaymentInstallmentDto[];
 }
 
 // ===== Sprint 4: Rezervasyon =====

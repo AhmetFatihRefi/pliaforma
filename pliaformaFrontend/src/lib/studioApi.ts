@@ -81,6 +81,8 @@ import type {
   StudioDto,
   StudioWorkingHoursDto,
   WorkingHourDayInput,
+  ContractLinePaymentPlanDto,
+  InstallmentInput,
 } from "./domain-types";
 import type { StudioRole } from "./types";
 
@@ -193,6 +195,11 @@ export const contractService = {
     api<ReplanLinePreviewDto>(`/api/studio/contract-lines/${lineId}/replan/preview`, { method: "POST", body: input }),
   replan: (lineId: string, input: { instructorProfileId?: string | null; capacity?: number | null }) =>
     api<ReplanLineResultDto>(`/api/studio/contract-lines/${lineId}/replan`, { method: "POST", body: input }),
+  // Sprint 38: ödeme planı (taksit/vade) — hesaplanmış durum + full-replace.
+  getPaymentPlan: (lineId: string) =>
+    api<ContractLinePaymentPlanDto>(`/api/studio/contract-lines/${lineId}/payment-plan`),
+  updatePaymentPlan: (lineId: string, installments: InstallmentInput[]) =>
+    api<ContractLinePaymentPlanDto>(`/api/studio/contract-lines/${lineId}/payment-plan`, { method: "PUT", body: { installments } }),
 };
 
 // Kullanıcı tarafı üyelik aksiyonları (/api/members)

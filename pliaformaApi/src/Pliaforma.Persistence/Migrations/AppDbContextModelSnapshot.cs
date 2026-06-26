@@ -423,6 +423,55 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("ContractAmendments", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.ContractLinePaymentInstallment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("SequenceNo")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StudentContractLineId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StudioId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentContractLineId");
+
+                    b.HasIndex("StudioId", "StudentContractLineId");
+
+                    b.ToTable("ContractLinePaymentInstallments", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.Equipment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2436,6 +2485,25 @@ namespace Pliaforma.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("StudentContract");
+
+                    b.Navigation("Studio");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.ContractLinePaymentInstallment", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.StudentContractLine", "StudentContractLine")
+                        .WithMany()
+                        .HasForeignKey("StudentContractLineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Pliaforma.Domain.Entities.Studio", "Studio")
+                        .WithMany()
+                        .HasForeignKey("StudioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StudentContractLine");
 
                     b.Navigation("Studio");
                 });
