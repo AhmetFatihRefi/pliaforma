@@ -22,6 +22,8 @@ import type {
   ClassSessionStatus,
   ClassTypeDto,
   ClassTypeInput,
+  CreateTargetSessionInput,
+  MoveBookingsResultDto,
   EquipmentDto,
   EquipmentDetailDto,
   EquipmentInput,
@@ -256,6 +258,10 @@ export const classSessionService = {
     api<null>(`/api/studio/class-sessions/${id}/cancel`, { method: "POST", body: input }),
   reschedule: (id: string, input: { newStartAt: string; reason?: string; keepBookings: boolean; grantMakeupCredit?: boolean }) =>
     api<ClassSessionDto>(`/api/studio/class-sessions/${id}/reschedule`, { method: "POST", body: input }),
+  // Sprint 43: dersteki seçili öğrenci(ler)i hedef derse / yeni açılan boşluğa taşı (Owner/StudioAdmin).
+  // targetSessionId VEYA createTargetSession'dan tam olarak biri verilir.
+  moveBookings: (sourceSessionId: string, input: { bookingIds: string[]; targetSessionId?: string | null; createTargetSession?: CreateTargetSessionInput | null; allowPastBooking?: boolean }) =>
+    api<MoveBookingsResultDto>(`/api/studio/class-sessions/${sourceSessionId}/bookings/move`, { method: "POST", body: input }),
   remove: (id: string) => api<null>(`/api/studio/class-sessions/${id}`, { method: "DELETE" }),
   // Sprint 19: ders onayı + fiilî hoca.
   confirm: (id: string) =>

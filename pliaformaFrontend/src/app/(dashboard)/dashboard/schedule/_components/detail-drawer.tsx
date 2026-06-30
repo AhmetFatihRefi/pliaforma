@@ -12,6 +12,7 @@ const fmtDate = (iso: string) => { const d = new Date(iso.slice(0, 10) + "T00:00
 export interface DrawerActions {
   book: () => void;
   reschedule: () => void;
+  moveStudents: () => void;
   cancel: () => void;
   notDelivered: () => void;
   confirm: () => void;
@@ -138,6 +139,17 @@ export function SessionDetailDrawer({
                   {isManager && <Button variant="secondary" size="sm" disabled={s.isFull} onClick={actions.book}>{s.isFull ? "Dolu" : "Öğrenci ekle"}</Button>}
                   {canConfirm && <Button size="sm" loading={busy} onClick={actions.confirm}>Onayla</Button>}
                   <Button variant="ghost" size="sm" onClick={actions.reschedule}>Ertele</Button>
+                  {isManager && s.bookedCount > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={new Date(s.startAt) < new Date()}
+                      title={new Date(s.startAt) < new Date() ? "Geçmiş dersten öğrenci taşınamaz" : undefined}
+                      onClick={actions.moveStudents}
+                    >
+                      Öğrenci Taşı
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={actions.cancel}>İptal et</Button>
                   {isManager && <Button variant="ghost" size="sm" onClick={actions.notDelivered}>İşlenmedi</Button>}
                 </>

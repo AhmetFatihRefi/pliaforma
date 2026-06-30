@@ -28,6 +28,7 @@ import {
   bookingStatusLabels,
   dayLabels,
   daysOfWeek,
+  isUnlimitedCapacity,
   studentLevelLabels,
 } from "@/lib/domain-types";
 import { Alert, Badge, Button, Card, FormField, Input, Modal, Select, Table, TableEmpty, TD, TH, THead, TR, useConfirm, useToast } from "@/components/ui";
@@ -99,6 +100,7 @@ export default function SchedulePage() {
   const [bookingsFor, setBookingsFor] = useState<ClassSessionDto | null>(null);
   const [cancelFor, setCancelFor] = useState<ClassSessionDto | null>(null);
   const [rescheduleFor, setRescheduleFor] = useState<ClassSessionDto | null>(null);
+  const [moveFor, setMoveFor] = useState<ClassSessionDto | null>(null);
   const [attendanceFor, setAttendanceFor] = useState<ClassSessionDto | null>(null);
   const [actualFor, setActualFor] = useState<ClassSessionDto | null>(null);
   const [detailFor, setDetailFor] = useState<ClassSessionDto | null>(null);
@@ -516,6 +518,7 @@ export default function SchedulePage() {
         actions={{
           book: () => { const s = detailFor!; setDetailFor(null); setBookFor(s); },
           reschedule: () => { const s = detailFor!; setDetailFor(null); setRescheduleFor(s); },
+          moveStudents: () => { const s = detailFor!; setDetailFor(null); setMoveFor(s); },
           cancel: () => { const s = detailFor!; setDetailFor(null); setCancelFor(s); },
           notDelivered: () => { const s = detailFor!; setDetailFor(null); markNotDelivered(s); },
           confirm: () => { const s = detailFor!; setDetailFor(null); confirmSession(s); },
@@ -597,6 +600,15 @@ export default function SchedulePage() {
       )}
       {rescheduleFor && (
         <RescheduleModal session={rescheduleFor} isManager={isManager} onClose={() => setRescheduleFor(null)} onDone={() => { setRescheduleFor(null); load(); }} />
+      )}
+      {moveFor && (
+        <MoveStudentsModal
+          session={moveFor}
+          instructors={instructors}
+          classTypes={classTypes}
+          onClose={() => setMoveFor(null)}
+          onDone={() => { setMoveFor(null); load(); }}
+        />
       )}
       {attendanceFor && (
         <AttendanceModal session={attendanceFor} onClose={() => setAttendanceFor(null)} />
@@ -1294,6 +1306,280 @@ function SessionBookingsModal({ session, onClose, onChanged }: { session: ClassS
             )}
           </tbody>
         </Table>
+      </div>
+    </Modal>
+  );
+}
+
+// Sprint 43: dersteki seçili öğrenci(ler)i hedef derse / yeni açılan boşluğa taşı (Owner/StudioAdmin).
+function MoveStudentsModal({ session, instructors, classTypes, onClose, onDone }: {
+  session: ClassSessionDto;
+  instructors: { id: string; name: string }[];
+  classTypes: ClassTypeDto[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const confirm = useConfirm();
+  const toast = useToast();
+
+  const [bookings, setBookings] = useState<ClassBookingDto[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [targetMode, setTargetMode] = useState<"existing" | "new">("existing");
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Mod A — var olan ders
+  const plus14 = ymd(new Date(Date.now() + 14 * 86_400_000));
+  const [exFrom, setExFrom] = useState(todayStr());
+  const [exTo, setExTo] = useState(plus14);
+  const [exInstructorId, setExInstructorId] = useState("");
+  const [exClassTypeId, setExClassTypeId] = useState(session.classTypeId);
+  const [exSessions, setExSessions] = useState<ClassSessionDto[] | null>(null);
+  const [exLoading, setExLoading] = useState(false);
+  const [targetSessionId, setTargetSessionId] = useState("");
+
+  // Mod B — yeni boşluk
+  const [slotClassTypeId, setSlotClassTypeId] = useState(session.classTypeId);
+  const [slotFrom, setSlotFrom] = useState(todayStr());
+  const [slotTo, setSlotTo] = useState(todayStr());
+  const [windows, setWindows] = useState<AvailabilityWindowDto[] | null>(null);
+  const [slotLoading, setSlotLoading] = useState(false);
+  const [chosenWindow, setChosenWindow] = useState<AvailabilityWindowDto | null>(null);
+  const [newStartAt, setNewStartAt] = useState("");
+  const [newInstructorId, setNewInstructorId] = useState("");
+  const [newCapacity, setNewCapacity] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingBookings(true);
+    bookingService.forSession(session.id)
+      .then((all) => { if (!cancelled) setBookings(all.filter((b) => b.status === "Booked")); })
+      .catch((e) => { if (!cancelled) setErr(e instanceof ApiError ? e.message : "Rezervasyonlar yüklenemedi."); })
+      .finally(() => { if (!cancelled) setLoadingBookings(false); });
+    return () => { cancelled = true; };
+  }, [session.id]);
+
+  const selectedCount = selected.size;
+  const requiredCap = Math.max(1, selectedCount);
+  const slotDuration = classTypes.find((c) => c.id === slotClassTypeId)?.defaultDurationMinutes ?? 60;
+  const startOptions = chosenWindow ? buildStartOptions(chosenWindow.startWindowFrom, chosenWindow.startWindowTo, slotDuration) : [];
+
+  const toggle = (id: string) =>
+    setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+
+  const searchExisting = async () => {
+    setExLoading(true); setErr(null); setTargetSessionId("");
+    try {
+      const res = await classSessionService.list({
+        from: exFrom, to: exTo,
+        instructorProfileId: exInstructorId || undefined,
+        classTypeId: exClassTypeId || undefined,
+        status: "Scheduled",
+      });
+      setExSessions(res.filter((s) => s.id !== session.id));
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Dersler getirilemedi."); setExSessions(null); }
+    finally { setExLoading(false); }
+  };
+
+  const searchSlots = async () => {
+    setSlotLoading(true); setErr(null); setChosenWindow(null);
+    try {
+      const res = await availabilityService.classTypeSlots({
+        classTypeId: slotClassTypeId, from: slotFrom, to: slotTo,
+        durationMinutes: slotDuration, requiredCapacity: requiredCap, incrementMinutes: slotDuration,
+      });
+      setWindows(res);
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Boşluklar getirilemedi."); setWindows(null); }
+    finally { setSlotLoading(false); }
+  };
+
+  const chooseWindow = (w: AvailabilityWindowDto) => {
+    setChosenWindow(w);
+    const opts = buildStartOptions(w.startWindowFrom, w.startWindowTo, slotDuration);
+    setNewStartAt(opts[0]?.value ?? "");
+    setNewInstructorId(w.availableInstructors[0]?.id ?? "");
+    setNewCapacity(String(requiredCap));
+  };
+
+  const remainingOf = (s: ClassSessionDto) => (isUnlimitedCapacity(s.capacity) ? Infinity : s.capacity - s.bookedCount);
+  const canPick = (s: ClassSessionDto) => remainingOf(s) >= selectedCount;
+
+  const canSubmit = selectedCount > 0 && (targetMode === "existing"
+    ? !!targetSessionId
+    : !!(chosenWindow && newStartAt && newInstructorId));
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    if (!(await confirm({
+      title: "Seçili öğrenciler taşınsın mı?",
+      confirmLabel: "Evet, taşı",
+      message: "Seçili öğrenciler bu dersten çıkarılıp hedef derse taşınacak. Kaynak dersteki diğer öğrenciler etkilenmez. Bu işlem ders hakkı, katılım ve raporları etkileyebilir.",
+    }))) return;
+    setBusy(true); setErr(null);
+    const bookingIds = [...selected];
+    try {
+      if (targetMode === "existing") {
+        await classSessionService.moveBookings(session.id, { bookingIds, targetSessionId });
+      } else {
+        await classSessionService.moveBookings(session.id, {
+          bookingIds,
+          createTargetSession: {
+            instructorProfileId: newInstructorId,
+            classTypeId: slotClassTypeId,
+            startAt: newStartAt,
+            capacity: newCapacity ? Number(newCapacity) : null,
+          },
+        });
+      }
+      toast.success(bookingIds.length === 1 ? "Öğrenci yeni derse taşındı." : `${bookingIds.length} öğrenci yeni derse taşındı.`);
+      onDone();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Taşıma başarısız.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`${session.classTypeName} — Öğrenci Taşı`}>
+      <div className="space-y-4">
+        {err && <Alert kind="error">{err}</Alert>}
+
+        {/* Kaynak ders bilgisi */}
+        <Alert kind="info">
+          Kaynak: <span className="font-medium">{fmtDate(session.startAt)} {fmtTime(session.startAt)}</span> · {session.instructorName} · {session.classTypeName}.
+          {" "}Seçili öğrenciler bu dersten çıkarılıp hedefe taşınır; kaynakta kalan öğrenciler etkilenmez.
+        </Alert>
+
+        {/* Öğrenci seçimi */}
+        <div>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label className="text-xs font-semibold text-muted">Öğrenciler</label>
+            <span className="text-xs text-muted">Seçili: {selectedCount}</span>
+          </div>
+          <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
+            {loadingBookings ? (
+              <p className="text-sm text-muted">Yükleniyor…</p>
+            ) : bookings.length === 0 ? (
+              <p className="text-sm text-muted">Bu derste aktif rezervasyon yok.</p>
+            ) : (
+              bookings.map((b) => (
+                <label key={b.id} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm text-foreground hover:bg-surface-muted">
+                  <input type="checkbox" checked={selected.has(b.id)} onChange={() => toggle(b.id)} />
+                  {b.studentName}
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Hedef tipi */}
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={targetMode === "existing" ? "primary" : "secondary"} onClick={() => setTargetMode("existing")}>Var olan derse taşı</Button>
+          <Button size="sm" variant={targetMode === "new" ? "primary" : "secondary"} onClick={() => setTargetMode("new")}>Yeni uygun boşlukta ders aç</Button>
+        </div>
+
+        {targetMode === "existing" ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <FormField label="Başlangıç"><Input type="date" value={exFrom} onChange={(e) => setExFrom(e.target.value)} /></FormField>
+              <FormField label="Bitiş"><Input type="date" value={exTo} onChange={(e) => setExTo(e.target.value)} /></FormField>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <FormField label="Hoca (ops.)">
+                <Select value={exInstructorId} onChange={(e) => setExInstructorId(e.target.value)}>
+                  <option value="">Tüm hocalar</option>
+                  {instructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Ders tipi (ops.)">
+                <Select value={exClassTypeId} onChange={(e) => setExClassTypeId(e.target.value)}>
+                  <option value="">Tüm ders tipleri</option>
+                  {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              </FormField>
+            </div>
+            <Button size="sm" variant="secondary" loading={exLoading} onClick={searchExisting}>Uygun dersleri getir</Button>
+            {exSessions && (
+              <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
+                {exSessions.length === 0 ? (
+                  <p className="text-sm text-muted">Bu aralıkta uygun ders bulunamadı.</p>
+                ) : exSessions.map((s) => {
+                  const rem = remainingOf(s);
+                  const ok = canPick(s);
+                  const capLabel = isUnlimitedCapacity(s.capacity) ? `${s.bookedCount} · limitsiz` : `${s.bookedCount}/${s.capacity}`;
+                  return (
+                    <label key={s.id} className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 ${ok ? "cursor-pointer border-border hover:bg-surface-muted" : "cursor-not-allowed border-border opacity-60"} ${targetSessionId === s.id ? "ring-2 ring-[var(--primary)]" : ""}`}>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <input type="radio" name="moveTarget" disabled={!ok} checked={targetSessionId === s.id} onChange={() => setTargetSessionId(s.id)} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm text-foreground">{fmtDate(s.startAt)} {fmtTime(s.startAt)} · {s.classTypeName}</span>
+                          <span className="block truncate text-xs text-muted">{s.instructorName}</span>
+                        </span>
+                      </span>
+                      <Badge tone={ok ? "success" : "danger"}>{capLabel}{ok ? "" : " · yetersiz"}</Badge>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <FormField label="Ders tipi">
+                <Select value={slotClassTypeId} onChange={(e) => { setSlotClassTypeId(e.target.value); setWindows(null); setChosenWindow(null); }}>
+                  {classTypes.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.defaultDurationMinutes}dk</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Başlangıç"><Input type="date" value={slotFrom} onChange={(e) => setSlotFrom(e.target.value)} /></FormField>
+              <FormField label="Bitiş"><Input type="date" value={slotTo} onChange={(e) => setSlotTo(e.target.value)} /></FormField>
+            </div>
+            <p className="text-xs text-muted">Boşluklar seçili {requiredCap} kişilik kapasiteye göre aranır.</p>
+            <Button size="sm" variant="secondary" loading={slotLoading} onClick={searchSlots} disabled={selectedCount === 0}>Boşlukları getir</Button>
+            {windows && (
+              <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
+                {windows.length === 0 ? (
+                  <p className="text-sm text-muted">Uygun boşluk bulunamadı.</p>
+                ) : windows.map((w) => (
+                  <button
+                    type="button"
+                    key={`${w.date}|${w.startWindowFrom}`}
+                    onClick={() => chooseWindow(w)}
+                    className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left ${chosenWindow?.startWindowFrom === w.startWindowFrom && chosenWindow?.date === w.date ? "border-[var(--primary)] ring-2 ring-[var(--primary)]" : "border-border hover:bg-surface-muted"}`}
+                  >
+                    <span className="text-sm text-foreground">{fmtDate(w.startWindowFrom)} · {fmtTime(w.startWindowFrom)}–{fmtTime(w.startWindowTo)}</span>
+                    <span className="text-xs text-muted">{w.durationMinutes}dk · {w.availableInstructors.length} hoca{w.availableEquipmentCapacity != null ? ` · ≤${w.availableEquipmentCapacity}` : ""}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {chosenWindow && (
+              <div className="grid grid-cols-3 gap-2 rounded-xl border border-border p-2">
+                <FormField label="Saat">
+                  <Select value={newStartAt} onChange={(e) => setNewStartAt(e.target.value)}>
+                    {startOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                </FormField>
+                <FormField label="Hoca">
+                  <Select value={newInstructorId} onChange={(e) => setNewInstructorId(e.target.value)}>
+                    {chosenWindow.availableInstructors.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  </Select>
+                </FormField>
+                <FormField label="Kapasite">
+                  <Input type="number" min={1} value={newCapacity} onChange={(e) => setNewCapacity(e.target.value)} />
+                </FormField>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
+          <Button type="button" loading={busy} disabled={!canSubmit} onClick={submit}>
+            Taşı{selectedCount > 0 ? ` (${selectedCount})` : ""}
+          </Button>
+        </div>
       </div>
     </Modal>
   );

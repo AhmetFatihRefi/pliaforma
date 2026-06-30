@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Features.Attendance;
+using Pliaforma.Application.Features.Bookings;
 using Pliaforma.Application.Features.Scheduling;
 
 namespace Pliaforma.Api.Controllers;
@@ -44,6 +45,12 @@ public sealed class ClassSessionsController : ApiControllerBase
     [HttpPost("{id:guid}/reschedule")]
     public Task<IActionResult> Reschedule(Guid id, RescheduleClassSessionCommand command, CancellationToken ct) =>
         Send(command with { Id = id }, "Ders seansı ertelendi.", ct);
+
+    // Sprint 43: dersteki seçili öğrenci(ler)i başka derse / yeni açılan boşluğa taşı (yalnız Owner/StudioAdmin).
+    [Authorize(Roles = "Owner,StudioAdmin")]
+    [HttpPost("{sourceSessionId:guid}/bookings/move")]
+    public Task<IActionResult> MoveBookings(Guid sourceSessionId, MoveBookingsCommand command, CancellationToken ct) =>
+        Send(command with { SourceSessionId = sourceSessionId }, "Öğrenciler taşındı.", ct);
 
     // Sprint 21: zincirleme kaydırma önizleme + uygula (Owner/StudioAdmin).
     [Authorize(Roles = "Owner,StudioAdmin")]

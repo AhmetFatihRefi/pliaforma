@@ -576,6 +576,26 @@ export interface MyBookingDto {
   status: ClassBookingStatus;
 }
 
+// Sprint 43: öğrenci taşıma (booking move) — kaynak dersten seçili öğrenciyi hedef derse/boşluğa taşı.
+export interface CreateTargetSessionInput {
+  instructorProfileId: string;
+  classTypeId: string;
+  startAt: string;
+  capacity?: number | null;
+}
+export interface MovedBookingDto {
+  sourceBookingId: string;
+  targetBookingId: string;
+  studentProfileId: string;
+  studentName: string;
+}
+export interface MoveBookingsResultDto {
+  targetSessionId: string;
+  targetSessionCreated: boolean;
+  movedCount: number;
+  moved: MovedBookingDto[];
+}
+
 export interface StudentSessionDto {
   id: string;
   classTypeName: string;

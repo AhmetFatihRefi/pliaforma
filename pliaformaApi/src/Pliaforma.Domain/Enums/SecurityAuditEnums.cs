@@ -52,6 +52,9 @@ public enum SecurityAuditEventType
     // Sprint 42 — geçmiş tarihli backfill (manuel, bilinçli; Owner/StudioAdmin + UI onayı)
     PastSessionCreated = 29,
     PastBookingCreated = 30,
+
+    // Sprint 43 — öğrenci taşıma (kaynak dersten çıkar → hedef derse ekle; Owner/StudioAdmin)
+    BookingMoved = 31,
 }
 
 /// <summary>Denetim olayının sonucu.</summary>
