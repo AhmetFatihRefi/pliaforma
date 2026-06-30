@@ -29,6 +29,12 @@ export function Modal({
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const titleId = useId();
 
+  // onClose çağrı yerlerinde genelde inline fonksiyon → her render'da yeni referans. Focus-trap effect'i
+  // buna bağlanırsa her tuş vuruşunda (parent re-render) cleanup+re-run olur ve odağı input'tan çalar.
+  // Ref'te tutup effect'i yalnız `open`'a bağlıyoruz (latest-callback pattern) → odak korunur.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
   useEffect(() => {
     if (!open) return;
     // Açılışta odaktaki öğeyi sakla → kapanışta geri ver.
@@ -44,7 +50,7 @@ export function Modal({
     queueMicrotask(() => (focusables()[0] ?? dialog)?.focus());
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "Escape") { onCloseRef.current(); return; }
       if (e.key !== "Tab") return;
       const active = document.activeElement as HTMLElement | null;
       // Select popover'ı body'ye portal ile render olur; odak orada ise Tab'ı Select yönetir (kapanır).
@@ -62,7 +68,7 @@ export function Modal({
       document.removeEventListener("keydown", onKey, true);
       prevFocusRef.current?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 
