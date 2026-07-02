@@ -10,7 +10,8 @@ namespace Pliaforma.Application.Features.Students;
 /// Aktif stüdyonun öğrencilerini listeler/arar. Owner/StudioAdmin tümünü; Instructor yalnızca KENDİ
 /// oluşturduklarını görür; Student bu uca erişemez. Soft-delete'ler global filter ile gizli.
 /// </summary>
-public sealed record GetStudentsQuery(string? Search = null, StudentLevel? Level = null) : IQuery<IReadOnlyList<StudentDto>>;
+// Sprint 48: hassas PII/sağlık okuması → Removed/rol-düşürülen üye access token'ıyla okuyamaz.
+public sealed record GetStudentsQuery(string? Search = null, StudentLevel? Level = null) : IQuery<IReadOnlyList<StudentDto>>, IStudioReadRequest;
 
 public sealed class GetStudentsHandler : IQueryHandler<GetStudentsQuery, IReadOnlyList<StudentDto>>
 {

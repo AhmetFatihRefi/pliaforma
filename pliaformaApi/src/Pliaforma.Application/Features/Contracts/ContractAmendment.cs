@@ -127,7 +127,8 @@ public sealed class AddContractAmendmentHandler : ICommandHandler<AddContractAme
 }
 
 // ---- Amendment geçmişi (read-only) ----
-public sealed record GetContractAmendmentsQuery(Guid ContractId) : IQuery<IReadOnlyList<ContractAmendmentDto>>;
+// Sprint 48: sözleşme ek-işlem/borç okuması (finans) → Removed/rol-düşürülen üye access token'ıyla okuyamaz.
+public sealed record GetContractAmendmentsQuery(Guid ContractId) : IQuery<IReadOnlyList<ContractAmendmentDto>>, IStudioReadRequest;
 
 public sealed class GetContractAmendmentsHandler : IQueryHandler<GetContractAmendmentsQuery, IReadOnlyList<ContractAmendmentDto>>
 {
@@ -153,7 +154,7 @@ public sealed class GetContractAmendmentsHandler : IQueryHandler<GetContractAmen
 }
 
 // ---- Öğrenci borç özeti (Sprint 28B: LINE-bazlı; amendment debt'e KATILMAZ) ----
-public sealed record GetStudentDebtQuery(Guid StudentProfileId) : IQuery<StudentDebtSummaryDto>;
+public sealed record GetStudentDebtQuery(Guid StudentProfileId) : IQuery<StudentDebtSummaryDto>, IStudioReadRequest;
 
 public sealed class GetStudentDebtHandler : IQueryHandler<GetStudentDebtQuery, StudentDebtSummaryDto>
 {

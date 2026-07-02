@@ -17,7 +17,9 @@ namespace Pliaforma.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, bool isProduction = false)
+    // Sprint 48: isDevelopment eklendi — e-posta fail-fast guard'ı artık "non-development" mantığında (Staging dâhil).
+    // isProduction diğer prod-only guard'lar (JWT placeholder, MFA) için AYNEN korunur (davranış değişmez).
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration, bool isProduction = false, bool isDevelopment = false)
     {
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
         var jwt = configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
@@ -42,7 +44,7 @@ public static class DependencyInjection
         if (isProduction)
             GuardMfaProduction(mfa);
 
-        ConfigureEmail(services, configuration, isProduction);
+        ConfigureEmail(services, configuration, enforceRealSender: !isDevelopment);
 
         services.AddHttpContextAccessor();
 
@@ -160,7 +162,8 @@ public static class DependencyInjection
     /// E-posta gönderim altyapısı (Sprint 16): mod'a göre IEmailSender seçer + fail-fast. SenderMode=Smtp ise
     /// PublicOrigin/Host/FromAddress zorunlu; prod'da Disabled (override yoksa) reddedilir — güvenlik için.
     /// </summary>
-    private static void ConfigureEmail(IServiceCollection services, IConfiguration configuration, bool isProduction)
+    // Sprint 48: enforceRealSender = "development DEĞİL" (Staging + Production). Development'ta Log/Disabled serbest.
+    private static void ConfigureEmail(IServiceCollection services, IConfiguration configuration, bool enforceRealSender)
     {
         var section = configuration.GetSection(EmailSettings.SectionName);
         services.Configure<EmailSettings>(section);
@@ -176,20 +179,22 @@ public static class DependencyInjection
                 "(Email__PublicOrigin / Email__Smtp__Host / Email__FromAddress env).");
         }
 
-        if (isProduction && email.SenderMode == EmailSenderMode.Disabled && !email.AllowDisabledInProduction)
+        if (enforceRealSender && email.SenderMode == EmailSenderMode.Disabled && !email.AllowDisabledInProduction)
         {
             throw new InvalidOperationException(
-                "Production'da Email:SenderMode=Disabled güvenli değildir (doğrulama/sıfırlama e-postaları gitmez). " +
-                "Bilinçliyse Email:AllowDisabledInProduction=true verin; aksi halde Email:SenderMode=Smtp kullanın.");
+                "Development dışı ortamda (Staging/Production) Email:SenderMode=Disabled güvenli değildir " +
+                "(doğrulama/sıfırlama e-postaları gitmez). Bilinçliyse Email:AllowDisabledInProduction=true verin; " +
+                "aksi halde Email:SenderMode=Smtp kullanın.");
         }
 
-        // LogEmailSender doğrulama/sıfırlama linkini (ham token gömülü) loglar — prod'da token/PII sızıntısı olur.
-        // appsettings.json varsayılanı Log olduğundan, env yanlış set edilse bile prod'da fail-fast (defense-in-depth).
-        if (isProduction && email.SenderMode == EmailSenderMode.Log)
+        // LogEmailSender doğrulama/sıfırlama linkini (ham token gömülü, yalnız Debug seviyesinde) loglar — token/PII
+        // sızıntısı riski. appsettings.json varsayılanı Log olduğundan, env yanlış set edilse bile development DIŞINDA
+        // fail-fast (Sprint 48: Staging de kapsandı; Debug override yalnız appsettings.Development.json'da).
+        if (enforceRealSender && email.SenderMode == EmailSenderMode.Log)
         {
             throw new InvalidOperationException(
-                "Production'da Email:SenderMode=Log doğrulama/sıfırlama token'larını loglar (token/PII sızıntısı). " +
-                "Email:SenderMode=Smtp kullanın (Email__SenderMode=Smtp env).");
+                "Development dışı ortamda (Staging/Production) Email:SenderMode=Log doğrulama/sıfırlama token'larını " +
+                "loglar (token/PII sızıntısı). Email:SenderMode=Smtp kullanın (Email__SenderMode=Smtp env).");
         }
 
         switch (email.SenderMode)

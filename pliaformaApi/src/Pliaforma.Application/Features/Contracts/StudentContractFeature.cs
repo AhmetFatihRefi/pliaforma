@@ -148,7 +148,8 @@ public sealed class CreateStudentContractHandler : ICommandHandler<CreateStudent
 }
 
 // ---- Listele (bir öğrencinin sözleşmeleri) ----
-public sealed record GetStudentContractsQuery(Guid StudentProfileId) : IQuery<IReadOnlyList<StudentContractDto>>;
+// Sprint 48: sözleşme okuması (finans) → Removed/rol-düşürülen üye access token'ıyla okuyamaz.
+public sealed record GetStudentContractsQuery(Guid StudentProfileId) : IQuery<IReadOnlyList<StudentContractDto>>, IStudioReadRequest;
 
 public sealed class GetStudentContractsHandler : IQueryHandler<GetStudentContractsQuery, IReadOnlyList<StudentContractDto>>
 {
@@ -168,7 +169,7 @@ public sealed class GetStudentContractsHandler : IQueryHandler<GetStudentContrac
 }
 
 // ---- Tek sözleşme detayı ----
-public sealed record GetStudentContractQuery(Guid Id) : IQuery<StudentContractDto>;
+public sealed record GetStudentContractQuery(Guid Id) : IQuery<StudentContractDto>, IStudioReadRequest;
 
 public sealed class GetStudentContractHandler : IQueryHandler<GetStudentContractQuery, StudentContractDto>
 {

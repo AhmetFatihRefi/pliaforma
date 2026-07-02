@@ -123,7 +123,8 @@ public sealed class GetMyStudentDashboardHandler : IQueryHandler<GetMyStudentDas
 }
 
 // ---- Staff: bir öğrencinin dashboard'u (Instructor finans göremez) ----
-public sealed record GetStaffStudentDashboardQuery(Guid StudentProfileId, string? Month) : IQuery<StudentDashboardDto>;
+// Sprint 48: staff öğrenci panosu (finans içerir) → Removed/rol-düşürülen üye access token'ıyla okuyamaz.
+public sealed record GetStaffStudentDashboardQuery(Guid StudentProfileId, string? Month) : IQuery<StudentDashboardDto>, IStudioReadRequest;
 
 public sealed class GetStaffStudentDashboardHandler : IQueryHandler<GetStaffStudentDashboardQuery, StudentDashboardDto>
 {

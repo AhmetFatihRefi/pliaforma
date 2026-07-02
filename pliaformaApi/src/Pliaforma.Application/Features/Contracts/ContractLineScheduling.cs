@@ -293,6 +293,9 @@ internal static class ContractLineScheduleEngine
         var line = await db.StudentContractLines.Include(l => l.StudentContract)
             .FirstOrDefaultAsync(l => l.Id == lineId && l.StudioId == studioId, ct)
             ?? throw new NotFoundException("Sözleşme satırı", lineId);
+        // Sprint 48: gizli pilot satırdan program üretilemez (savunma-derinliği; pilot line id UI'da yok).
+        if (line.IsPilot)
+            throw new ConflictException("Pilot kaydı bu ekrandan yönetilemez.");
         if (line.Status != StudentContractLineStatus.Active)
             throw new BusinessRuleException("Yalnızca aktif sözleşme satırından program üretilebilir.");
         return line;

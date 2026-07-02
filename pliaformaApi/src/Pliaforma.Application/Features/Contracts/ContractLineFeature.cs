@@ -187,7 +187,8 @@ internal static class ContractLineQuery
 }
 
 // ---- Staff: bir öğrencinin sözleşme satırları (Owner/StudioAdmin) ----
-public sealed record GetStudentContractLinesQuery(Guid StudentProfileId) : IQuery<IReadOnlyList<StudentContractLineDto>>;
+// Sprint 48: sözleşme satırı okuması (finans) → Removed/rol-düşürülen üye access token'ıyla okuyamaz.
+public sealed record GetStudentContractLinesQuery(Guid StudentProfileId) : IQuery<IReadOnlyList<StudentContractLineDto>>, IStudioReadRequest;
 
 public sealed class GetStudentContractLinesHandler : IQueryHandler<GetStudentContractLinesQuery, IReadOnlyList<StudentContractLineDto>>
 {
@@ -206,7 +207,7 @@ public sealed class GetStudentContractLinesHandler : IQueryHandler<GetStudentCon
 }
 
 // ---- Staff: stüdyo geneli AKTİF sözleşme satırları (Sprint 45: ödemeler ekranı line-bazlı borç/gecikme için). ----
-public sealed record GetStudioContractLinesQuery : IQuery<IReadOnlyList<StudentContractLineDto>>;
+public sealed record GetStudioContractLinesQuery : IQuery<IReadOnlyList<StudentContractLineDto>>, IStudioReadRequest;
 
 public sealed class GetStudioContractLinesHandler : IQueryHandler<GetStudioContractLinesQuery, IReadOnlyList<StudentContractLineDto>>
 {

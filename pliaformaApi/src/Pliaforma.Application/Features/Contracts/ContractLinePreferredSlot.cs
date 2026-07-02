@@ -78,6 +78,9 @@ public sealed class AddLinePreferredSlotHandler : ICommandHandler<AddLinePreferr
 
         var line = await _db.StudentContractLines.FirstOrDefaultAsync(l => l.Id == request.LineId && l.StudioId == studioId, ct)
             ?? throw new NotFoundException("Sözleşme satırı", request.LineId);
+        // Sprint 48: gizli pilot satır staff akışından yönetilemez (BuildAsync onu filtrelediği için dtos[0] 500 atardı).
+        if (line.IsPilot)
+            throw new ConflictException("Pilot kaydı bu ekrandan yönetilemez.");
 
         // Tekillik: aynı line'da aynı (gün, saat) — NULL saat dahil — tekrar edemez (soft-delete'li slotlar query filter ile düşer).
         var time = request.PreferredStartTime;

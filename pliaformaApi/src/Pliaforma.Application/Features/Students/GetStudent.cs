@@ -7,7 +7,8 @@ using Pliaforma.Domain.Exceptions;
 namespace Pliaforma.Application.Features.Students;
 
 /// <summary>Tek bir öğrenciyi getirir (tenant + yetki kontrolü). Sağlık notu yetkiye göre döner.</summary>
-public sealed record GetStudentQuery(Guid Id) : IQuery<StudentDto>;
+// Sprint 48: hassas PII/sağlık okuması → Removed/rol-düşürülen üye access token'ıyla okuyamaz.
+public sealed record GetStudentQuery(Guid Id) : IQuery<StudentDto>, IStudioReadRequest;
 
 public sealed class GetStudentHandler : IQueryHandler<GetStudentQuery, StudentDto>
 {

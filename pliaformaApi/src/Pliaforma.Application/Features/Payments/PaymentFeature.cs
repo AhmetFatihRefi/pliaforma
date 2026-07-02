@@ -36,7 +36,8 @@ internal static class PaymentMapping
 }
 
 // ---- Öğrencinin ödemeleri (staff) ----
-public sealed record GetStudentPaymentsQuery(Guid StudentProfileId) : IQuery<IReadOnlyList<PaymentDto>>;
+// Sprint 48: ödeme okuması (finans) → Removed/rol-düşürülen üye access token'ıyla okuyamaz.
+public sealed record GetStudentPaymentsQuery(Guid StudentProfileId) : IQuery<IReadOnlyList<PaymentDto>>, IStudioReadRequest;
 
 public sealed class GetStudentPaymentsHandler : IQueryHandler<GetStudentPaymentsQuery, IReadOnlyList<PaymentDto>>
 {
@@ -67,7 +68,7 @@ public sealed class GetStudentPaymentsHandler : IQueryHandler<GetStudentPayments
 }
 
 // ---- Stüdyo ödeme listesi (filtreli) ----
-public sealed record GetPaymentsQuery(Guid? StudentProfileId, PaymentStatus? Status) : IQuery<IReadOnlyList<PaymentDto>>;
+public sealed record GetPaymentsQuery(Guid? StudentProfileId, PaymentStatus? Status) : IQuery<IReadOnlyList<PaymentDto>>, IStudioReadRequest;
 
 public sealed class GetPaymentsHandler : IQueryHandler<GetPaymentsQuery, IReadOnlyList<PaymentDto>>
 {

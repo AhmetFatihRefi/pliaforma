@@ -59,6 +59,9 @@ public sealed class GrantMakeupCreditHandler : ICommandHandler<GrantMakeupCredit
             .FirstOrDefaultAsync(l => l.Id == request.StudentContractLineId && l.StudioId == studioId
                                        && l.StudentContract!.StudentProfileId == student.Id, cancellationToken)
             ?? throw new NotFoundException("Sözleşme satırı", request.StudentContractLineId);
+        // Sprint 48: gizli pilot satıra manuel telafi kredisi yazılamaz (savunma-derinliği; MakeupAllowance=0 zaten).
+        if (line.IsPilot)
+            throw new ConflictException("Pilot kaydı bu ekrandan yönetilemez.");
         if (line.Status != StudentContractLineStatus.Active)
             throw new BusinessRuleException("Pasif/iptal satıra telafi kredisi yazılamaz.");
 
@@ -127,6 +130,9 @@ public sealed class RevokeMakeupCreditHandler : ICommandHandler<RevokeMakeupCred
             .FirstOrDefaultAsync(l => l.Id == request.StudentContractLineId && l.StudioId == studioId
                                        && l.StudentContract!.StudentProfileId == student.Id, cancellationToken)
             ?? throw new NotFoundException("Sözleşme satırı", request.StudentContractLineId);
+        // Sprint 48: gizli pilot satırdan telafi kredisi geri alınamaz (savunma-derinliği).
+        if (line.IsPilot)
+            throw new ConflictException("Pilot kaydı bu ekrandan yönetilemez.");
 
         // Sprint 28C-2: LINE bakiyesini negatife düşürmemek için kilitle, sonra line bakiyesini oku.
         await _lock.LockStudentAsync(studioId, student.Id, cancellationToken);

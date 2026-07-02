@@ -14,7 +14,8 @@ namespace Pliaforma.Application.Features.Students;
 /// </summary>
 public sealed record StudentMinimalDto(Guid Id, string FullName, bool HasAccount);
 
-public sealed record GetStudentsMinimalQuery(string? Search = null) : IQuery<IReadOnlyList<StudentMinimalDto>>;
+// Sprint 48: öğrenci listesi okuması → Removed/rol-düşürülen üye access token'ıyla okuyamaz.
+public sealed record GetStudentsMinimalQuery(string? Search = null) : IQuery<IReadOnlyList<StudentMinimalDto>>, IStudioReadRequest;
 
 public sealed class GetStudentsMinimalHandler : IQueryHandler<GetStudentsMinimalQuery, IReadOnlyList<StudentMinimalDto>>
 {

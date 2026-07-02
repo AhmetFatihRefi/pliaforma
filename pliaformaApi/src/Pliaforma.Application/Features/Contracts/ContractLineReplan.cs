@@ -29,6 +29,9 @@ internal static class ContractLineReplanShared
         var line = await db.StudentContractLines.Include(l => l.StudentContract)
             .FirstOrDefaultAsync(l => l.Id == lineId && l.StudioId == studioId, ct)
             ?? throw new NotFoundException("Sözleşme satırı", lineId);
+        // Sprint 48: gizli pilot satır tercih/replan akışından yönetilemez (savunma-derinliği; pilot line id UI'da yok).
+        if (line.IsPilot)
+            throw new ConflictException("Pilot kaydı bu ekrandan yönetilemez.");
         if (line.Status != StudentContractLineStatus.Active)
             throw new ConflictException($"Yalnızca aktif sözleşme satırı {action}. Bu satır {line.Status} durumunda.");
         return line;

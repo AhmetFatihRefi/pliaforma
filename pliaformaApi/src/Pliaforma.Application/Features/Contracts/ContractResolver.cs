@@ -23,6 +23,9 @@ public sealed class ContractResolver
                         && c.StudentProfileId == studentProfileId
                         && c.ClassTypeId == classTypeId
                         && c.Status == StudentContractStatus.Active
+                        // Sprint 48: gizli pilot header (IsPilot) asla otomatik seçilmez (savunma-derinliği; bu
+                        // resolver şu an hiçbir handler'a inject edilmiyor ama gelecekte sızıntıyı önler).
+                        && !c.IsPilot
                         && c.StartDate <= sessionDate && sessionDate <= c.EndDate)
             .OrderBy(c => c.EndDate).ThenBy(c => c.CreatedAt)
             .ToListAsync(ct);

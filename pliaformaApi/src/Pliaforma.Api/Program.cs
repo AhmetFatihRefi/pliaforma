@@ -77,7 +77,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services
     .AddApplication()
     .AddPersistence(connectionString)
-    .AddInfrastructure(builder.Configuration, builder.Environment.IsProduction());
+    .AddInfrastructure(builder.Configuration, builder.Environment.IsProduction(), builder.Environment.IsDevelopment());
 
 // Kimlik/doğrulama ayarları (e-posta doğrulama zorunluluğu vb.). Varsayılan PROD-güvenli (zorunlu).
 builder.Services.Configure<Pliaforma.Application.Common.Settings.AuthSettings>(
