@@ -13,12 +13,14 @@ public sealed class GetMeHandler : IQueryHandler<GetMeQuery, MeResult>
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
     private readonly AuthSessionService _session;
+    private readonly IPilotModeInfo _pilotMode;
 
-    public GetMeHandler(IAppDbContext db, ICurrentUserService currentUser, AuthSessionService session)
+    public GetMeHandler(IAppDbContext db, ICurrentUserService currentUser, AuthSessionService session, IPilotModeInfo pilotMode)
     {
         _db = db;
         _currentUser = currentUser;
         _session = session;
+        _pilotMode = pilotMode;
     }
 
     public async Task<MeResult> Handle(GetMeQuery request, CancellationToken cancellationToken)
@@ -37,6 +39,6 @@ public sealed class GetMeHandler : IQueryHandler<GetMeQuery, MeResult>
             : 0;
 
         return new MeResult(AuthSessionService.ToUserDto(user), active, memberships,
-            _currentUser.MfaPending, recoveryRemaining);
+            _currentUser.MfaPending, recoveryRemaining, _pilotMode.SimplePeopleModeEnabled);
     }
 }

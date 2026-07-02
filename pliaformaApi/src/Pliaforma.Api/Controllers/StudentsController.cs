@@ -28,9 +28,7 @@ public sealed class StudentsController : ApiControllerBase
     public Task<IActionResult> Get(Guid id, CancellationToken ct) =>
         Send(new GetStudentQuery(id), ct: ct);
 
-    [HttpPost("guest")]
-    public Task<IActionResult> CreateGuest(CreateGuestStudentCommand command, CancellationToken ct) =>
-        Send(command, "Misafir öğrenci oluşturuldu.", ct);
+    // Sprint 46: guest create + minimal liste Instructor'a da açık (flag'e bağlı) → StudioGuestStudentsController'a taşındı.
 
     [HttpPut("{id:guid}")]
     public Task<IActionResult> Update(Guid id, UpdateStudentCommand command, CancellationToken ct) =>

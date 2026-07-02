@@ -115,6 +115,8 @@ public sealed class ContractLineResolver
             .Where(l => l.StudioId == studioId
                         && l.StudentContract!.StudentProfileId == studentProfileId
                         && (headerId == null || l.StudentContractId == headerId)
+                        // Sprint 46: gizli pilot line'lar auto-resolve'da ASLA seçilmez (flag kapansa da). Yalnız pilot-provisioning yolundan kullanılır.
+                        && !l.IsPilot
                         && l.ClassTypeId == classTypeId
                         // Sprint 33: line hocası null → herhangi bir hoca; dolu → eşleşme zorunlu.
                         && (l.InstructorProfileId == null || l.InstructorProfileId == instructorProfileId)

@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api";
-import { attendanceService, availabilityService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService, studioService } from "@/lib/studioApi";
+import { attendanceService, availabilityService, bookingCandidateService, bookingService, classSessionService, classTypeService, groupScheduleChangeService, makeupCreditService, makeupRequestService, studentService, studioService } from "@/lib/studioApi";
 import { useInstructors } from "@/lib/useInstructors";
+import { useAuth } from "@/lib/auth";
 import {
   type AttendanceItemDto,
   type AvailabilityWindowDto,
@@ -23,6 +24,7 @@ import {
   type SessionAttendanceDto,
   type StudentDto,
   type StudentLevel,
+  type StudentMinimalDto,
   type WorkingHourDayDto,
   attendanceStatusLabels,
   bookingStatusLabels,
@@ -1109,8 +1111,24 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  // Sprint 46: pilot sade modda ad-soyad öğrenciyi (sözleşmesiz) doğrudan derse ekleme yolu — aday listesi line'sız öğrenciyi göstermez.
+  const { pilotSimplePeopleMode, activeStudio } = useAuth();
+  const canManage = activeStudio?.role === "Owner" || activeStudio?.role === "StudioAdmin";
+  const showPilot = pilotSimplePeopleMode && !isMakeup;
+  const [pilotList, setPilotList] = useState<StudentMinimalDto[]>([]);
+  const [pilotName, setPilotName] = useState("");
+  const [pilotBusy, setPilotBusy] = useState(false);
+  const loadPilot = useCallback(async () => {
+    if (!showPilot) return;
+    try { setPilotList(await studentService.minimal()); } catch { /* sessiz */ }
+  }, [showPilot]);
+  useEffect(() => { loadPilot(); }, [loadPilot]);
+
   useEffect(() => {
     let cancelled = false;
+    // Sprint 46: aday uçları (regular/makeup-candidates) yalnız Owner/StudioAdmin'e açık. Instructor pilot modda
+    // yalnız aşağıdaki "pilot doğrudan-ekle" bölümünü kullanır → aday fetch atlanır (403 gürültüsü olmasın).
+    if (!canManage) { setRegular([]); setMakeup([]); setLoading(false); return; }
     setLoading(true); setErr(null);
     const lv = level || null;
     const p = isMakeup
@@ -1128,7 +1146,7 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
     p.catch((e) => { if (!cancelled) setErr(e instanceof ApiError ? e.message : "Aday listesi yüklenemedi."); })
      .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [session.id, level, isMakeup]);
+  }, [session.id, level, isMakeup, canManage]);
 
   // Her satır o satırın LineId'iyle booking yapar (line seçtirme modalı yok — her uygun line ayrı satır).
   const book = async (studentProfileId: string, lineId: string) => {
@@ -1144,25 +1162,52 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
     catch (e) { setErr(e instanceof ApiError ? e.message : "Rezervasyon yapılamadı."); setBusyId(null); }
   };
 
+  // Sprint 46: pilot öğrenciyi line VERMEDEN ekle → backend gizli pilot line'ı lazy oluşturur/bulur.
+  const bookPilot = async (studentProfileId: string) => {
+    if (isPast && !(await confirm({
+      title: "Geçmiş derse öğrenci eklensin mi?",
+      tone: "danger",
+      confirmLabel: "Evet, öğrenci ekle",
+      message: "Bu öğrenci geçmiş tarihli bir derse eklenecek. Verileri geriye dönük doldurmak için kullanılmalıdır.",
+    }))) return;
+    setBusyId(studentProfileId); setErr(null);
+    try { await bookingService.create(session.id, studentProfileId, null, isPast); onDone(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Rezervasyon yapılamadı."); setBusyId(null); }
+  };
+  const quickAddPilot = async () => {
+    const name = pilotName.trim();
+    if (!name) return;
+    setPilotBusy(true); setErr(null);
+    try { await studentService.createGuest({ fullName: name, source: "Other" }); setPilotName(""); await loadPilot(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Öğrenci eklenemedi."); }
+    finally { setPilotBusy(false); }
+  };
+
   const q = search.trim().toLowerCase();
   const fmtTime = (t?: string | null) => (t ? t.slice(0, 5) : null);
   const filteredRegular = regular.filter((c) => c.studentName.toLowerCase().includes(q));
   const filteredMakeup = makeup.filter((c) => c.studentName.toLowerCase().includes(q));
+  // Pilot doğrudan-ekle listesi: aday olarak ZATEN görünmeyen öğrenciler (çift satır olmasın) + ada göre filtre.
+  const candidateIds = new Set([...regular.map((c) => c.studentProfileId), ...makeup.map((c) => c.studentProfileId)]);
+  const pilotFiltered = pilotList.filter((s) => !candidateIds.has(s.id) && s.fullName.toLowerCase().includes(q));
 
   return (
     <Modal open onClose={onClose} title={`${session.classTypeName} — ${isMakeup ? "Telafi dersine öğrenci ekle" : "Öğrenci ekle"}`}>
       <div className="space-y-3">
         {err && <Alert kind="error">{err}</Alert>}
-        {isMakeup
+        {canManage && (isMakeup
           ? <Alert kind="info">Telafi: kullanılabilir telafi hakkı olan öğrenciler (tercih gün/saatten bağımsız).</Alert>
-          : <Alert kind="info">Üstte uygun adaylar (tercih gün/saatine göre sıralı); altta <span className="font-medium text-primary">telafi hakkıyla eklenebilecekler</span> renkli gösterilir.</Alert>}
+          : <Alert kind="info">Üstte uygun adaylar (tercih gün/saatine göre sıralı); altta <span className="font-medium text-primary">telafi hakkıyla eklenebilecekler</span> renkli gösterilir.</Alert>)}
         <div className="flex items-center gap-2">
           <Input placeholder="Öğrenci ara…" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <Select value={level} onChange={(e) => setLevel(e.target.value as StudentLevel | "")} className="w-40">
-            <option value="">Tüm seviyeler</option>
-            {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
-          </Select>
+          {canManage && (
+            <Select value={level} onChange={(e) => setLevel(e.target.value as StudentLevel | "")} className="w-40">
+              <option value="">Tüm seviyeler</option>
+              {(Object.keys(studentLevelLabels) as StudentLevel[]).map((lv) => <option key={lv} value={lv}>{studentLevelLabels[lv]}</option>)}
+            </Select>
+          )}
         </div>
+        {canManage && (
         <div className="max-h-72 space-y-2 overflow-y-auto">
           {loading ? (
             <p className="text-sm text-muted">Yükleniyor…</p>
@@ -1233,6 +1278,31 @@ function StaffBookingModal({ session, onClose, onDone }: { session: ClassSession
             </>
           )}
         </div>
+        )}
+
+        {/* Sprint 46: pilot doğrudan-ekle — ad-soyad öğrenciyi sözleşme olmadan derse ekle (gizli pilot line arkada). */}
+        {showPilot && (
+          <div className="space-y-2 rounded-xl border border-border bg-surface-muted/40 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Pilot: doğrudan öğrenci ekle</p>
+            <p className="text-xs text-muted">Ad-soyad öğrenciyi sözleşme/paket olmadan bu derse ekleyin.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input placeholder="Yeni öğrenci ad soyad…" value={pilotName} onChange={(e) => setPilotName(e.target.value)} className="w-56" />
+              <Button size="sm" variant="secondary" loading={pilotBusy} onClick={quickAddPilot}>+ Hızlı ekle</Button>
+            </div>
+            <div className="max-h-40 space-y-1.5 overflow-y-auto">
+              {pilotFiltered.length === 0 ? (
+                <p className="text-xs text-muted">Eklenebilecek başka öğrenci yok.</p>
+              ) : (
+                pilotFiltered.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-1.5">
+                    <span className="text-sm text-foreground">{s.fullName}{!s.hasAccount && <span className="ml-1.5 text-xs text-muted">· hesap yok</span>}</span>
+                    <Button size="sm" disabled={busyId !== null} onClick={() => bookPilot(s.id)}>Ekle</Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

@@ -26,6 +26,8 @@ public static class DependencyInjection
         // Sprint 28C-1: Regular scheduling/booking line-bazlı resolver + eligibility (instructor eşleşmesi zorunlu).
         services.AddScoped<Features.Contracts.ContractLineResolver>();
         services.AddScoped<Features.Contracts.ContractLineEligibilityChecker>();
+        // Sprint 46: pilot sade modda ad-soyad öğrenci için lazy gizli pilot line provisioning.
+        services.AddScoped<Features.Contracts.PilotContractProvisioner>();
         services.AddScoped<Features.Attendance.AttendanceMarker>();
         // Sprint 32B: ekipman kapasite guard'ı (create/update/bulk/reschedule; FOR UPDATE havuz kilidi).
         services.AddScoped<Features.Equipments.EquipmentCapacityGuard>();

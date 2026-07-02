@@ -33,13 +33,15 @@ public sealed class StaffCreateBookingHandler : ICommandHandler<StaffCreateBooki
     private readonly ICurrentUserService _currentUser;
     private readonly BookingCreator _creator;
     private readonly ISecurityAuditLogger _audit;
+    private readonly IPilotModeInfo _pilotMode;
 
-    public StaffCreateBookingHandler(IAppDbContext db, ICurrentUserService currentUser, BookingCreator creator, ISecurityAuditLogger audit)
+    public StaffCreateBookingHandler(IAppDbContext db, ICurrentUserService currentUser, BookingCreator creator, ISecurityAuditLogger audit, IPilotModeInfo pilotMode)
     {
         _db = db;
         _currentUser = currentUser;
         _creator = creator;
         _audit = audit;
+        _pilotMode = pilotMode;
     }
 
     public async Task<ClassBookingDto> Handle(StaffCreateBookingCommand request, CancellationToken cancellationToken)
@@ -58,15 +60,17 @@ public sealed class StaffCreateBookingHandler : ICommandHandler<StaffCreateBooki
         if (student.Status == StudentStatus.Inactive)
             throw new BusinessRuleException("Pasif öğrenci için rezervasyon yapılamaz.");
 
-        // Instructor kısıtı: kendi seansı + kendi oluşturduğu öğrenci.
+        // Instructor kısıtı. Sprint 46: rezervasyon ekleme instructor'a YALNIZ pilot mod açıkken (kapalıyken 403 —
+        // v1.1.2 davranışı korunur). Pilot modda: yalnız KENDİ seansına, ama stüdyodaki HERHANGİ öğrenciyi ekleyebilir
+        // (grup/ortak öğrenci pratikliği; öğrenci zaten tenant-scoped doğrulandı).
         if (_currentUser.StudioRole == StudioRole.Instructor)
         {
+            if (!_pilotMode.SimplePeopleModeEnabled)
+                throw new ForbiddenException("Rezervasyon ekleme yetkiniz yok.");
             var ownsSession = await _db.InstructorProfiles
                 .AnyAsync(p => p.Id == session.InstructorProfileId && p.UserId == userId, cancellationToken);
             if (!ownsSession)
                 throw new ForbiddenException("Yalnızca kendi seanslarınıza rezervasyon yapabilirsiniz.");
-            if (student.CreatedByUserId != userId)
-                throw new ForbiddenException("Yalnızca kendi oluşturduğunuz öğrenciler için rezervasyon yapabilirsiniz.");
         }
 
         // Sprint 18a: verilen sözleşme bu öğrenciye + bu stüdyoya ait olmalı (uygunluk BookingCreator'da).

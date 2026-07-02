@@ -69,6 +69,7 @@ import type {
   ConfirmTodayResultDto,
   RateType,
   StudentDto,
+  StudentMinimalDto,
   StudentLevel,
   StudentMakeupCreditsDto,
   MakeupEligibleLineDto,
@@ -524,6 +525,8 @@ export const studentService = {
   search: (query: string, level?: StudentLevel | null) =>
     api<StudentDto[]>(`/api/studio/students/search?query=${encodeURIComponent(query)}${level ? `&level=${level}` : ""}`),
   get: (id: string) => api<StudentDto>(`/api/studio/students/${id}`),
+  // Sprint 46: hoca için minimal liste (ad-soyad; pilot mod açıksa Instructor da erişir). Hassas alan dönmez.
+  minimal: (search?: string) => api<StudentMinimalDto[]>(`/api/studio/students/minimal${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   createGuest: (input: GuestInput) => api<StudentDto>("/api/studio/students/guest", { method: "POST", body: input }),
   update: (id: string, input: GuestInput) => api<StudentDto>(`/api/studio/students/${id}`, { method: "PUT", body: input }),
   convertToUser: (id: string, input: { email: string; initialPassword?: string }) =>

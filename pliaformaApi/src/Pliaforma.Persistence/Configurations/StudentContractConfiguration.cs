@@ -15,6 +15,8 @@ public sealed class StudentContractConfiguration : IEntityTypeConfiguration<Stud
         b.Property(x => x.Currency).IsRequired().HasMaxLength(8);
         b.Property(x => x.Price).HasPrecision(12, 2);
         b.Property(x => x.Notes).HasMaxLength(2000);
+        // Sprint 46: pilot işareti. Default false → mevcut satırlar migration'da false alır.
+        b.Property(x => x.IsPilot).HasDefaultValue(false);
 
         // Studio cascade; diğer FK'ler Restrict (tek cascade yolu — Postgres çoklu cascade'i sevmez).
         b.HasOne(x => x.Studio)

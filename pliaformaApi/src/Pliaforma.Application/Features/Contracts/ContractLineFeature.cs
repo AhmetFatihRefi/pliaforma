@@ -66,7 +66,9 @@ internal static class ContractLineQuery
     /// Sprint 45: <paramref name="today"/> (stüdyo-yerel gün) ile line-bazlı gecikme (isOverdue/overdueAmount/daysOverdue) hesaplanır.</summary>
     public static async Task<List<StudentContractLineDto>> BuildAsync(IAppDbContext db, IQueryable<StudentContractLine> q, DateOnly today, CancellationToken ct)
     {
+        // Sprint 46: gizli pilot line'lar TÜM finans/sözleşme/rapor/hatırlatma DTO yüzeylerinden filtrelenir (tek chokepoint).
         var raw = await q
+            .Where(l => !l.IsPilot)
             .OrderByDescending(l => l.StartDate).ThenBy(l => l.SequenceNo)
             .Select(l => new
             {

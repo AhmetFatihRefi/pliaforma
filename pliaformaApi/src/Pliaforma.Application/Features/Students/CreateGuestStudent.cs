@@ -3,12 +3,14 @@ using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
+using Pliaforma.Domain.Exceptions;
 
 namespace Pliaforma.Application.Features.Students;
 
 /// <summary>
-/// Misafir öğrenci oluşturur (User'sız). Owner/StudioAdmin/Instructor erişebilir. CreatedByUserId
-/// mevcut kullanıcıdır; StudioId aktif stüdyo bağlamından alınır (body'den DEĞİL).
+/// Misafir öğrenci oluşturur (User'sız). Owner/StudioAdmin her zaman; Instructor YALNIZ Pilot Simple People Mode
+/// açıkken (Sprint 46 — aksi halde 403). CreatedByUserId mevcut kullanıcıdır; StudioId aktif stüdyo bağlamından
+/// alınır (body'den DEĞİL).
 /// </summary>
 public sealed record CreateGuestStudentCommand(
     string FullName,
@@ -40,17 +42,23 @@ public sealed class CreateGuestStudentHandler : ICommandHandler<CreateGuestStude
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
+    private readonly IPilotModeInfo _pilotMode;
 
-    public CreateGuestStudentHandler(IAppDbContext db, ICurrentUserService currentUser)
+    public CreateGuestStudentHandler(IAppDbContext db, ICurrentUserService currentUser, IPilotModeInfo pilotMode)
     {
         _db = db;
         _currentUser = currentUser;
+        _pilotMode = pilotMode;
     }
 
     public async Task<StudentDto> Handle(CreateGuestStudentCommand request, CancellationToken cancellationToken)
     {
         var studioId = _currentUser.RequireStudioId();
         var userId = _currentUser.RequireUserId();
+
+        // Sprint 46: Instructor misafir öğrenciyi YALNIZ pilot mod açıkken oluşturabilir (kapalıyken Owner/StudioAdmin'e özel).
+        if (_currentUser.StudioRole == StudioRole.Instructor && !_pilotMode.SimplePeopleModeEnabled)
+            throw new ForbiddenException("Öğrenci ekleme yetkiniz yok.");
 
         var entity = new StudentProfile
         {

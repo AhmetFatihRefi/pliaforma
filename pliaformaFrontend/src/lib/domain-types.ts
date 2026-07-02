@@ -200,6 +200,13 @@ export interface StudentDto {
   isActive: boolean;
 }
 
+/** Sprint 46: hoca için minimal öğrenci kaydı (yalnız ad-soyad + hesap-var-mı; PII yok). */
+export interface StudentMinimalDto {
+  id: string;
+  fullName: string;
+  hasAccount: boolean;
+}
+
 export interface GuestInput {
   fullName: string;
   phone?: string;

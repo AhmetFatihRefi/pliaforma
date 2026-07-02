@@ -56,4 +56,11 @@ public class StudentContract : BaseEntity, ITenantScoped
     public string? Notes { get; set; }
 
     public Guid CreatedByUserId { get; set; }
+
+    /// <summary>
+    /// Sprint 46 (Pilot Simple People Mode): pilot sade modda ad-soyad öğrencinin derse eklenebilmesi için
+    /// otomatik/gizli oluşturulan sözleşme (header). <c>true</c> ise finans/sözleşme/rapor query'lerinde GİZLİDİR
+    /// (0 tutar, borç üretmez) ve auto-resolve'da kullanılmaz. Default false → mevcut sözleşmeler etkilenmez.
+    /// </summary>
+    public bool IsPilot { get; set; }
 }

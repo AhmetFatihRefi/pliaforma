@@ -41,15 +41,18 @@ public sealed record AuthResult(
     DateTime RefreshTokenExpiresAt,
     UserDto User,
     ActiveStudioDto? ActiveStudio,
-    IReadOnlyList<MembershipDto> Memberships);
+    IReadOnlyList<MembershipDto> Memberships,
+    // Sprint 46: login/refresh/switch sonrası da pilot UI doğru açılsın diye global flag burada da taşınır.
+    bool PilotSimplePeopleMode = false);
 
-/// <summary>/auth/me yanıtı (token üretmez). MFA durumu Sprint 31-MFA.</summary>
+/// <summary>/auth/me yanıtı (token üretmez). MFA durumu Sprint 31-MFA. PilotSimplePeopleMode Sprint 46 (global flag).</summary>
 public sealed record MeResult(
     UserDto User,
     ActiveStudioDto? ActiveStudio,
     IReadOnlyList<MembershipDto> Memberships,
     bool MfaSetupRequired = false,
-    int MfaRecoveryCodesRemaining = 0);
+    int MfaRecoveryCodesRemaining = 0,
+    bool PilotSimplePeopleMode = false);
 
 /// <summary>
 /// Login / register-studio / refresh sonucu — MFA dallanmasını taşır (Sprint 31-MFA).

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { studentService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useRole } from "@/lib/useRole";
 import { type StudentDto, studentSourceLabels, studentStatusLabels } from "@/lib/domain-types";
 import {
@@ -23,6 +24,7 @@ import { GuestFormModal, statusTone } from "./_components";
 
 export default function StudentsPage() {
   const { canManage } = useRole();
+  const { pilotSimplePeopleMode } = useAuth();
   const [items, setItems] = useState<StudentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +58,7 @@ export default function StudentsPage() {
           <h1 className="text-2xl font-semibold text-foreground">Öğrenciler</h1>
           <p className="mt-1 text-sm text-muted">Bir öğrenciye tıklayın; sözleşmeleri, ödemeleri ve katılımı detay sayfasında yönetin.</p>
         </div>
-        <Button onClick={() => setFormOpen(true)}>+ Misafir ekle</Button>
+        <Button onClick={() => setFormOpen(true)}>{pilotSimplePeopleMode ? "+ Öğrenci ekle" : "+ Misafir ekle"}</Button>
       </div>
 
       <Input placeholder="Ara: ad, telefon veya e-posta…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -86,6 +88,7 @@ export default function StudentsPage() {
                     {s.fullName}
                   </Link>
                   {s.healthNotes && <span className="ml-2 text-xs text-warning">⚕ sağlık notu</span>}
+                  {pilotSimplePeopleMode && !s.userId && <span className="ml-2 text-xs text-muted">· Pilot kayıt · hesap yok</span>}
                 </TD>
                 <TD className="text-muted">{s.phone || s.email || "—"}</TD>
                 <TD><Badge tone={statusTone(s.status)}>{studentStatusLabels[s.status]}</Badge></TD>

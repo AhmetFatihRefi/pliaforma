@@ -26,11 +26,14 @@ public sealed class BookingCreator
     private readonly IMakeupCreditLock _creditLock;
     private readonly ContractLineEligibilityChecker _lineEligibility;
     private readonly ContractLineResolver _lineResolver;
+    private readonly IPilotModeInfo _pilotMode;
+    private readonly PilotContractProvisioner _pilotProvisioner;
 
     public BookingCreator(
         IAppDbContext db, IClassSessionCapacityService capacity, IDateTime clock,
         MakeupCreditService credits, IMakeupCreditLock creditLock,
-        ContractLineEligibilityChecker lineEligibility, ContractLineResolver lineResolver)
+        ContractLineEligibilityChecker lineEligibility, ContractLineResolver lineResolver,
+        IPilotModeInfo pilotMode, PilotContractProvisioner pilotProvisioner)
     {
         _db = db;
         _capacity = capacity;
@@ -39,6 +42,8 @@ public sealed class BookingCreator
         _creditLock = creditLock;
         _lineEligibility = lineEligibility;
         _lineResolver = lineResolver;
+        _pilotMode = pilotMode;
+        _pilotProvisioner = pilotProvisioner;
     }
 
     /// <param name="studentContractId">Sprint 18a: header (back-compat) → bu header'ın uygun line'ı çözülür.</param>
@@ -105,7 +110,14 @@ public sealed class BookingCreator
                 // studentContractId verildiyse o header'ın uygun line'ı (back-compat); yoksa serbest çözüm.
                 var resolved = await _lineResolver.ResolveAsync(studioId, student.Id, session.ClassTypeId, sessionDate, session.InstructorProfileId, ct, headerId: studentContractId);
                 if (resolved is null)
-                    throw new ConflictException("Bu ders için uygun aktif sözleşme satırı yok (hoca/ders tipi/tarih/hak). Önce satır oluşturun.");
+                {
+                    // Sprint 46: pilot sade mod açıksa uygun gerçek line yerine GİZLİ pilot line lazy bulunur/oluşturulur
+                    // (null-line yoluna GİDİLMEZ; gerçek line ile devam → engine/move/attendance bozulmaz). Aksi halde 409.
+                    if (_pilotMode.SimplePeopleModeEnabled)
+                        resolved = await _pilotProvisioner.ResolveOrCreatePilotLineAsync(studioId, student, session, bookedByUserId, ct);
+                    if (resolved is null)
+                        throw new ConflictException("Bu ders için uygun aktif sözleşme satırı yok (hoca/ders tipi/tarih/hak). Önce satır oluşturun.");
+                }
                 line = resolved;
             }
 

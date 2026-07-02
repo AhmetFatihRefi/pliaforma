@@ -20,6 +20,8 @@ public sealed class StudentContractLineConfiguration : IEntityTypeConfiguration<
         b.Property(x => x.PricePerLesson).HasPrecision(12, 2);
         b.Property(x => x.TotalPrice).HasPrecision(12, 2);
         b.Property(x => x.Notes).HasMaxLength(2000);
+        // Sprint 46: pilot işareti. Default false → mevcut satırlar migration'da false alır.
+        b.Property(x => x.IsPilot).HasDefaultValue(false);
 
         b.HasOne(x => x.Studio)
             .WithMany()

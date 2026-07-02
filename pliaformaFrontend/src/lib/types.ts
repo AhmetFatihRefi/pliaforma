@@ -47,6 +47,8 @@ export interface AuthResponse {
   memberships: MembershipDto[];
   /** Sprint 31-MFA: token kısıtlı (mfa_pending); kullanıcı MFA kurmalı. */
   mfaSetupRequired?: boolean;
+  /** Sprint 46: Pilot Simple People Mode global flag. */
+  pilotSimplePeopleMode?: boolean;
 }
 
 /** /auth/me gövdesi. */
@@ -57,6 +59,8 @@ export interface MeResult {
   /** Sprint 31-MFA */
   mfaSetupRequired?: boolean;
   mfaRecoveryCodesRemaining?: number;
+  /** Sprint 46: Pilot Simple People Mode global flag (açıksa sade öğrenci akışı UI'ı). */
+  pilotSimplePeopleMode?: boolean;
 }
 
 // ---- Sprint 31-MFA ----

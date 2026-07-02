@@ -19,13 +19,15 @@ public sealed class AuthSessionService
     private readonly ITokenService _tokens;
     private readonly IMfaChallengeService _challenge;
     private readonly MfaSettings _mfa;
+    private readonly IPilotModeInfo _pilotMode;
 
-    public AuthSessionService(IAppDbContext db, ITokenService tokens, IMfaChallengeService challenge, IOptions<MfaSettings> mfa)
+    public AuthSessionService(IAppDbContext db, ITokenService tokens, IMfaChallengeService challenge, IOptions<MfaSettings> mfa, IPilotModeInfo pilotMode)
     {
         _db = db;
         _tokens = tokens;
         _challenge = challenge;
         _mfa = mfa.Value;
+        _pilotMode = pilotMode;
     }
 
     /// <summary>
@@ -101,7 +103,8 @@ public sealed class AuthSessionService
             refreshExpiresAt,
             ToUserDto(user),
             active,
-            memberships);
+            memberships,
+            _pilotMode.SimplePeopleModeEnabled);
     }
 
     public async Task<IReadOnlyList<MembershipDto>> LoadMembershipsAsync(Guid userId, CancellationToken ct) =>

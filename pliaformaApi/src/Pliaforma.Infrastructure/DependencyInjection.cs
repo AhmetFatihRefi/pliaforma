@@ -56,6 +56,7 @@ public static class DependencyInjection
         services.AddScoped<ISecurityAuditLogger, SecurityAuditLogger>();
         services.AddScoped<INotificationChannelSender, LoggingNotificationSender>();
         services.AddSingleton<IReminderWorkerInfo, ReminderWorkerInfo>();
+        services.AddSingleton<IPilotModeInfo, PilotModeInfo>();
 
         services.AddAuthentication(options =>
         {

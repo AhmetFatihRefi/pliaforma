@@ -1424,6 +1424,11 @@ namespace Pliaforma.Persistence.Migrations
                     b.Property<bool>("IsIndividualDefault")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsPilot")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<int>("MakeupAllowance")
                         .HasColumnType("integer");
 
@@ -1503,6 +1508,11 @@ namespace Pliaforma.Persistence.Migrations
 
                     b.Property<bool>("IsIndividual")
                         .HasColumnType("boolean");
+
+                    b.Property<bool>("IsPilot")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
 
                     b.Property<int>("LessonCount")
                         .HasColumnType("integer");

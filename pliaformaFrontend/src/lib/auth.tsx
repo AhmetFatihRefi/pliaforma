@@ -21,6 +21,8 @@ interface AuthState {
   loading: boolean;
   /** Sprint 31-MFA: token kısıtlı (mfa_pending) → kullanıcı MFA kurmalı (dashboard gate). */
   mfaSetupRequired: boolean;
+  /** Sprint 46: Pilot Simple People Mode açık mı (global flag; /me'den gelir). */
+  pilotSimplePeopleMode: boolean;
 }
 
 interface AuthContextValue extends AuthState {
@@ -44,6 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     memberships: [],
     loading: true,
     mfaSetupRequired: false,
+    pilotSimplePeopleMode: false,
   });
 
   const applyAuth = (auth: AuthResponse) => {
@@ -55,6 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       memberships: auth.memberships,
       loading: false,
       mfaSetupRequired: auth.mfaSetupRequired ?? false,
+      pilotSimplePeopleMode: auth.pilotSimplePeopleMode ?? false,
     });
   };
 
@@ -71,9 +75,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             memberships: me.memberships,
             loading: false,
             mfaSetupRequired: me.mfaSetupRequired ?? false,
+            pilotSimplePeopleMode: me.pilotSimplePeopleMode ?? false,
           });
       } catch {
-        if (!cancelled) setState({ user: null, activeStudio: null, memberships: [], loading: false, mfaSetupRequired: false });
+        if (!cancelled) setState({ user: null, activeStudio: null, memberships: [], loading: false, mfaSetupRequired: false, pilotSimplePeopleMode: false });
       }
     })();
     return () => {
@@ -110,14 +115,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await authService.logout();
     } finally {
       tokenStore.clear();
-      setState({ user: null, activeStudio: null, memberships: [], loading: false, mfaSetupRequired: false });
+      setState({ user: null, activeStudio: null, memberships: [], loading: false, mfaSetupRequired: false, pilotSimplePeopleMode: false });
     }
   };
 
   const reloadMe = async () => {
     try {
       const me = await authService.me();
-      setState({ user: me.user, activeStudio: me.activeStudio ?? null, memberships: me.memberships, loading: false, mfaSetupRequired: me.mfaSetupRequired ?? false });
+      setState({ user: me.user, activeStudio: me.activeStudio ?? null, memberships: me.memberships, loading: false, mfaSetupRequired: me.mfaSetupRequired ?? false, pilotSimplePeopleMode: me.pilotSimplePeopleMode ?? false });
     } catch {
       /* oturum yoksa sessiz geç */
     }

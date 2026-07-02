@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { attendanceService, classTypeService, contractService, memberService, paymentService, studentService } from "@/lib/studioApi";
 import { ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceSummaryDto,
@@ -593,6 +594,9 @@ function SumStat({ label, value }: { label: string; value: number | string }) {
 // ============================================================================
 export function GuestFormModal({ student, onClose, onSaved }: { student: StudentDto | null; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
+  // Sprint 46: pilot sade modda (ve kayıtta / hesabı olmayan pilot öğrencide) form yalnız "Ad soyad" gösterir.
+  const { pilotSimplePeopleMode } = useAuth();
+  const simple = pilotSimplePeopleMode && (!student || !student.userId);
   const [form, setForm] = useState<GuestInput>(
     student
       ? {
@@ -629,29 +633,35 @@ export function GuestFormModal({ student, onClose, onSaved }: { student: Student
     <Modal open onClose={onClose} title={student ? "Öğrenciyi düzenle" : "Misafir öğrenci ekle"} size="lg">
       <form onSubmit={submit} className="space-y-4">
         {err && <Alert kind="error">{err}</Alert>}
-        <FormField label="Ad soyad"><Input value={form.fullName} onChange={set("fullName")} required /></FormField>
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label="Telefon"><Input value={form.phone ?? ""} onChange={set("phone")} /></FormField>
-          <FormField label="E-posta"><Input type="email" value={form.email ?? ""} onChange={set("email")} /></FormField>
-          <FormField label="Kaynak">
-            <Select value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value as StudentSource }))}>
-              {Object.entries(studentSourceLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </FormField>
-          <FormField label="Seviye">
-            <Select placeholder="Seviye seç" value={form.level ?? ""} onChange={(e) => setForm((f) => ({ ...f, level: (e.target.value || null) as StudentLevel | null }))}>
-              <option value="">Belirtilmemiş</option>
-              {Object.entries(studentLevelLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </FormField>
-          <FormField label="Doğum tarihi"><Input type="date" value={form.birthDate ?? ""} onChange={set("birthDate")} /></FormField>
-          <FormField label="Acil durum kişisi"><Input value={form.emergencyContactName ?? ""} onChange={set("emergencyContactName")} /></FormField>
-          <FormField label="Acil durum telefonu"><Input value={form.emergencyContactPhone ?? ""} onChange={set("emergencyContactPhone")} /></FormField>
-        </div>
-        <FormField label="Not"><Textarea value={form.notes ?? ""} onChange={set("notes")} /></FormField>
-        <FormField label="Sağlık notu" hint="Hassas bilgi — yalnızca yetkili kullanıcılara gösterilir">
-          <Textarea value={form.healthNotes ?? ""} onChange={set("healthNotes")} />
-        </FormField>
+        <FormField label="Ad soyad"><Input value={form.fullName} onChange={set("fullName")} required autoFocus /></FormField>
+        {simple ? (
+          <p className="text-xs text-muted">Pilot kayıt: yalnızca ad soyad gerekir. Hesap, davet, telefon/e-posta oluşturulmaz. Daha sonra tam hesaba yükseltilebilir.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Telefon"><Input value={form.phone ?? ""} onChange={set("phone")} /></FormField>
+              <FormField label="E-posta"><Input type="email" value={form.email ?? ""} onChange={set("email")} /></FormField>
+              <FormField label="Kaynak">
+                <Select value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value as StudentSource }))}>
+                  {Object.entries(studentSourceLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Seviye">
+                <Select placeholder="Seviye seç" value={form.level ?? ""} onChange={(e) => setForm((f) => ({ ...f, level: (e.target.value || null) as StudentLevel | null }))}>
+                  <option value="">Belirtilmemiş</option>
+                  {Object.entries(studentLevelLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </Select>
+              </FormField>
+              <FormField label="Doğum tarihi"><Input type="date" value={form.birthDate ?? ""} onChange={set("birthDate")} /></FormField>
+              <FormField label="Acil durum kişisi"><Input value={form.emergencyContactName ?? ""} onChange={set("emergencyContactName")} /></FormField>
+              <FormField label="Acil durum telefonu"><Input value={form.emergencyContactPhone ?? ""} onChange={set("emergencyContactPhone")} /></FormField>
+            </div>
+            <FormField label="Not"><Textarea value={form.notes ?? ""} onChange={set("notes")} /></FormField>
+            <FormField label="Sağlık notu" hint="Hassas bilgi — yalnızca yetkili kullanıcılara gösterilir">
+              <Textarea value={form.healthNotes ?? ""} onChange={set("healthNotes")} />
+            </FormField>
+          </>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>Vazgeç</Button>
           <Button type="submit" loading={saving}>{student ? "Kaydet" : "Oluştur"}</Button>

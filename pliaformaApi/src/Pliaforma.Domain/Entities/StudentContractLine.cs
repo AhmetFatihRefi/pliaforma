@@ -77,4 +77,12 @@ public class StudentContractLine : BaseEntity, ITenantScoped
     public string? Notes { get; set; }
 
     public Guid CreatedByUserId { get; set; }
+
+    /// <summary>
+    /// Sprint 46 (Pilot Simple People Mode): pilot sade modda ad-soyad öğrencinin Regular derse eklenebilmesi için
+    /// booking anında lazy oluşturulan gizli line (TotalPrice=0, DueDate=null, çok büyük LessonCount). <c>true</c> ise
+    /// finans/sözleşme/rapor/hatırlatma query'lerinde GİZLİ ve auto-resolve'da SEÇİLMEZ (yalnız pilot-provisioning
+    /// yolundan kullanılır). Explicit line/booking taşımada filtrelenmez → eski pilot booking'ler korunur. Default false.
+    /// </summary>
+    public bool IsPilot { get; set; }
 }

@@ -41,8 +41,9 @@ public sealed class BookingsController : ApiControllerBase
     public Task<IActionResult> MakeupCandidates(Guid sessionId, [FromQuery] StudentLevel? level, CancellationToken ct) =>
         Send(new GetMakeupBookingCandidatesQuery(sessionId, level), ct: ct);
 
-    // Vekaleten rezervasyon (öğrenci adına) — yalnız Owner/StudioAdmin.
-    [Authorize(Roles = "Owner,StudioAdmin")]
+    // Vekaleten rezervasyon (öğrenci adına). Owner/StudioAdmin her zaman; Sprint 46: Instructor YALNIZ pilot mod
+    // açıkken (handler 403 verir) + yalnız KENDİ seansına. Kapalıyken instructor mevcut gibi 403 alır.
+    [Authorize(Roles = "Owner,StudioAdmin,Instructor")]
     [HttpPost("class-sessions/{sessionId:guid}/bookings")]
     public Task<IActionResult> Create(Guid sessionId, StaffCreateBookingCommand command, CancellationToken ct) =>
         Send(command with { ClassSessionId = sessionId }, "Rezervasyon oluşturuldu.", ct);
