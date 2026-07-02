@@ -63,6 +63,11 @@ export interface MeResult {
   pilotSimplePeopleMode?: boolean;
 }
 
+/** Sprint 49: anonim /auth/registration-status — herkese açık stüdyo kaydı etkin mi. */
+export interface RegistrationStatus {
+  studioRegistrationEnabled: boolean;
+}
+
 // ---- Sprint 31-MFA ----
 /** Login MFA-aktif kullanıcı için: tam token YOK; challengeToken ile TOTP gönderilir. */
 export interface MfaChallengeResponse {

@@ -48,10 +48,11 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
     private readonly EmailTokenIssuer _tokens;
     private readonly IEmailSender _email;
     private readonly AuthSettings _auth;
+    private readonly RegistrationSettings _registration;
 
     public RegisterStudioHandler(IAppDbContext db, IPasswordHasher hasher, AuthSessionService session,
         IDateTime clock, ILogger<RegisterStudioHandler> logger, EmailTokenIssuer tokens, IEmailSender email,
-        IOptions<AuthSettings> auth)
+        IOptions<AuthSettings> auth, IOptions<RegistrationSettings> registration)
     {
         _db = db;
         _hasher = hasher;
@@ -61,10 +62,16 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
         _tokens = tokens;
         _email = email;
         _auth = auth.Value;
+        _registration = registration.Value;
     }
 
     public async Task<AuthOutcome> Handle(RegisterStudioCommand request, CancellationToken cancellationToken)
     {
+        // Sprint 49: pilot/tek-salon dağıtımında herkese açık stüdyo kaydı kapatılabilir. Kapalıyken hiçbir
+        // kayıt/DB işlemi yapılmadan 403 döner (login, davet-kabul, mevcut kullanıcı akışları etkilenmez).
+        if (!_registration.StudioRegistrationEnabled)
+            throw new ForbiddenException("Yeni stüdyo kaydı şu anda kapalı.");
+
         var normalizedEmail = EmailNormalizer.Normalize(request.Email);
 
         if (await _db.Users.AnyAsync(u => u.NormalizedEmail == normalizedEmail, cancellationToken))

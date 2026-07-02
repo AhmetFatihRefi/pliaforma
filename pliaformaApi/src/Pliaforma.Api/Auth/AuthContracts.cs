@@ -8,6 +8,9 @@ public sealed record RegisterStudioRequest(string StudioName, string OwnerFullNa
 // Sprint 17 Rev2: Intent (UX niyeti) opsiyonel — null → Unknown.
 public sealed record RegisterRequest(string FullName, string Email, string Password, string? Phone, RegistrationIntent? Intent);
 public sealed record LoginRequest(string Email, string Password);
+
+// Sprint 49: anonim; frontend'in "Stüdyo oluştur" yüzeylerini gösterip göstermeyeceğine karar vermesi için.
+public sealed record RegistrationStatusResponse(bool StudioRegistrationEnabled);
 public sealed record SwitchStudioRequest(Guid StudioId);
 public sealed record RefreshRequest(Guid? StudioId);
 

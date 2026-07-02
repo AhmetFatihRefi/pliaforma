@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
+import { useStudioRegistrationEnabled } from "@/lib/registration";
 import { Alert, Button, Card, FormField, Input } from "@/components/ui";
 
 /**
@@ -14,6 +15,8 @@ import { Alert, Button, Card, FormField, Input } from "@/components/ui";
 export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
+  // Sprint 49: stüdyo kaydı kapalıysa "Stüdyo oluşturun" bağlantısını gösterme (kapalı sayfaya yönlendirmesin).
+  const showStudioLink = useStudioRegistrationEnabled() !== false;
   const [form, setForm] = useState({ fullName: "", email: "", password: "", phone: "" });
   // Sprint 17 Rev2: kayıt niyeti — /join-studio ekranını belirler (öğrenci JoinCode formu vs. hoca davet bekleme).
   const [intent, setIntent] = useState<"Student" | "Instructor">("Student");
@@ -100,12 +103,14 @@ export default function RegisterPage() {
           Giriş yapın
         </Link>
       </p>
-      <p className="mt-2 text-center text-sm text-muted">
-        Stüdyo sahibi misiniz?{" "}
-        <Link href="/register-studio" className="font-medium text-primary hover:text-primary-hover">
-          Stüdyo oluşturun
-        </Link>
-      </p>
+      {showStudioLink && (
+        <p className="mt-2 text-center text-sm text-muted">
+          Stüdyo sahibi misiniz?{" "}
+          <Link href="/register-studio" className="font-medium text-primary hover:text-primary-hover">
+            Stüdyo oluşturun
+          </Link>
+        </p>
+      )}
     </Card>
   );
 }

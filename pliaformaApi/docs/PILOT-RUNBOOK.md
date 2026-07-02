@@ -10,10 +10,14 @@ Pilot sırasında operatörün günlük işletme rehberi. Kurulum/deploy adımla
 - [ ] TLS açık (443) + HTTP→HTTPS redirect (certbot adımı dry-run §TLS).
 - [ ] `.env` gerçek değerlerle dolu (JWT secret güçlü, DB parolası, SMTP varsa).
 - [ ] PlatformAdmin hesabı kuruldu (SEED_ADMIN_* ya da manuel) ve giriş yapılabiliyor.
-- [ ] İlk gerçek stüdyo Owner'ı oluşturuldu (register-studio) ve giriş doğrulandı.
-- [ ] Yedek cron kuruldu (`ops/backup-postgres.sh`, günlük) + **bir kez restore tatbikatı yapıldı**.
-- [ ] (Sprint 47) `PILOT_SIMPLE_PEOPLE_MODE` bilinçli karar verildi (bu pilot stüdyo sade-mod kullanacak mı?);
-      `deploy/.env`'de doğru değerle set edildi (varsayılan `false`).
+- [ ] (Sprint 49) `STUDIO_REGISTRATION_ENABLED=false` (dışarıdan yeni stüdyo YOK). Doğrula:
+      `curl -s https://pliaforma.com/api/auth/registration-status` → `{"studioRegistrationEnabled":false}`.
+- [ ] İlk gerçek stüdyo Owner'ı oluşturuldu — **kayıt kapalıyken** "kısa pencere" yöntemiyle (aç → owner
+      register-studio → MFA enroll → kapat); bkz. [PILOT-DEPLOY-DRY-RUN.md](PILOT-DEPLOY-DRY-RUN.md) §10. Giriş doğrulandı.
+- [ ] **Deploy öncesi ilk şifreli yedek alındı** (`BACKUP_ENCRYPTION_KEY` set + `ops/backup-postgres.sh`) +
+      Yedek cron kuruldu (günlük) + **bir kez restore tatbikatı yapıldı** (`ops/restore-drill.sh`).
+- [ ] (Sprint 47) `PILOT_SIMPLE_PEOPLE_MODE` bilinçli karar verildi (bu tek-salon pilot sade-mod kullanır → `true`);
+      `deploy/.env`'de doğru değerle set edildi.
 
 ## 2. Demo veriyle tanıtım (opsiyonel — gerçek stüdyo öncesi sunum)
 Pilot demosu için gerçekçi örnek veri:

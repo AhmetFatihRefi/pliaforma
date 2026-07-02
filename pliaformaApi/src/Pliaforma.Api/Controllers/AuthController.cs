@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using Pliaforma.Api.Auth;
 using Pliaforma.Api.RateLimiting;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Models;
 using Pliaforma.Application.Common.Security;
+using Pliaforma.Application.Common.Settings;
 using Pliaforma.Application.Features.Auth;
 
 namespace Pliaforma.Api.Controllers;
@@ -17,15 +19,24 @@ public sealed class AuthController : ControllerBase
 {
     private readonly IDispatcher _dispatcher;
     private readonly bool _secureCookie;
+    private readonly RegistrationSettings _registration;
 
-    public AuthController(IDispatcher dispatcher, IHostEnvironment env)
+    public AuthController(IDispatcher dispatcher, IHostEnvironment env, IOptions<RegistrationSettings> registration)
     {
         _dispatcher = dispatcher;
         // Geliştirmede HTTP üzerinden çalışıldığı için Secure=false; üretimde HTTPS zorunlu.
         _secureCookie = !env.IsDevelopment();
+        _registration = registration.Value;
     }
 
     private string? ClientIp => HttpContext.Connection.RemoteIpAddress?.ToString();
+
+    // Sprint 49: anonim public flag — frontend "Stüdyo oluştur" yüzeylerini buna göre gizler.
+    // Güvenlik sınırı DEĞİL (register-studio handler'ında ayrıca zorlanır); yalnız UI'ya ipucu verir.
+    [AllowAnonymous]
+    [HttpGet("registration-status")]
+    public IActionResult RegistrationStatus() =>
+        Ok(ApiResponse<RegistrationStatusResponse>.Ok(new RegistrationStatusResponse(_registration.StudioRegistrationEnabled)));
 
     [AllowAnonymous]
     [HttpPost("register-studio")]

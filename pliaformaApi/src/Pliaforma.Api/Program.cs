@@ -83,6 +83,11 @@ builder.Services
 builder.Services.Configure<Pliaforma.Application.Common.Settings.AuthSettings>(
     builder.Configuration.GetSection(Pliaforma.Application.Common.Settings.AuthSettings.SectionName));
 
+// Sprint 49: herkese açık stüdyo kaydı flag'i. Kod varsayılanı true (SaaS/dev bozulmaz); pilot dağıtımında
+// Registration__StudioRegistrationEnabled=false ile kapatılır (register-studio 403).
+builder.Services.Configure<Pliaforma.Application.Common.Settings.RegistrationSettings>(
+    builder.Configuration.GetSection(Pliaforma.Application.Common.Settings.RegistrationSettings.SectionName));
+
 // Hatırlatma worker'ı (idempotent; Notifications:WorkerEnabled ile kapatılabilir).
 builder.Services.AddHostedService<Pliaforma.Api.Workers.ReminderBackgroundService>();
 

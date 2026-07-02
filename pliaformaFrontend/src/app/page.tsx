@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useStudioRegistrationEnabled } from "@/lib/registration";
 import { cn } from "@/lib/cn";
 import { Brand, PliaformaMark } from "@/components/layout/Brand";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -54,6 +55,8 @@ const NAV = [
 function LandingHeader() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  // Sprint 49: pilotta herkese açık stüdyo kaydı kapalıysa "Stüdyo Hesabı Oluştur" gizlenir; Giriş Yap kalır.
+  const showStudioCta = useStudioRegistrationEnabled() !== false;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -89,12 +92,14 @@ function LandingHeader() {
           <Link href="/login" className="rounded-xl px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:bg-surface-muted">
             Giriş Yap
           </Link>
-          <Link
-            href="/register-studio"
-            className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_22px_-10px_var(--primary)] transition-all hover:-translate-y-0.5 hover:bg-primary-hover"
-          >
-            Stüdyo Hesabı Oluştur
-          </Link>
+          {showStudioCta && (
+            <Link
+              href="/register-studio"
+              className="rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_8px_22px_-10px_var(--primary)] transition-all hover:-translate-y-0.5 hover:bg-primary-hover"
+            >
+              Stüdyo Hesabı Oluştur
+            </Link>
+          )}
         </div>
 
         <button
@@ -126,9 +131,11 @@ function LandingHeader() {
             <Link href="/login" className="rounded-xl bg-surface-muted py-3 text-center text-sm font-bold text-foreground">
               Giriş Yap
             </Link>
-            <Link href="/register-studio" className="rounded-xl bg-primary py-3 text-center text-sm font-bold text-primary-foreground">
-              Stüdyo Hesabı Oluştur
-            </Link>
+            {showStudioCta && (
+              <Link href="/register-studio" className="rounded-xl bg-primary py-3 text-center text-sm font-bold text-primary-foreground">
+                Stüdyo Hesabı Oluştur
+              </Link>
+            )}
           </div>
         </div>
       )}
@@ -139,6 +146,8 @@ function LandingHeader() {
 /* ------------------------------ Hero ------------------------------ */
 
 function Hero() {
+  // Sprint 49: pilotta stüdyo kaydı kapalıysa "Stüdyo Hesabı Oluştur" gizlenir, "Giriş Yap" öne çıkar.
+  const showStudioCta = useStudioRegistrationEnabled() !== false;
   return (
     <section id="top" className="relative overflow-hidden px-6 pb-14 pt-16 md:pt-20">
       {/* yumuşak degrade lekeleri */}
@@ -159,25 +168,39 @@ function Hero() {
             işlerini sade ve düzenli bir akışa taşıyın.
           </p>
           <div className="mt-8 flex flex-wrap gap-3.5">
-            <Link
-              href="/register-studio"
-              className="inline-flex items-center gap-2.5 rounded-2xl bg-primary px-7 py-3.5 text-base font-extrabold text-primary-foreground shadow-[0_14px_30px_-12px_var(--primary)] transition-all hover:-translate-y-0.5 hover:bg-primary-hover"
-            >
-              Stüdyo Hesabı Oluştur
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M13 6l6 6-6 6" />
-              </svg>
-            </Link>
-            <Link
-              href="/login"
-              className="inline-flex items-center rounded-2xl border border-border bg-surface px-6 py-3.5 text-base font-bold text-foreground transition-all hover:-translate-y-0.5 hover:bg-surface-muted"
-            >
-              Giriş Yap
-            </Link>
+            {showStudioCta ? (
+              <>
+                <Link
+                  href="/register-studio"
+                  className="inline-flex items-center gap-2.5 rounded-2xl bg-primary px-7 py-3.5 text-base font-extrabold text-primary-foreground shadow-[0_14px_30px_-12px_var(--primary)] transition-all hover:-translate-y-0.5 hover:bg-primary-hover"
+                >
+                  Stüdyo Hesabı Oluştur
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                </Link>
+                <Link
+                  href="/login"
+                  className="inline-flex items-center rounded-2xl border border-border bg-surface px-6 py-3.5 text-base font-bold text-foreground transition-all hover:-translate-y-0.5 hover:bg-surface-muted"
+                >
+                  Giriş Yap
+                </Link>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2.5 rounded-2xl bg-primary px-7 py-3.5 text-base font-extrabold text-primary-foreground shadow-[0_14px_30px_-12px_var(--primary)] transition-all hover:-translate-y-0.5 hover:bg-primary-hover"
+              >
+                Giriş Yap
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </Link>
+            )}
           </div>
           <p className="mt-5 flex items-center gap-2 text-[13.5px] text-muted">
             <CheckIcon className="size-4 text-success" />
-            Kurulum gerektirmez · Stüdyonuzu dakikalar içinde tanımlayın
+            {showStudioCta ? "Kurulum gerektirmez · Stüdyonuzu dakikalar içinde tanımlayın" : "Pilot erişim · Mevcut hesabınızla giriş yapın"}
           </p>
         </Reveal>
 
@@ -580,6 +603,8 @@ function Faq() {
 /* ---------------------------- Final CTA --------------------------- */
 
 function FinalCta() {
+  // Sprint 49: pilotta stüdyo kaydı kapalıysa yalnız "Giriş Yap".
+  const showStudioCta = useStudioRegistrationEnabled() !== false;
   return (
     <section className="px-6 pb-20 pt-9">
       <Reveal className="mx-auto max-w-[1000px]">
@@ -593,12 +618,20 @@ function FinalCta() {
             Pliaforma ile günlük işleriniz tek panelde, sade bir akışta toplansın.
           </p>
           <div className="relative mt-7 flex flex-wrap justify-center gap-3.5">
-            <Link href="/register-studio" className="rounded-2xl bg-white px-7 py-3.5 text-base font-extrabold text-primary shadow-[0_14px_30px_-14px_rgba(0,0,0,0.4)] transition-transform hover:-translate-y-0.5">
-              Stüdyo Hesabı Oluştur
-            </Link>
-            <Link href="/login" className="rounded-2xl border border-white/40 bg-white/15 px-7 py-3.5 text-base font-bold text-white transition-colors hover:bg-white/25">
-              Giriş Yap
-            </Link>
+            {showStudioCta ? (
+              <>
+                <Link href="/register-studio" className="rounded-2xl bg-white px-7 py-3.5 text-base font-extrabold text-primary shadow-[0_14px_30px_-14px_rgba(0,0,0,0.4)] transition-transform hover:-translate-y-0.5">
+                  Stüdyo Hesabı Oluştur
+                </Link>
+                <Link href="/login" className="rounded-2xl border border-white/40 bg-white/15 px-7 py-3.5 text-base font-bold text-white transition-colors hover:bg-white/25">
+                  Giriş Yap
+                </Link>
+              </>
+            ) : (
+              <Link href="/login" className="rounded-2xl bg-white px-7 py-3.5 text-base font-extrabold text-primary shadow-[0_14px_30px_-14px_rgba(0,0,0,0.4)] transition-transform hover:-translate-y-0.5">
+                Giriş Yap
+              </Link>
+            )}
           </div>
         </div>
       </Reveal>
@@ -609,6 +642,15 @@ function FinalCta() {
 /* ----------------------------- Footer ----------------------------- */
 
 function Footer() {
+  // Sprint 49: pilotta kayıt kapalıysa "Başla" sütununda yalnız Giriş Yap kalır.
+  const showStudioCta = useStudioRegistrationEnabled() !== false;
+  const startLinks = showStudioCta
+    ? [
+        { href: "/register-studio", label: "Stüdyo Hesabı Oluştur" },
+        { href: "/login", label: "Giriş Yap" },
+        { href: "/register", label: "Öğrenci / Hoca Hesabı" },
+      ]
+    : [{ href: "/login", label: "Giriş Yap" }];
   return (
     <footer className="border-t border-border px-6 pb-9 pt-[52px]">
       <div className="mx-auto grid max-w-[1160px] gap-9 sm:grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr_1fr]">
@@ -623,11 +665,7 @@ function Footer() {
             Pilates stüdyoları için sade, modern ve premium yönetim platformu. Ders, paket ve ödemeler tek panelde.
           </p>
         </div>
-        <FooterCol title="Başla" links={[
-          { href: "/register-studio", label: "Stüdyo Hesabı Oluştur" },
-          { href: "/login", label: "Giriş Yap" },
-          { href: "/register", label: "Öğrenci / Hoca Hesabı" },
-        ]} />
+        <FooterCol title="Başla" links={startLinks} />
         <FooterCol title="Ürün" links={[
           { href: "#features", label: "Özellikler" },
           { href: "#how", label: "Nasıl Çalışır" },

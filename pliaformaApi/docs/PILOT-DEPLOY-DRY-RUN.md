@@ -36,10 +36,15 @@ sudo usermod -aG docker "$USER"      # tekrar login gerekebilir
 docker --version && docker compose version
 ```
 
-## 3. Domain DNS
-- Domain sağlayıcında **A kaydı**: `<domain>` → VPS public IP (örn. `203.0.113.10`).
-- (Opsiyonel) `www` için ikinci A kaydı.
-- Yayılmayı doğrula: `dig +short <domain>` → VPS IP dönmeli.
+## 3. Domain DNS (Cloudflare — pliaforma.com)
+Bu pilotun DNS'i Cloudflare'de, **DNS only / gri bulut** (proxy KAPALI). İlk deploy'da Cloudflare proxy
+(turuncu bulut) ve Flexible SSL **KULLANILMAZ** — Let's Encrypt uçtan uca gerçek TLS kurulur. (Proxy sonradan
+"Full (strict)" ile açılabilir — post-pilot.)
+- A kayıtları (hepsi VPS IP → `185.184.210.54`): `pliaforma.com`, `app.pliaforma.com`, `api.pliaforma.com`.
+- `www.pliaforma.com` → `pliaforma.com` (CNAME veya A).
+- **Canonical host = `pliaforma.com`** (same-origin refresh cookie). nginx `www./app./api.` → 301 `pliaforma.com`
+  (bkz. `deploy/nginx.conf` Sprint 49 domain bloğu). `app.`/`api.` ayrı origin OLARAK KULLANILMAZ (post-pilot).
+- Yayılmayı doğrula: `dig +short pliaforma.com` → `185.184.210.54`. Cloudflare kaydında **Proxy status: DNS only**.
 
 ## 4. Kodu getir (infra versioning kararına göre)
 ```bash
@@ -67,9 +72,17 @@ echo "JWT_SECRET=$(openssl rand -base64 48)"   # çıktıyı deploy/.env'e taş�
 #   JWT_SECRET=<openssl çıktısı>
 #   JWT_ISSUER=Pliaforma
 #   JWT_AUDIENCE=Pliaforma
-#   SEED_ADMIN_EMAIL=admin@<domain>
+#   SEED_ADMIN_EMAIL=admin@pliaforma.com
 #   SEED_ADMIN_PASSWORD=<güçlü-admin-parolası>
-#   PUBLIC_ORIGIN=https://<domain>
+#   PUBLIC_ORIGIN=https://pliaforma.com          # canonical host (same-origin cookie)
+#   --- Pilot davranışı (Sprint 46/49) ---
+#   PILOT_SIMPLE_PEOPLE_MODE=true                # bu tek-salon pilotu sade-mod kullanır (hoca guest öğrenci ekler)
+#   STUDIO_REGISTRATION_ENABLED=false            # dışarıdan yeni stüdyo YOK (register-studio → 403). İlk owner: §10.
+#   --- MFA (Sprint 31-MFA: Owner/StudioAdmin TOTP — PROD'da ZORUNLU) ---
+#   MFA_ENABLED=true
+#   MFA_ENCRYPTION_KEY=<openssl rand -base64 32>  # KRİTİK secret; ayrı yedekle (DB yedeğiyle aynı yerde DEĞİL)
+#   --- Backup encryption (Sprint 31D-2 — PROD'da ZORUNLU) ---
+#   BACKUP_ENCRYPTION_KEY=<openssl rand -base64 32>  # KRİTİK secret; DB yedeğiyle AYRI yerde sakla
 #   --- E-posta (Sprint 16: doğrulama + şifre sıfırlama) ---
 #   EMAIL_SENDER_MODE=Smtp            # PROD: Smtp önerilir. Log = yalnız dev/test. Disabled = prod'da KULLANMA.
 #   EMAIL_FROM_ADDRESS=noreply@<domain>
@@ -112,16 +125,19 @@ curl -fsSk https://<domain>/ -o /dev/null -w "frontend: %{http_code}\n"
 yalnızca gerçek sertifikayı sağlamaktır.** nginx, cert dosyaları yoksa AÇILMAZ (HTTPS zorunlu — bilinçli) →
 **sertifikayı ilk `up`'tan ÖNCE yerleştir.**
 ```bash
-# 9a. Sertifika (Let's Encrypt — standalone; 80 boşken, stack up'tan ÖNCE):
+# 9a. Sertifika (Let's Encrypt — standalone; 80 boşken, stack up'tan ÖNCE). Cloudflare DNS-only olmalı
+#     (gri bulut), aksi halde standalone HTTP-01 doğrulaması Cloudflare'e takılır. TÜM host'lar tek cert'te:
 sudo apt-get -y install certbot
-sudo certbot certonly --standalone -d <domain> --agree-tos -m admin@<domain> --no-eff-email
-# Sertifikalar: /etc/letsencrypt/live/<domain>/{fullchain.pem,privkey.pem}
+sudo certbot certonly --standalone \
+  -d pliaforma.com -d www.pliaforma.com -d app.pliaforma.com -d api.pliaforma.com \
+  --agree-tos -m admin@pliaforma.com --no-eff-email
+# Sertifikalar: /etc/letsencrypt/live/pliaforma.com/{fullchain.pem,privkey.pem} (SAN = 4 host)
 
 # 9b. nginx'in beklediği yere kopyala (deploy/certs/{fullchain,privkey}.pem). Bu dosyalar repoya GİRMEZ
 #     (.gitignore: deploy/certs/* hariç README). Detay: deploy/certs/README.md
 mkdir -p /opt/pliaforma/deploy/certs
-sudo cp /etc/letsencrypt/live/<domain>/fullchain.pem /opt/pliaforma/deploy/certs/
-sudo cp /etc/letsencrypt/live/<domain>/privkey.pem  /opt/pliaforma/deploy/certs/
+sudo cp /etc/letsencrypt/live/pliaforma.com/fullchain.pem /opt/pliaforma/deploy/certs/
+sudo cp /etc/letsencrypt/live/pliaforma.com/privkey.pem  /opt/pliaforma/deploy/certs/
 sudo chown "$USER" /opt/pliaforma/deploy/certs/*.pem
 
 # 9c. (config zaten aktif — uncomment GEREKMEZ) up et ve doğrula:
@@ -146,10 +162,29 @@ curl -sI http://<domain>/ | grep -i location     # 301 → https beklenir
 - [ ] `https://<domain>/health` → Healthy. `/api/auth/me` (token ile) çalışıyor.
 - [ ] Güvenlik başlıkları yanıtta: `curl -sI https://<domain>/ | grep -iE "X-Frame|nosniff|Referrer"`.
 
-## 10. İlk login
-- `https://<domain>/login` → **PlatformAdmin** (`SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`) → `/platform`.
-- `https://<domain>/register-studio` → ilk **Owner** + stüdyo. PlatformAdmin `/platform/studios`'ta görür.
-- Rol login testi: Owner/Instructor/Student→`/dashboard`, logout→`/login`.
+## 10. İlk login + ilk pilot owner (kayıt KAPALIYKEN)
+`STUDIO_REGISTRATION_ENABLED=false` olduğundan `/register-studio` **403** döner (dışarıya kapalı). İlk pilot
+stüdyo sahibini oluşturmanın **en güvenli / en az riskli** yolu — kısa süreli "aç → oluştur → kapat":
+
+1. **PlatformAdmin** ile giriş: `https://pliaforma.com/login` → (`SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`) → `/platform`.
+   PlatformAdmin ilk girişte MFA kurar (prod'da zorunlu). Kurulum sonrası **`SEED_ADMIN_PASSWORD` değiştirin**
+   veya bu hesabı yalnız acil kurtarma için saklayın.
+2. **Kaydı geçici aç:** `deploy/.env` → `STUDIO_REGISTRATION_ENABLED=true` → yalnız backend'i yeniden başlat:
+   `docker compose --env-file deploy/.env -f docker-compose.prod.yml up -d backend`
+   Doğrula: `curl -s https://pliaforma.com/api/auth/registration-status` → `{"studioRegistrationEnabled":true}`.
+3. **Pilot Owner'ı sen (operatör) oluştur:** `https://pliaforma.com/register-studio` → stüdyo + Owner. Owner
+   ilk girişte **MFA enroll** eder (recovery code'ları güvenli sakla). Bu adımı domain'i kimseye duyurmadan,
+   hemen deploy sonrası yap (açık pencere saniyeler/dakikalar olsun).
+4. **Kaydı tekrar kapat:** `deploy/.env` → `STUDIO_REGISTRATION_ENABLED=false` → `... up -d backend`.
+   Doğrula: `curl -s https://pliaforma.com/api/auth/registration-status` → `{"studioRegistrationEnabled":false}`
+   ve `curl -s -o /dev/null -w "%{http_code}" -X POST https://pliaforma.com/api/auth/register-studio -H 'Content-Type: application/json' -d '{}'` → **403**.
+5. **Temizlik/doğrulama:** PlatformAdmin `/platform/studios` → yalnız amaçlanan pilot stüdyo görünmeli (varsa
+   yanlış kayıtları not al; gerekiyorsa suspend). Rol login testi: Owner→`/dashboard`, logout→`/login`.
+
+> Alternatif (kalıcı kapalı bırakıp DB'den owner açmak) ÖNERİLMEZ: parola hash'i + MFA state elle kurulmalı,
+> hataya açık. Yukarıdaki "kısa pencere" yöntemi mevcut akışı (MFA enroll dahil) bozmadan kullanır.
+> **Not:** stüdyosuz hesap (`/register`) ve davet-kabul akışı bu flag'ten ETKİLENMEZ — pilot hocaları Owner
+> davet eder, hoca `/register` ile hesabını açıp daveti kabul eder (kayıt kapalıyken de çalışır).
 
 ## 11. Smoke test (staging/prod-benzeri)
 ```bash

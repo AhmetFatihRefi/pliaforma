@@ -55,6 +55,10 @@ services:
       # Sprint 46/47: Pilot Simple People Mode (hoca ad-soyad guest öğrenci ekler; StudentContract/Line.IsPilot ile
       # gizlenir). Varsayılan KAPALI — yalnız pilot stüdyo için deploy/.env'de PILOT_SIMPLE_PEOPLE_MODE=true set edin.
       Pilot__SimplePeopleMode: ${PILOT_SIMPLE_PEOPLE_MODE:-false}
+      # Sprint 49: herkese açık stüdyo kaydı (register-studio). Tek-salon pilotta KAPALI olmalı → PROD varsayılanı
+      # false (operatör açıkça açmadıkça dışarıdan yeni stüdyo oluşturulamaz; 403). Tam SaaS için .env'de
+      # STUDIO_REGISTRATION_ENABLED=true. Login, davet-kabul ve mevcut kullanıcı akışları bu flag'ten ETKİLENMEZ.
+      Registration__StudioRegistrationEnabled: ${STUDIO_REGISTRATION_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy

@@ -41,6 +41,7 @@
 |2.11| Seed admin / weak-secret guard | prod startup `CHANGE_ME`/`Admin!2345` reddediyor | 31B-1 | ☐ |
 |2.12| `.env.example` placeholder | gerçek değer repo'da **yok** | gitleaks teyit | ☐ |
 |2.13| `Pilot:SimplePeopleMode` (`PILOT_SIMPLE_PEOPLE_MODE`) | bilinçli karar: pilot stüdyo sade-mod (hoca ad-soyad guest ekler) kullanacaksa `true`; kullanmayacaksa **varsayılan `false`** | Sprint 46/47 — kapalıyken hoca guest-create/minimal-liste/booking 403 alır (regresyon DEĞİL, beklenen) | ☐ |
+|2.14| `Registration:StudioRegistrationEnabled` (`STUDIO_REGISTRATION_ENABLED`) **[B]** | tek-salon pilot: **`false`** (dışarıdan yeni stüdyo YOK; register-studio → 403). Compose verilmezse zaten false. | Sprint 49 — `curl .../api/auth/registration-status` → `false`; register-studio POST → 403. İlk owner: DEPLOY-DRY-RUN §10. Login/davet-kabul ETKİLENMEZ. | ☐ |
 
 ## 3. TLS / domain / nginx **[B]**
 | # | Check | Beklenen | Status |
@@ -160,6 +161,9 @@ bash scripts/sprint46-smoke.sh <BASE>                    # pilot mode — Pilot_
 bash scripts/sprint46-smoke.sh <BASE>                    # AYNI script Pilot__SimplePeopleMode=false stack'te TEKRAR KOŞ
 bash scripts/sprint47-smoke.sh <BASE>                    # Sprint 47 pilot guard'ları — ikisi de false/true stack'te
 bash scripts/sprint47-legacy-installment-check.sh        # salt-okunur dry-run (backfill gerekiyor mu?)
+bash scripts/sprint48-smoke.sh <BASE>                    # Sprint 48 security defense-in-depth — false/true stack'te
+bash scripts/sprint49-smoke.sh <BASE>                    # Sprint 49 registration lockdown — ON stack'te (true) VE
+bash scripts/sprint49-smoke.sh <BASE>                    #   AYRICA STUDIO_REGISTRATION_ENABLED=false stack'te TEKRAR
 # MFA smoke (Mfa__Enabled=true stack)
 bash scripts/mfa-setup-smoke.sh <BASE>; bash scripts/mfa-login-smoke.sh <BASE>
 bash scripts/mfa-recovery-code-smoke.sh <BASE>
@@ -186,6 +190,21 @@ Owner register/login → **MFA enroll** → studio create/select → student cre
 payment create/mark-paid → class session create → regular booking → complete/unconfirm → makeup credit/request/booking →
 **audit viewer** (PlatformAdmin) → **CSP report endpoint** (204) → **backup run** (şifreli `.sql.gz.gpg`) → **`/health`** → **`/metrics` public DEĞİL** (404).
 
+### 10c. Tek-salon pilot deployment smoke (Sprint 49 — gerçek domain, sade-mod pilot akışı) **[B][O]**
+Bu tek-salon pilotun uçtan uca çalıştığını canlı domainde sırayla doğrula (hepsi HTTPS, `pliaforma.com`):
+1. [ ] **registration lockdown**: `/api/auth/registration-status` → `false`; `/register-studio` sayfası "Yeni stüdyo kaydı kapalı" gösterir; POST `/api/auth/register-studio` → **403**.
+2. [ ] **login**: pilot Owner giriş (MFA challenge) → `/dashboard`.
+3. [ ] **owner/studio**: dashboard özet kartları + stüdyo bağlamı doğru.
+4. [ ] **pilot guest student**: (Owner davetli) Instructor giriş → sade-mod ad-soyad ile **guest öğrenci** ekler (Pilot mode ON).
+5. [ ] **booking**: guest öğrenciyi bir ders seansına **regular booking** ile ekler (200).
+6. [ ] **attendance**: seansta yoklama → complete / gelmedi; instructor "Onayla".
+7. [ ] **move**: grup düzeninde öğrenciyi başka seansa **taşı** (transactional).
+8. [ ] **payment**: (gerçek öğrenci sözleşmesi varsa) ödeme oluştur/mark-paid; pilot guest'te finans **gizli** kalır (borç/ödeme yüzeyi yok).
+9. [ ] **dashboard**: Owner dashboard + `/platform/overview` (pending/failed bildirim, gecikmiş ödeme) tutarlı.
+10. [ ] **backup**: `ops/backup-postgres.sh` → şifreli `.sql.gz.gpg` üretti.
+11. [ ] **restore drill**: `ops/restore-drill.sh` → tüm kontroller GEÇTİ (wrong/correct key + izole restore).
+> Not: ilk Owner "kısa pencere" ile oluşturulur (DEPLOY-DRY-RUN §10); smoke sırasında kayıt yine **kapalı** olmalı.
+
 ## 11. Rollback
 | # | Senaryo | Aksiyon | Not | Status |
 |---|---|---|---|---|
@@ -209,7 +228,8 @@ payment create/mark-paid → class session create → regular booking → comple
 - **§6** backup encryption + restore-drill (wrong/correct key + tarihli kayıt).
 - **§8.1–8.2** GitHub Actions security workflow §1.1'deki commit üzerinde **yeşil** (operatör UI teyidi) + gitleaks geçti.
 - **§9.1–9.3, 9.5, 9.6** DATA_PROCESSORS + IRP rolleri dolu + KVKK metinleri avukat onayı (legal blocker) + HealthNotes rıza/erişim/audit (toplanıyorsa) + tabletop drill kaydı.
-- **§10** otomatik smoke yeşil + canlı manuel smoke (gerçek domain).
+- **§2.14** (Sprint 49, tek-salon pilot) `STUDIO_REGISTRATION_ENABLED=false` — dışarıdan yeni stüdyo oluşturma kapalı (register-studio 403); ilk owner "kısa pencere" ile açıldı (DEPLOY-DRY-RUN §10).
+- **§10** otomatik smoke yeşil + canlı manuel smoke (gerçek domain) + **§10c tek-salon deployment smoke**.
 
 ### Post-pilot takip işleri [P]
 HSTS `max-age` uzatma · off-site şifreli backup · `CSP_MODE=enforce` env-flip · `AuditPurge DryRun=false` gerçek purge · npm moderate (next/postcss) upgrade · backup key rotation prosedürü · Critical-CVE soft-gate · tabletop düzenli tekrar.

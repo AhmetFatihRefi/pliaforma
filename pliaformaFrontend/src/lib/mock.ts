@@ -88,6 +88,11 @@ export const mockAuthService: AuthService = {
     return auth;
   },
 
+  async registrationStatus() {
+    await delay(80);
+    return { studioRegistrationEnabled: true };
+  },
+
   async login(input: LoginInput) {
     await delay();
     const user = {

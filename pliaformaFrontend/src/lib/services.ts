@@ -10,12 +10,15 @@ import type {
   MfaSetupStartResponse,
   RegisterInput,
   RegisterStudioInput,
+  RegistrationStatus,
 } from "./types";
 
 export interface AuthService {
   registerStudio(input: RegisterStudioInput): Promise<AuthResponse>;
   register(input: RegisterInput): Promise<AuthResponse>;
   login(input: LoginInput): Promise<LoginResult>;
+  /** Sprint 49: anonim — herkese açık stüdyo kaydı etkin mi (UI "Stüdyo oluştur" yüzeyleri buna bakar). */
+  registrationStatus(): Promise<RegistrationStatus>;
   switchStudio(studioId: string): Promise<AuthResponse>;
   me(): Promise<MeResult>;
   logout(): Promise<void>;
@@ -44,6 +47,8 @@ const realAuthService: AuthService = {
       return { kind: "challenge", challengeToken: data.challengeToken };
     return { kind: "auth", auth: data as AuthResponse };
   },
+  registrationStatus: () =>
+    api<RegistrationStatus>("/api/auth/registration-status", { skipAuthRetry: true }),
   switchStudio: (studioId) =>
     api<AuthResponse>("/api/auth/switch-studio", { method: "POST", body: { studioId } }),
   me: () => api<MeResult>("/api/auth/me"),

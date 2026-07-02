@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
+import { useStudioRegistrationEnabled } from "@/lib/registration";
 import { membershipService } from "@/lib/studioApi";
 import { authService } from "@/lib/services";
 import type { PendingInvitationDto } from "@/lib/domain-types";
@@ -22,6 +23,8 @@ import { Alert, Badge, Button, Card } from "@/components/ui";
 export default function JoinStudioPage() {
   const { user, memberships, logout, switchStudio, reloadMe } = useAuth();
   const router = useRouter();
+  // Sprint 49: stüdyo kaydı kapalıysa "Kendi stüdyonuzu açın" bağlantısını gizle.
+  const showStudioLink = useStudioRegistrationEnabled() !== false;
 
   const intent = user?.registrationIntent ?? "Unknown";
   const hasMembership = memberships.length > 0;
@@ -155,9 +158,13 @@ export default function JoinStudioPage() {
       </div>
 
       <div className="mt-8 flex items-center justify-between text-sm">
-        <Link href="/register-studio" className="font-medium text-primary hover:text-primary-hover">
-          Kendi stüdyonuzu açın
-        </Link>
+        {showStudioLink ? (
+          <Link href="/register-studio" className="font-medium text-primary hover:text-primary-hover">
+            Kendi stüdyonuzu açın
+          </Link>
+        ) : (
+          <span />
+        )}
         <div className="flex items-center gap-4">
           {hasMembership && (
             <button onClick={() => router.replace("/dashboard")} className="text-muted hover:text-foreground">
