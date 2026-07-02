@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Exceptions;
 
@@ -67,7 +68,8 @@ public sealed class AddLinePreferredSlotHandler : ICommandHandler<AddLinePreferr
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public AddLinePreferredSlotHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public AddLinePreferredSlotHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<StudentContractLineDto> Handle(AddLinePreferredSlotCommand request, CancellationToken ct)
     {
@@ -103,7 +105,8 @@ public sealed class AddLinePreferredSlotHandler : ICommandHandler<AddLinePreferr
         });
         await _db.SaveChangesAsync(ct);
 
-        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), ct);
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
+        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), today, ct);
         return dtos[0];
     }
 }
@@ -115,7 +118,8 @@ public sealed class RemoveLinePreferredSlotHandler : ICommandHandler<RemoveLineP
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public RemoveLinePreferredSlotHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public RemoveLinePreferredSlotHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<StudentContractLineDto> Handle(RemoveLinePreferredSlotCommand request, CancellationToken ct)
     {
@@ -127,7 +131,8 @@ public sealed class RemoveLinePreferredSlotHandler : ICommandHandler<RemoveLineP
         _db.StudentContractLinePreferredSlots.Remove(slot); // AuditInterceptor → soft-delete (IsDeleted=true)
         await _db.SaveChangesAsync(ct);
 
-        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == lineId), ct);
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
+        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == lineId), today, ct);
         return dtos.Count > 0 ? dtos[0] : throw new NotFoundException("Sözleşme satırı", lineId);
     }
 }

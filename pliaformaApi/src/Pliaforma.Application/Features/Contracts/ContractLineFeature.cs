@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -35,7 +36,13 @@ public sealed record StudentContractLineDto(
     decimal PricePerLesson,
     decimal TotalPrice,
     decimal Paid,
+    // Sprint 45: Remaining artık 0'a floor'lu (max(TotalPrice−Paid,0)); overpay OverpaidAmount ile ayrı.
     decimal Remaining,
+    decimal OverpaidAmount,
+    // Sprint 45: line-bazlı gecikme (tek kaynak). today = stüdyo-yerel gün; today==dueDate gecikmiş DEĞİL; dueDate null → gecikmiş değil.
+    bool IsOverdue,
+    decimal OverdueAmount,
+    int DaysOverdue,
     int MakeupAllowance,
     DateOnly? DueDate,
     bool IsIndividual,
@@ -55,8 +62,9 @@ public sealed record StudentContractLineDto(
 
 internal static class ContractLineQuery
 {
-    /// <summary>Verilen line sorgusunu legacy-aware paid ile DTO'ya çevirir (paid hesabı bellek-içi; çift sayım yok).</summary>
-    public static async Task<List<StudentContractLineDto>> BuildAsync(IAppDbContext db, IQueryable<StudentContractLine> q, CancellationToken ct)
+    /// <summary>Verilen line sorgusunu legacy-aware paid ile DTO'ya çevirir (paid hesabı bellek-içi; çift sayım yok).
+    /// Sprint 45: <paramref name="today"/> (stüdyo-yerel gün) ile line-bazlı gecikme (isOverdue/overdueAmount/daysOverdue) hesaplanır.</summary>
+    public static async Task<List<StudentContractLineDto>> BuildAsync(IAppDbContext db, IQueryable<StudentContractLine> q, DateOnly today, CancellationToken ct)
     {
         var raw = await q
             .OrderByDescending(l => l.StartDate).ThenBy(l => l.SequenceNo)
@@ -114,24 +122,32 @@ internal static class ContractLineQuery
             var scheduled = planned + delivered;
             var remainingRight = System.Math.Max(0, r.LessonCount - delivered);
             var slots = slotsByLine.TryGetValue(r.Id, out var sl) ? sl : (IReadOnlyList<PreferredSlotDto>)System.Array.Empty<PreferredSlotDto>();
+            // Sprint 45: line-bazlı borç/gecikme (tek kaynak). remaining 0'a floor; overpay ayrı; gecikme strict (today>dueDate) + kalan>0.
+            var remaining = System.Math.Max(0m, r.TotalPrice - paid);
+            var overpaid = System.Math.Max(0m, paid - r.TotalPrice);
+            var isOverdue = r.DueDate is { } dd && today > dd && remaining > 0m;
+            var overdueAmount = isOverdue ? remaining : 0m;
+            var daysOverdue = isOverdue ? today.DayNumber - r.DueDate!.Value.DayNumber : 0;
             return new StudentContractLineDto(
                 r.Id, r.StudentContractId, r.StudentProfileId, r.StudentName, r.ClassTypeId, r.ClassTypeName,
                 r.InstructorProfileId, r.InstructorName, r.StartDate, r.EndDate, r.LessonCount, scheduled,
-                r.LessonCount - scheduled, r.PricePerLesson, r.TotalPrice, paid, r.TotalPrice - paid,
+                r.LessonCount - scheduled, r.PricePerLesson, r.TotalPrice, paid, remaining, overpaid,
+                isOverdue, overdueAmount, daysOverdue,
                 r.MakeupAllowance, r.DueDate, r.IsIndividual, r.PreferredMaxCapacity, r.Status, r.Currency, r.SequenceNo,
                 planned, delivered, remainingRight, slots);
         }).ToList();
     }
 
-    /// <summary>Line-bazlı borç özeti: currency rollup + line kalemleri + atanmamış (hiçbir line'a sayılmayan) Paid ödemeler.</summary>
-    public static async Task<LineDebtSummaryDto> ComputeDebtAsync(IAppDbContext db, Guid studioId, Guid studentProfileId, CancellationToken ct)
+    /// <summary>Line-bazlı borç özeti: currency rollup + line kalemleri + atanmamış (hiçbir line'a sayılmayan) Paid ödemeler.
+    /// Sprint 45: currency rollup gecikmiş (Overdue) toplamını da içerir; <paramref name="today"/> stüdyo-yerel gün.</summary>
+    public static async Task<LineDebtSummaryDto> ComputeDebtAsync(IAppDbContext db, Guid studioId, Guid studentProfileId, DateOnly today, CancellationToken ct)
     {
         var lines = await BuildAsync(db,
-            db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == studentProfileId), ct);
+            db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == studentProfileId), today, ct);
 
         var byCurrency = lines
             .GroupBy(l => l.Currency)
-            .Select(g => new CurrencyDebtDto(g.Key, g.Sum(x => x.TotalPrice), g.Sum(x => x.Paid), g.Sum(x => x.Remaining)))
+            .Select(g => new CurrencyDebtDto(g.Key, g.Sum(x => x.TotalPrice), g.Sum(x => x.Paid), g.Sum(x => x.Remaining), g.Sum(x => x.OverdueAmount)))
             .OrderBy(g => g.Currency).ToList();
 
         // Atanmamış = (tüm Paid ödeme, currency) − (Σ line.paid, currency). Line.paid legacy fallback'i içerir → çift sayım yok.
@@ -171,13 +187,34 @@ public sealed class GetStudentContractLinesHandler : IQueryHandler<GetStudentCon
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public GetStudentContractLinesHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public GetStudentContractLinesHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<IReadOnlyList<StudentContractLineDto>> Handle(GetStudentContractLinesQuery request, CancellationToken ct)
     {
         var studioId = _currentUser.RequireStudioId();
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
         return await ContractLineQuery.BuildAsync(_db,
-            _db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == request.StudentProfileId), ct);
+            _db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == request.StudentProfileId), today, ct);
+    }
+}
+
+// ---- Staff: stüdyo geneli AKTİF sözleşme satırları (Sprint 45: ödemeler ekranı line-bazlı borç/gecikme için). ----
+public sealed record GetStudioContractLinesQuery : IQuery<IReadOnlyList<StudentContractLineDto>>;
+
+public sealed class GetStudioContractLinesHandler : IQueryHandler<GetStudioContractLinesQuery, IReadOnlyList<StudentContractLineDto>>
+{
+    private readonly IAppDbContext _db;
+    private readonly ICurrentUserService _currentUser;
+    private readonly IDateTime _clock;
+    public GetStudioContractLinesHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
+
+    public async Task<IReadOnlyList<StudentContractLineDto>> Handle(GetStudioContractLinesQuery request, CancellationToken ct)
+    {
+        var studioId = _currentUser.RequireStudioId();
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
+        return await ContractLineQuery.BuildAsync(_db,
+            _db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.Status == StudentContractLineStatus.Active), today, ct);
     }
 }
 
@@ -188,7 +225,8 @@ public sealed class GetMyContractLinesHandler : IQueryHandler<GetMyContractLines
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public GetMyContractLinesHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public GetMyContractLinesHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<IReadOnlyList<StudentContractLineDto>> Handle(GetMyContractLinesQuery request, CancellationToken ct)
     {
@@ -197,8 +235,9 @@ public sealed class GetMyContractLinesHandler : IQueryHandler<GetMyContractLines
         var profileId = await StudentSelfResolver.ResolveProfileIdAsync(_db, studioId, userId, ct);
         if (profileId is null) return System.Array.Empty<StudentContractLineDto>();
 
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
         return await ContractLineQuery.BuildAsync(_db,
-            _db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == profileId), ct);
+            _db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == profileId), today, ct);
     }
 }
 
@@ -220,9 +259,8 @@ public sealed record CreateStudentContractLineCommand(
     string? Currency,
     string? Notes,
     // Sprint 29A: yeni line'da EN AZ 1 tercih gün/saat zorunlu (gün zorunlu, saat opsiyonel; aynı gün+saat tekrar edemez).
-    IReadOnlyList<PreferredSlotInput>? PreferredSlots = null,
-    // Sprint 38: opsiyonel ödeme planı (peşin = 1 taksit; taksitli = 2+). Verilirse Σ == TotalPrice; line.DueDate = en erken vade.
-    IReadOnlyList<InstallmentInput>? PaymentPlan = null) : ICommand<StudentContractLineDto>, IStudioWriteRequest;
+    // Sprint 45: taksitli ödeme planı kaldırıldı — yalnız DueDate (Son ödeme tarihi, zorunlu) kullanılır.
+    IReadOnlyList<PreferredSlotInput>? PreferredSlots = null) : ICommand<StudentContractLineDto>, IStudioWriteRequest;
 
 public sealed class CreateStudentContractLineValidator : AbstractValidator<CreateStudentContractLineCommand>
 {
@@ -244,14 +282,8 @@ public sealed class CreateStudentContractLineValidator : AbstractValidator<Creat
         RuleFor(x => x.PreferredSlots)
             .Must(s => !PreferredSlotRules.HasInternalDuplicates(s!)).When(x => x.PreferredSlots is { Count: > 0 })
             .WithMessage("Aynı gün ve saat tercihi tekrar edemez.");
-        // Sprint 38: ödeme planı verildiyse her taksit > 0 ve Σ == TotalPrice (= LessonCount × PricePerLesson).
-        RuleFor(x => x.PaymentPlan)
-            .Must(p => PaymentInstallmentRules.AllPositive(p!)).When(x => x.PaymentPlan is { Count: > 0 })
-            .WithMessage("Taksit tutarı 0'dan büyük olmalı.");
-        RuleFor(x => x)
-            .Must(x => PaymentInstallmentRules.SumMatches(x.PaymentPlan!, decimal.Round(x.LessonCount * x.PricePerLesson, 2)))
-            .When(x => x.PaymentPlan is { Count: > 0 })
-            .WithMessage("Taksit toplamı sözleşme tutarına eşit olmalı.");
+        // Sprint 45: yeni sözleşme satırında Son ödeme tarihi ZORUNLU (DB nullable kalır; legacy null kayıtlar korunur).
+        RuleFor(x => x.DueDate).NotNull().WithMessage("Son ödeme tarihi zorunludur.");
     }
 }
 
@@ -259,7 +291,8 @@ public sealed class CreateStudentContractLineHandler : ICommandHandler<CreateStu
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public CreateStudentContractLineHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public CreateStudentContractLineHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<StudentContractLineDto> Handle(CreateStudentContractLineCommand request, CancellationToken ct)
     {
@@ -345,17 +378,11 @@ public sealed class CreateStudentContractLineHandler : ICommandHandler<CreateStu
         foreach (var s in PreferredSlotRules.Build(studioId, line.Id, userId, slots))
             _db.StudentContractLinePreferredSlots.Add(s);
 
-        // Sprint 38: opsiyonel ödeme planı (validator Σ==TotalPrice + amount>0 garanti eder). line.DueDate = en erken vade.
-        if (request.PaymentPlan is { Count: > 0 } plan)
-        {
-            foreach (var inst in PaymentInstallmentRules.Build(studioId, line.Id, userId, plan))
-                _db.ContractLinePaymentInstallments.Add(inst);
-            line.DueDate = PaymentInstallmentRules.EarliestDueDate(plan);
-        }
-
+        // Sprint 45: taksitli ödeme planı kaldırıldı. line.DueDate doğrudan istekten (validator zorunlu kılar); installment YAZILMAZ.
         await _db.SaveChangesAsync(ct);
 
-        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), ct);
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
+        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), today, ct);
         return dtos[0];
     }
 }
@@ -372,7 +399,8 @@ public sealed class UpdateContractLineHandler : ICommandHandler<UpdateContractLi
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public UpdateContractLineHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public UpdateContractLineHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<StudentContractLineDto> Handle(UpdateContractLineCommand request, CancellationToken ct)
     {
@@ -381,11 +409,13 @@ public sealed class UpdateContractLineHandler : ICommandHandler<UpdateContractLi
             ?? throw new NotFoundException("Sözleşme satırı", request.LineId);
 
         // 28B: yalnız son ödeme tarihi + not değişebilir (ders sayısı/ücret/tarih yanlışsa yeni line açılır).
+        // Sprint 45: DueDate edit'te opsiyonel kalır (legacy null satıra vade atama / güncelleme yolu).
         line.DueDate = request.DueDate;
         line.Notes = request.Notes?.Trim();
         await _db.SaveChangesAsync(ct);
 
-        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), ct);
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
+        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), today, ct);
         return dtos[0];
     }
 }
@@ -397,17 +427,19 @@ public sealed class CancelContractLineHandler : ICommandHandler<CancelContractLi
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public CancelContractLineHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public CancelContractLineHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<StudentContractLineDto> Handle(CancelContractLineCommand request, CancellationToken ct)
     {
         var studioId = _currentUser.RequireStudioId();
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
         var line = await _db.StudentContractLines.FirstOrDefaultAsync(l => l.Id == request.LineId && l.StudioId == studioId, ct)
             ?? throw new NotFoundException("Sözleşme satırı", request.LineId);
 
         if (line.Status == StudentContractLineStatus.Cancelled)
         {
-            var same = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), ct);
+            var same = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), today, ct);
             return same[0];
         }
 
@@ -425,7 +457,7 @@ public sealed class CancelContractLineHandler : ICommandHandler<CancelContractLi
         line.Status = StudentContractLineStatus.Cancelled;
         await _db.SaveChangesAsync(ct);
 
-        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), ct);
+        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), today, ct);
         return dtos[0];
     }
 }

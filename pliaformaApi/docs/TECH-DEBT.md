@@ -30,6 +30,7 @@ gerçek kullanım hedefidir; aşağıdaki non-blocker maddeler **bilinçli** ert
 | N12 | **Backend HTTP healthcheck (compose)** | non-blocker | `restart: unless-stopped` + nginx retry; `/health` endpoint mevcut. |
 | N13 | **Otomatik birim/entegrasyon testi (xUnit) yok** | non-blocker | Doğrulama 27 smoke + 56 E2E ile; pilot sonrası CI birim testi eklenebilir. |
 | N14 | **Bildirim worker tek-instance** | non-blocker | Çok-instance'ta nadir dedup yarışı (DB index korur); pilot tek-instance. |
+| N15 | **Installment (taksitli ödeme planı) ölü kod — Sprint 45 soft removal** | non-blocker | `ContractLinePaymentInstallment` entity/tablo/DbSet + `ContractLinePaymentPlan.cs` (DTO/rules/handler) **legacy olarak duruyor** ama üründen çıktı: API uçları 410 Gone, yeni line create plan almaz, UI plan göstermez. Borç/gecikme tek kaynak `StudentContractLine.DueDate` + line.Paid. `[Obsolete]` attribute kullanılmadı (TreatWarningsAsErrors=true); dosya başında LEGACY uyarı bloğu var. **Hard removal (DROP TABLE + entity/handler silme) ayrı tech-debt sprintine bırakıldı** (destructive migration riski). |
 
 ## Pilot sonrası öncelik önerisi
 1. Gerçek bildirim kanalları (SMS/e-posta sağlayıcı) + worker tek-instance kilidi.

@@ -46,22 +46,20 @@ internal static class StudentDashboardBuilder
         DateOnly? nearestExpiry = expiries.Count > 0 ? expiries.Min() : null;
         var pkgSummary = new StudentPackageSummaryDto(activePkgs.Count, activePkgs.Sum(x => x.CurrentCreditBalance), nearestExpiry);
 
-        // Ödeme özeti (yalnızca finans görünür ise)
+        // Ödeme özeti (yalnızca finans görünür ise) — Sprint 45: LINE-bazlı (line.DueDate + remaining/overdue).
+        // Payment.DueDate/Status tabanlı ikinci gecikme kavramı YOK. Kalan = vadesi geçmemiş; Gecikmiş = vadesi geçmiş kalan.
         StudentPaymentSummaryDto? paySummary = null;
         if (includeFinance)
         {
-            var payRows = await db.Payments.AsNoTracking()
-                .Where(pm => pm.StudioId == sid && pm.StudentProfileId == studentProfileId)
-                .Select(pm => new { pm.Amount, pm.Status, pm.PaidAt, pm.DueDate }).ToListAsync(ct);
-            decimal pending = 0, overdue = 0; DateOnly? nextDue = null;
-            foreach (var r in payRows)
-            {
-                var eff = PaymentMapping.Effective(r.Status, r.PaidAt, r.DueDate, today);
-                if (eff == PaymentStatus.Pending) pending += r.Amount;
-                else if (eff == PaymentStatus.Overdue) overdue += r.Amount;
-                if (eff is PaymentStatus.Pending or PaymentStatus.Overdue && (nextDue is null || r.DueDate < nextDue))
-                    nextDue = r.DueDate;
-            }
+            var lines = await Contracts.ContractLineQuery.BuildAsync(db,
+                db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == sid
+                    && l.StudentContract!.StudentProfileId == studentProfileId
+                    && l.Status == StudentContractLineStatus.Active), today, ct);
+            var overdue = lines.Sum(l => l.OverdueAmount);
+            var pending = lines.Sum(l => l.Remaining - l.OverdueAmount);   // kalan ama vadesi geçmemiş
+            var futureDues = lines.Where(l => l.Remaining > 0m && l.DueDate is { } d && d >= today)
+                .Select(l => l.DueDate!.Value).ToList();
+            DateOnly? nextDue = futureDues.Count > 0 ? futureDues.Min() : null;
             paySummary = new StudentPaymentSummaryDto(pending, overdue, nextDue);
         }
 

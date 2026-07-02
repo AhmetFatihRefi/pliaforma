@@ -7,11 +7,8 @@ import { useInstructors } from "@/lib/useInstructors";
 import {
   type AttendanceSummaryDto,
   type ClassTypeDto,
-  type ContractLinePaymentPlanDto,
   type DayOfWeek,
   type GuestInput,
-  type InstallmentInput,
-  type InstallmentStatus,
   type MemberDto,
   type PaymentDto,
   type PreferredSlotInput,
@@ -25,8 +22,6 @@ import {
   type StudentSource,
   daysOfWeek,
   dayLabels,
-  installmentStatusLabels,
-  paymentStatusLabels,
   studentContractStatusLabels,
   studentLevelLabels,
   studentSourceLabels,
@@ -43,11 +38,7 @@ import {
   useConfirm,
   useToast,
 } from "@/components/ui";
-import { PaymentPlanEditor, planMatches, planMoney } from "./_payment-plan";
 import { formatDate } from "@/lib/format";
-
-const installmentTone = (s: InstallmentStatus): "success" | "warning" | "danger" | "neutral" =>
-  s === "Paid" ? "success" : s === "PartiallyPaid" ? "warning" : s === "Overdue" ? "danger" : "neutral";
 
 export const emptyGuest: GuestInput = {
   fullName: "", phone: "", email: "", source: "Phone", level: null, notes: "", healthNotes: "",
@@ -58,6 +49,15 @@ export const statusTone = (s: StudentDto["status"]) => (s === "Active" ? "succes
 
 const today = () => new Date().toISOString().slice(0, 10);
 const money = (n: number, cur: string) => `${n.toLocaleString("tr-TR")} ${cur}`;
+
+// Sprint 45: line'ın son ödeme tarihi / gecikme durumu (line-bazlı; backend isOverdue otoriter).
+function dueStatus(l: StudentContractLineDto): { text: string; tone: "danger" | "success" | "muted" } {
+  if (!l.dueDate) return { text: "Son ödeme tarihi belirlenmemiş", tone: "muted" };
+  if (l.isOverdue) return { text: `Vadesi geçti · ${formatDate(l.dueDate)} (${l.daysOverdue} gün)`, tone: "danger" };
+  if (l.remaining <= 0) return { text: `Tamamı ödendi · son ödeme tarihi ${formatDate(l.dueDate)}`, tone: "success" };
+  if (l.dueDate === today()) return { text: `Vadesi bugün · ${formatDate(l.dueDate)}`, tone: "danger" };
+  return { text: `Vadesi gelmedi · son ödeme tarihi ${formatDate(l.dueDate)}`, tone: "muted" };
+}
 
 // ============================================================================
 // Stat — küçük etiket/değer kartı (özet ızgarası için).
@@ -128,26 +128,6 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
   const [replanPrev, setReplanPrev] = useState<ReplanLinePreviewDto | null>(null);
   const [replanResult, setReplanResult] = useState<ReplanLineResultDto | null>(null);
   const [replanMsg, setReplanMsg] = useState<string | null>(null);
-
-  // Sprint 38: ödeme planı (taksit/vade) — yükle/düzenle.
-  const [plan, setPlan] = useState<ContractLinePaymentPlanDto | null>(null);
-  const [planEditing, setPlanEditing] = useState(false);
-  const [planEdit, setPlanEdit] = useState<InstallmentInput[]>([]);
-  const [planMsg, setPlanMsg] = useState<string | null>(null);
-  const loadPlan = useCallback(() => {
-    contractService.getPaymentPlan(l.id).then(setPlan).catch(() => setPlan(null));
-  }, [l.id]);
-  // Ödeme değişince (l.paid) yeniden hesapla.
-  useEffect(() => { loadPlan(); }, [loadPlan, l.paid]);
-  const savePlan = async () => {
-    if (!planMatches(planEdit, l.totalPrice)) { setPlanMsg("Taksit toplamı sözleşme tutarına eşit olmalı."); return; }
-    setBusy(true); setPlanMsg(null);
-    try {
-      const res = await contractService.updatePaymentPlan(l.id, planEdit);
-      setPlan(res); setPlanEditing(false); onChanged();
-    } catch (e) { setPlanMsg(e instanceof ApiError ? e.message : "Ödeme planı kaydedilemedi."); }
-    finally { setBusy(false); }
-  };
 
   const addEditSlot = () => {
     const t = slotTime ? `${slotTime}:00` : null;
@@ -239,67 +219,22 @@ export function ContractDetailModal({ line: l, onClose, onChanged }: { line: Stu
           </div>
         </div>
 
-        {/* Ödeme özeti */}
+        {/* Ödeme özeti (Sprint 45) — line-bazlı: toplam / ödenen / kalan ödeme / gecikmiş borç + son ödeme tarihi durumu. */}
         <div>
           <SectionTitle>Ücret</SectionTitle>
           <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Toplam" value={money(l.totalPrice, l.currency)} />
-            <Stat label="Ödenen" value={money(l.paid, l.currency)} />
-            <Stat label="Kalan" value={money(l.remaining, l.currency)} tone={l.remaining > 0 ? "danger" : "success"} />
-            <Stat label="Telafi hakkı" value={l.makeupAllowance} />
+            <Stat label="Toplam tutar" value={money(l.totalPrice, l.currency)} />
+            <Stat label="Ödenen tutar" value={money(l.paid, l.currency)} />
+            <Stat label="Kalan ödeme" value={money(l.remaining, l.currency)} tone={l.remaining > 0 ? "danger" : "success"} />
+            <Stat label="Gecikmiş borç" value={money(l.overdueAmount, l.currency)} tone={l.overdueAmount > 0 ? "danger" : "success"} />
           </div>
-        </div>
-
-        {/* Ödeme planı (Sprint 38) — taksit/vade takibi. Plan ≠ Payment (plan beklenen takvim). */}
-        <div>
-          <div className="flex items-center justify-between gap-2">
-            <SectionTitle>Ödeme planı</SectionTitle>
-            {isActive && !planEditing && (
-              <Button size="sm" variant="secondary" onClick={() => { setPlanEdit(plan?.installments.map((i) => ({ dueDate: i.dueDate, amount: i.amount, notes: i.notes ?? null })) ?? []); setPlanMsg(null); setPlanEditing(true); }}>
-                {plan?.isConfigured ? "Planı düzenle" : "Plan oluştur"}
-              </Button>
-            )}
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            {(() => { const s = dueStatus(l); return (
+              <span className={s.tone === "danger" ? "font-medium text-danger" : s.tone === "success" ? "text-success" : "text-muted"}>{s.text}</span>
+            ); })()}
+            {l.overpaidAmount > 0 && <Badge tone="success">Fazla ödeme {money(l.overpaidAmount, l.currency)}</Badge>}
+            <span className="text-muted">· Telafi hakkı: {l.makeupAllowance}</span>
           </div>
-
-          {planMsg && <p className="mt-1 text-xs text-danger">{planMsg}</p>}
-
-          {planEditing ? (
-            <div className="mt-2 space-y-3">
-              {(plan?.totalPaidAmount ?? 0) > 0 && (
-                <Alert kind="warning">Bu sözleşme satırında ödeme var. Plan değişirse ödeme dağılımı yeniden hesaplanır.</Alert>
-              )}
-              <PaymentPlanEditor total={l.totalPrice} currency={l.currency} value={planEdit} onChange={setPlanEdit} />
-              <div className="flex justify-end gap-2">
-                <Button size="sm" variant="secondary" onClick={() => setPlanEditing(false)}>Vazgeç</Button>
-                <Button size="sm" loading={busy} disabled={!planMatches(planEdit, l.totalPrice)} onClick={savePlan}>Planı kaydet</Button>
-              </div>
-            </div>
-          ) : !plan?.isConfigured ? (
-            <p className="mt-2 text-sm text-muted">Ödeme planı yok. {isActive ? "“Plan oluştur” ile peşin/taksitli plan tanımlayabilirsiniz." : ""}</p>
-          ) : (
-            <div className="mt-2 space-y-2">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <Badge tone="neutral">{plan.planType === "Cash" ? "Peşin" : `Taksitli (${plan.installments.length})`}</Badge>
-                {plan.overdueAmount > 0 && <Badge tone="danger">Geciken {planMoney(plan.overdueAmount, plan.currency)}</Badge>}
-                {plan.nextDueDate && <span className="text-muted">Sonraki ödeme: {formatDate(plan.nextDueDate)} · {planMoney(plan.nextDueAmount ?? 0, plan.currency)}</span>}
-                {plan.overpaidAmount > 0 && <Badge tone="success">Fazla ödeme {planMoney(plan.overpaidAmount, plan.currency)}</Badge>}
-                <span className="text-muted">{plan.paidCount}/{plan.installments.length} ödendi</span>
-              </div>
-              <ul className="divide-y divide-border rounded-xl border border-border">
-                {plan.installments.map((i) => (
-                  <li key={i.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm">
-                    <div className="flex items-center gap-2">
-                      <Badge tone={installmentTone(i.status)}>{installmentStatusLabels[i.status]}</Badge>
-                      <span className="text-muted">{i.sequenceNo}. Vade {formatDate(i.dueDate)}</span>
-                    </div>
-                    <span className="text-foreground">
-                      {planMoney(i.paidAmount, plan.currency)} / {planMoney(i.amount, plan.currency)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
 
         {/* Tercihleri düzenle (Sprint 34) — hoca/kapasite/gün-saat full-replace; MEVCUT programa dokunmaz */}
@@ -496,7 +431,6 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
   const [lines, setLines] = useState<StudentContractLineDto[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState("");
-  const [payDue, setPayDue] = useState(today());
   const [payLineId, setPayLineId] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -520,27 +454,21 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
     catch (e) { setErr(e instanceof ApiError ? e.message : "İşlem başarısız."); }
     finally { setBusy(false); }
   };
-  const markPaid = async (p: PaymentDto) => {
-    if (!(await confirm({
-      title: "Ödemeyi 'ödendi' işaretle",
-      confirmLabel: "Ödendi",
-      message: `${money(p.amount, p.currency)} tutarındaki taksit 'ödendi' olarak işaretlenecek (vade ${formatDate(p.dueDate)}).`,
-    }))) return;
-    wrap(() => paymentService.markPaid(p.id), "Ödeme 'ödendi' olarak işaretlendi.");
-  };
+  // Sprint 45: alınan ödeme yanlışsa geri almak için iptal (Paid kayıt da iptal edilebilir).
   const cancelPayment = async (p: PaymentDto) => {
     if (!(await confirm({
       title: "Ödemeyi iptal et",
       tone: "danger",
       confirmLabel: "İptal et",
-      message: `${money(p.amount, p.currency)} tutarındaki ödeme kaydı iptal edilecek. Bu işlem geri alınamaz.`,
+      message: `${money(p.amount, p.currency)} tutarındaki alınan ödeme kaydı iptal edilecek. Bu işlem geri alınamaz.`,
     }))) return;
     wrap(() => paymentService.cancel(p.id), "Ödeme iptal edildi.");
   };
+  // Sprint 45: kaydedilen ödeme = alınan para (backend doğrudan Paid işler). Vade sorulmaz.
   const createPayment = () => {
     if (!payAmount) { setErr("Tutar girin."); return; }
     if (!payLineId) { setErr("Ödeme için bir sözleşme satırı (paket) seçin."); return; }
-    wrap(() => paymentService.create(student.id, { amount: Number(payAmount), dueDate: payDue, studentContractLineId: payLineId }), "Ödeme eklendi.")
+    wrap(() => paymentService.create(student.id, { amount: Number(payAmount), studentContractLineId: payLineId }), "Ödeme kaydedildi.")
       .then(() => { setPayAmount(""); setPayLineId(""); });
   };
   const activeLines = lines.filter((l) => l.status === "Active");
@@ -558,7 +486,8 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
                   <div key={c.currency} className="flex items-center justify-between gap-2">
                     <span className="text-muted">{c.currency}</span>
                     <span className="text-foreground">ödenen {money(c.paid, c.currency)} / {money(c.total, c.currency)} ·
-                      <span className={`ml-1 font-semibold ${c.remaining > 0 ? "text-danger" : "text-success"}`}>kalan {money(c.remaining, c.currency)}</span>
+                      <span className={`ml-1 font-semibold ${c.remaining > 0 ? "text-danger" : "text-success"}`}>kalan ödeme {money(c.remaining, c.currency)}</span>
+                      {c.overdue > 0 && <span className="ml-1 font-semibold text-danger">· gecikmiş {money(c.overdue, c.currency)}</span>}
                     </span>
                   </div>
                 ))}
@@ -569,7 +498,11 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
                 {debt.lines.map((l) => (
                   <div key={l.id} className="flex items-center justify-between gap-2">
                     <span className="text-muted">{l.classTypeName}{l.status !== "Active" && <span> ({studentContractStatusLabels[l.status]})</span>}</span>
-                    <span className="text-foreground">borç {money(l.remaining, l.currency)} <span className="text-muted">(toplam {money(l.totalPrice, l.currency)} − ödenen {money(l.paid, l.currency)})</span></span>
+                    <span className="text-foreground">
+                      kalan {money(l.remaining, l.currency)}
+                      {l.isOverdue && <span className="ml-1 font-semibold text-danger">· gecikmiş {money(l.overdueAmount, l.currency)} ({l.daysOverdue} gün)</span>}
+                      <span className="ml-1 text-muted">· {l.dueDate ? `son ödeme ${formatDate(l.dueDate)}` : "son ödeme tarihi belirlenmemiş"}</span>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -580,19 +513,14 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
           </div>
         )}
         <div>
-          <h3 className="mb-2 text-sm font-semibold text-foreground">Ödemeler</h3>
+          <h3 className="mb-2 text-sm font-semibold text-foreground">Alınan ödemeler</h3>
           <div className="space-y-2">
-            {payments.length === 0 ? <p className="text-sm text-muted">Ödeme yok.</p> : payments.map((p) => (
+            {payments.filter((p) => p.status !== "Cancelled").length === 0 ? <p className="text-sm text-muted">Alınan ödeme yok.</p> : payments.filter((p) => p.status !== "Cancelled").map((p) => (
               <div key={p.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm">
-                <span>{p.amount.toLocaleString("tr-TR")} {p.currency} · <span className="text-muted">vade {formatDate(p.dueDate)}</span> · <span className="text-muted">{p.lineLabel ?? "Diğer ödeme"}</span></span>
+                <span>{p.amount.toLocaleString("tr-TR")} {p.currency} · <span className="text-muted">{p.paidAt ? `alındı ${formatDate(p.paidAt)}` : formatDate(p.dueDate)}</span> · <span className="text-muted">{p.lineLabel ?? "Diğer ödeme"}</span></span>
                 <div className="flex items-center gap-2">
-                  <Badge tone={p.status === "Paid" ? "success" : p.status === "Overdue" ? "danger" : "warning"}>{paymentStatusLabels[p.status]}</Badge>
-                  {(p.status === "Pending" || p.status === "Overdue") && (
-                    <>
-                      <Button variant="ghost" size="sm" disabled={busy} onClick={() => markPaid(p)}>Ödendi</Button>
-                      <Button variant="danger" size="sm" disabled={busy} onClick={() => cancelPayment(p)}>İptal et</Button>
-                    </>
-                  )}
+                  <Badge tone="success">Ödendi</Badge>
+                  <Button variant="danger" size="sm" disabled={busy} onClick={() => cancelPayment(p)}>İptal et</Button>
                 </div>
               </div>
             ))}
@@ -601,8 +529,7 @@ export function StudentFinanceModal({ student, onClose }: { student: StudentDto;
             <p className="mt-2 text-xs text-muted">Önce bir sözleşme satırı (paket) ekleyin — ödeme bir pakete bağlanmak zorunda.</p>
           ) : (
             <div className="mt-2 flex flex-wrap gap-2">
-              <Input type="number" min={0} step="0.01" placeholder="Tutar" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28" />
-              <Input type="date" value={payDue} onChange={(e) => setPayDue(e.target.value)} className="w-40" />
+              <Input type="number" min={0} step="0.01" placeholder="Alınan tutar" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-32" />
               <Select placeholder="Paket seç" value={payLineId} onChange={(e) => setPayLineId(e.target.value)} className="w-56">
                 <option value="">Paket seçin…</option>
                 {activeLines.map((l) => <option key={l.id} value={l.id}>{l.classTypeName} · {formatDate(l.startDate)} ({l.currency})</option>)}

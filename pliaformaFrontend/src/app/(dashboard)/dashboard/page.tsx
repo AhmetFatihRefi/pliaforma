@@ -12,6 +12,7 @@ import {
   studioRoleLabels,
 } from "@/lib/domain-types";
 import { Alert, Badge, Card } from "@/components/ui";
+import { formatDate } from "@/lib/format";
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const fmt = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
@@ -107,9 +108,10 @@ function StudioPanel({ month }: { month: string }) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <AttendanceBar a={d.attendance} />
-        <Stat label="Ödenen" value={money(d.payments.paidAmount)} hint={`${d.payments.paidCount} ödeme`} />
-        <Stat label="Bekleyen" value={money(d.payments.pendingAmount)} hint={`${d.payments.pendingCount} ödeme`} />
-        <Stat label="Gecikmiş" value={money(d.payments.overdueAmount)} hint={`${d.payments.overdueCount} ödeme`} />
+        {/* Sprint 45: "Ay" seçici yalnız alınan ödemeyi filtreler; kalan/gecikmiş HER ZAMAN güncel (ay-bağımsız) — label bunu açık eder. */}
+        <Stat label="Bu ay alınan ödeme" value={money(d.payments.paidAmount)} hint={`${d.payments.paidCount} ödeme`} />
+        <Stat label="Güncel kalan ödeme" value={money(d.payments.pendingAmount)} hint={`${d.payments.pendingCount} paket · ay seçiminden etkilenmez`} />
+        <Stat label="Güncel gecikmiş borç" value={money(d.payments.overdueAmount)} hint={`${d.payments.overdueCount} paket · ay seçiminden etkilenmez`} />
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Kalan paket hakkı" value={d.packages.remainingCreditTotal} hint={`${d.packages.activePackageCount} aktif paket`} />
@@ -189,8 +191,9 @@ function StudentPanel({ month }: { month: string }) {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Kalan paket hakkı" value={d.packageSummary.totalRemainingCredits} hint={`${d.packageSummary.activePackages} aktif paket`} />
         <Stat label="Telafi kredisi" value={d.makeupCreditBalance} />
-        <Stat label="Bekleyen ödeme" value={d.paymentSummary ? money(d.paymentSummary.pendingAmount) : "—"} hint={d.paymentSummary?.nextDueDate ? `vade ${d.paymentSummary.nextDueDate}` : undefined} />
-        <Stat label="Gecikmiş ödeme" value={d.paymentSummary ? money(d.paymentSummary.overdueAmount) : "—"} />
+        {/* Sprint 45: guncel (ay-bagimsiz) kalan/gecikmis — "Ay" secici bu iki karti etkilemez. */}
+        <Stat label="Güncel kalan ödeme" value={d.paymentSummary ? money(d.paymentSummary.pendingAmount) : "—"} hint={d.paymentSummary?.nextDueDate ? `son ödeme ${formatDate(d.paymentSummary.nextDueDate)}` : undefined} />
+        <Stat label="Güncel gecikmiş borç" value={d.paymentSummary ? money(d.paymentSummary.overdueAmount) : "—"} />
       </div>
       <AttendanceBar a={d.attendanceSummary} />
       <div className="grid gap-4 lg:grid-cols-2">

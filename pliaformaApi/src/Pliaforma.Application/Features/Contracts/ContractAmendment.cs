@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Exceptions;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Entities;
 using Pliaforma.Domain.Enums;
 using Pliaforma.Domain.Exceptions;
@@ -158,13 +159,15 @@ public sealed class GetStudentDebtHandler : IQueryHandler<GetStudentDebtQuery, S
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public GetStudentDebtHandler(IAppDbContext db, ICurrentUserService currentUser)
-    { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public GetStudentDebtHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
+    { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<StudentDebtSummaryDto> Handle(GetStudentDebtQuery request, CancellationToken ct)
     {
         var studioId = _currentUser.RequireStudioId();
-        var d = await ContractLineQuery.ComputeDebtAsync(_db, studioId, request.StudentProfileId, ct);
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
+        var d = await ContractLineQuery.ComputeDebtAsync(_db, studioId, request.StudentProfileId, today, ct);
         return new StudentDebtSummaryDto(d.ByCurrency, d.Lines, d.UnassignedByCurrency);
     }
 }

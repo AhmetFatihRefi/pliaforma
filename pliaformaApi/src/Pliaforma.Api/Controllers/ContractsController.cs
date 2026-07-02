@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Features.Contracts;
@@ -63,6 +64,11 @@ public sealed class ContractsController : ApiControllerBase
         Send(new GetStudentDebtQuery(studentId), ct: ct);
 
     // Sprint 28A: öğrencinin sözleşme satırları (read-only).
+    // Sprint 45: stüdyo geneli aktif sözleşme satırları (ödemeler ekranı line-bazlı borç/gecikme için).
+    [HttpGet("contract-lines")]
+    public Task<IActionResult> ListStudioLines(CancellationToken ct) =>
+        Send(new GetStudioContractLinesQuery(), ct: ct);
+
     [HttpGet("students/{studentId:guid}/contract-lines")]
     public Task<IActionResult> ContractLines(Guid studentId, CancellationToken ct) =>
         Send(new GetStudentContractLinesQuery(studentId), ct: ct);
@@ -105,12 +111,15 @@ public sealed class ContractsController : ApiControllerBase
     public Task<IActionResult> Replan(Guid lineId, ReplanLineScheduleCommand body, CancellationToken ct) =>
         Send(body with { LineId = lineId }, "Kalan dersler yeniden planlandı.", ct);
 
-    // ---- Sprint 38: ödeme planı (taksit/vade) — hesaplanmış durum + full-replace. Owner/StudioAdmin. ----
+    // ---- Sprint 45: taksitli ödeme planı KALDIRILDI (soft removal). Uçlar 410 Gone döner; entity/tablo korunur (legacy). ----
+    private const string PaymentPlanGoneMessage =
+        "Taksitli ödeme planı kaldırıldı. Lütfen Son ödeme tarihi ve alınan ödemeleri kullanın.";
+
     [HttpGet("contract-lines/{lineId:guid}/payment-plan")]
-    public Task<IActionResult> GetPaymentPlan(Guid lineId, CancellationToken ct) =>
-        Send(new GetContractLinePaymentPlanQuery(lineId), ct: ct);
+    public IActionResult GetPaymentPlan(Guid lineId) =>
+        StatusCode(StatusCodes.Status410Gone, new { message = PaymentPlanGoneMessage });
 
     [HttpPut("contract-lines/{lineId:guid}/payment-plan")]
-    public Task<IActionResult> UpdatePaymentPlan(Guid lineId, UpdateContractLinePaymentPlanCommand command, CancellationToken ct) =>
-        Send(command with { LineId = lineId }, "Ödeme planı güncellendi.", ct);
+    public IActionResult UpdatePaymentPlan(Guid lineId) =>
+        StatusCode(StatusCodes.Status410Gone, new { message = PaymentPlanGoneMessage });
 }

@@ -19,6 +19,7 @@ jget(){ grep -o "\"$1\":\"[^\"]*\"" | head -1 | sed "s/\"$1\":\"\\([^\"]*\\)\"/\
 jq2(){ node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));let r=($1);console.log(r==null?'':r)}catch(e){console.log('ERR')}"; }
 post(){ curl -s -w "\n%{http_code}" -X POST "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
 pcode(){ curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
+putc(){ curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
 gbody(){ curl -s "$BASE$1" ${2:+-H "Authorization: Bearer $2"}; }
 code(){ echo "$1" | tail -1; }; body(){ echo "$1" | sed '$d'; }
 login(){ body "$(post /api/auth/login "{\"email\":\"$1\",\"password\":\"$PW\"}")" | jget accessToken; }
@@ -40,7 +41,15 @@ guest(){ body "$(post /api/studio/students/guest "{\"fullName\":\"$1\",\"source\
 # Öğrenciyi kullanıcıya çevir → bildirim alabilsin/görsün. Token döner.
 mkuser(){ local g="$1" em="$2"; post /api/auth/register "{\"fullName\":\"$1u\",\"email\":\"$em\",\"password\":\"$PW\"}" >/dev/null; vrf "$em"; post "/api/studio/students/$g/convert-to-user" "{\"email\":\"$em\",\"initialPassword\":\"$PW\"}" "$ATOK" >/dev/null; login "$em"; }
 # addline: $1=student $2=classType $3=dueDate(boş=null) $4=lessonCount $5=perLesson → line id
-addline(){ local due=""; [ -n "$3" ] && due=",\"dueDate\":\"$3\""; body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$START\",\"endDate\":\"$END\",\"lessonCount\":$4,\"pricePerLesson\":$5,\"makeupAllowance\":1,\"isIndividual\":false,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]$due}" "$ATOK")" | jget id; }
+# Sprint 45: CREATE'te DueDate artık ZORUNLU (validator). "dueDate yok" senaryosunu kurmak için
+# TODAY ile oluşturup hemen ardından PUT ile null'a çekiyoruz (legacy null-due-date line simülasyonu).
+addline(){
+  local dd="$3" due lid
+  if [ -n "$dd" ]; then due=",\"dueDate\":\"$dd\""; else due=",\"dueDate\":\"$TODAY\""; fi
+  lid=$(body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$2\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"$START\",\"endDate\":\"$END\",\"lessonCount\":$4,\"pricePerLesson\":$5,\"makeupAllowance\":1,\"isIndividual\":false,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]$due}" "$ATOK")" | jget id)
+  [ -z "$dd" ] && putc "/api/studio/contract-lines/$lid" '{"dueDate":null,"notes":null}' "$ATOK" >/dev/null
+  echo "$lid"
+}
 runrem(){ post /api/studio/notifications/run-reminders '{}' "$ATOK"; }
 # LinePaymentDue bildirim sayısı (öğrenci dedup key'iyle).
 lpd(){ sql "SELECT count(*) FROM \"Notifications\" WHERE \"Type\"='LinePaymentDue' AND \"DeduplicationKey\" LIKE 'line-payment-due:$1:%';"; }
@@ -130,10 +139,13 @@ expectn "misafir SJ → LinePaymentDue YOK" 0 "$(lpd "$SJ")"
 expectn "result.skippedGuest >= 1" 1 "$([ "$(body "$RJ" | jq2 'd.data.skippedGuest')" -ge 1 ] && echo 1 || echo 0)"
 
 echo "--- 14) Regresyon: eski PaymentDueSoon (Payment-bazlı) çalışır ---"
+# Sprint 45: Payment create artık DOĞRUDAN Paid — API artık Pending payment ÜRETEMEZ. ReminderScanner'ın
+# PaymentDueSoon mantığı DEĞİŞMEDİ (hâlâ Status=Pending+DueDate okur); legacy Pending durumu SQL ile simüle edilir.
 SK=$(guest SK); TK=$(mkuser "$SK" "sk28d+$TS@pf.local"); LK=$(addline "$SK" "$CT" "" 4 100)  # line dueDate YOK → LinePaymentDue tetiklenmez
-post "/api/studio/students/$SK/payments" "{\"amount\":300,\"dueDate\":\"$TODAY\",\"studentContractLineId\":\"$LK\"}" "$ATOK" >/dev/null  # due today → PaymentDueSoon (legacy)
+PK=$(body "$(post "/api/studio/students/$SK/payments" "{\"amount\":300,\"studentContractLineId\":\"$LK\"}" "$ATOK")" | jget id)
+sql "UPDATE \"Payments\" SET \"Status\"='Pending', \"PaidAt\"=NULL, \"DueDate\"='$TODAY' WHERE \"Id\"='$PK';" >/dev/null
 runrem >/dev/null
-expect "eski PaymentDueSoon bildirimi üretildi" yes "$(has "$(gbody /api/notifications "$TK")" 'PaymentDueSoon')"
+expect "eski PaymentDueSoon bildirimi üretildi (legacy Pending kaydı; API artık bunu üretemez)" yes "$(has "$(gbody /api/notifications "$TK")" 'PaymentDueSoon')"
 
 echo
 [ "$FAILED" = "0" ] && { printf "\033[36mSPRINT 28D SMOKE: TÜM AKIŞLAR GEÇTİ ✅\033[0m\n"; exit 0; } || { printf "\033[36mSPRINT 28D SMOKE: BAŞARISIZ ❌\033[0m\n"; exit 1; }

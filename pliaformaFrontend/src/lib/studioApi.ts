@@ -83,8 +83,6 @@ import type {
   StudioDto,
   StudioWorkingHoursDto,
   WorkingHourDayInput,
-  ContractLinePaymentPlanDto,
-  InstallmentInput,
 } from "./domain-types";
 import type { StudioRole } from "./types";
 
@@ -178,6 +176,8 @@ export const contractService = {
   debt: (studentId: string) => api<StudentDebtSummaryDto>(`/api/studio/students/${studentId}/debt`),
   // Sprint 28A: öğrencinin sözleşme satırları (read-only). 28B: ekle/edit/cancel.
   lines: (studentId: string) => api<StudentContractLineDto[]>(`/api/studio/students/${studentId}/contract-lines`),
+  // Sprint 45: stüdyo geneli aktif satırlar (ödemeler ekranı line-bazlı borç/gecikme).
+  allLines: () => api<StudentContractLineDto[]>(`/api/studio/contract-lines`),
   addLine: (studentId: string, input: ContractLineInput) =>
     api<StudentContractLineDto>(`/api/studio/students/${studentId}/contract-lines`, { method: "POST", body: input }),
   updateLine: (lineId: string, input: { dueDate?: string | null; notes?: string | null }) =>
@@ -197,11 +197,8 @@ export const contractService = {
     api<ReplanLinePreviewDto>(`/api/studio/contract-lines/${lineId}/replan/preview`, { method: "POST", body: input }),
   replan: (lineId: string, input: { instructorProfileId?: string | null; capacity?: number | null }) =>
     api<ReplanLineResultDto>(`/api/studio/contract-lines/${lineId}/replan`, { method: "POST", body: input }),
-  // Sprint 38: ödeme planı (taksit/vade) — hesaplanmış durum + full-replace.
-  getPaymentPlan: (lineId: string) =>
-    api<ContractLinePaymentPlanDto>(`/api/studio/contract-lines/${lineId}/payment-plan`),
-  updatePaymentPlan: (lineId: string, installments: InstallmentInput[]) =>
-    api<ContractLinePaymentPlanDto>(`/api/studio/contract-lines/${lineId}/payment-plan`, { method: "PUT", body: { installments } }),
+  // Sprint 45: taksitli ödeme planı KALDIRILDI. Borç/gecikme line.dueDate + remaining/overdue üzerinden;
+  // alınan ödemeler paymentService ile kaydedilir. (Eski payment-plan uçları backend'de 410 Gone döner.)
 };
 
 // Kullanıcı tarafı üyelik aksiyonları (/api/members)
@@ -423,12 +420,9 @@ export const paymentService = {
     return api<PaymentDto[]>(`/api/studio/payments${qs ? `?${qs}` : ""}`);
   },
   forStudent: (studentId: string) => api<PaymentDto[]>(`/api/studio/students/${studentId}/payments`),
-  create: (studentId: string, input: { studentPackageId?: string | null; studentContractId?: string | null; studentContractLineId?: string | null; amount: number; currency?: string; dueDate: string; method?: PaymentMethod | null; notes?: string }) =>
+  // Sprint 45: alınan ödeme kaydı (backend doğrudan Paid işler). Vade (dueDate) alınmaz.
+  create: (studentId: string, input: { studentPackageId?: string | null; studentContractId?: string | null; studentContractLineId?: string | null; amount: number; currency?: string; method?: PaymentMethod | null; notes?: string }) =>
     api<PaymentDto>(`/api/studio/students/${studentId}/payments`, { method: "POST", body: input }),
-  update: (id: string, input: { amount: number; dueDate: string; method?: PaymentMethod | null; notes?: string }) =>
-    api<PaymentDto>(`/api/studio/payments/${id}`, { method: "PUT", body: input }),
-  markPaid: (id: string, method?: PaymentMethod | null) =>
-    api<null>(`/api/studio/payments/${id}/mark-paid`, { method: "POST", body: { method } }),
   cancel: (id: string) => api<null>(`/api/studio/payments/${id}/cancel`, { method: "POST", body: {} }),
 };
 

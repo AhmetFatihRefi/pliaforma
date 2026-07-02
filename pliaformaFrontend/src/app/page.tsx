@@ -303,7 +303,7 @@ function ValueCards() {
 const FEATURES = [
   { icon: CalendarIcon, title: "Ders Programı & Rezervasyon", text: "Kontenjan, seans, hoca ve ders grubu bazlı programınızı kolayca yönetin." },
   { icon: PackageIcon, title: "Sözleşme & Paketler", text: "Öğrencinin sözleşme satırlarını (ders tipi, ders sayısı, fiyat, tercih gün/saat) ve kalan ders haklarını takip edin." },
-  { icon: TagIcon, title: "Ödeme & Borç Takibi", text: "Öğrenci bazlı borçları, taksitleri ve geciken ödemeleri; her borcun hangi sözleşmeye ait olduğunu tek ekranda görün." },
+  { icon: TagIcon, title: "Ödeme & Borç Takibi", text: "Öğrenci bazlı kalan ödemeleri ve gecikmiş borçları; her borcun hangi sözleşmeye ait olduğunu tek ekranda görün." },
   { icon: CheckCircleIcon, title: "Yoklama & Katılım", text: "Derse katılan, gelmeyen veya telafi hakkı oluşan öğrencileri takip edin." },
   { icon: RepeatIcon, title: "Telafi Dersleri", text: "Telafi taleplerini oluşturun/onaylayın; iptal, erteleme ve telafi kredilerini düzenli yönetin." },
   { icon: UserIcon, title: "Hoca Yönetimi & İş Hacmi", text: "Hocaları yönetin; aylık planlanan/işlenen ders ve katılım kırılımıyla ödeme hesabınızı kolaylaştırın." },

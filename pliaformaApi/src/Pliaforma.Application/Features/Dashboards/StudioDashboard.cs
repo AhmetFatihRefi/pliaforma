@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Contracts;
 using Pliaforma.Application.Features.Packages;
-using Pliaforma.Application.Features.Payments;
 using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Enums;
 
@@ -61,21 +61,22 @@ public sealed class GetStudioDashboardHandler : IQueryHandler<GetStudioDashboard
             select a.Status).ToListAsync(ct);
         var attendance = DashboardCalc.Attendance(attStatuses);
 
-        // --- Ödemeler (DueDate bu ay; Overdue dinamik) ---
-        var payRows = await _db.Payments.AsNoTracking()
-            .Where(p2 => p2.StudioId == sid && p2.DueDate >= p.StartDate && p2.DueDate < p.EndDate)
-            .Select(p2 => new { p2.Amount, p2.Status, p2.PaidAt, p2.DueDate }).ToListAsync(ct);
-        decimal paidAmt = 0, pendingAmt = 0, overdueAmt = 0; int paidCnt = 0, pendingCnt = 0, overdueCnt = 0;
-        foreach (var r in payRows)
-        {
-            var eff = PaymentMapping.Effective(r.Status, r.PaidAt, r.DueDate, today);
-            switch (eff)
-            {
-                case PaymentStatus.Paid: paidAmt += r.Amount; paidCnt++; break;
-                case PaymentStatus.Overdue: overdueAmt += r.Amount; overdueCnt++; break;
-                case PaymentStatus.Pending: pendingAmt += r.Amount; pendingCnt++; break;
-            }
-        }
+        // --- Ödemeler (Sprint 45: gecikme/kalan LINE-bazlı; Payment.DueDate/Status tabanlı ikinci gecikme kavramı YOK) ---
+        // "Ödenen" = bu ay fiilen ALINAN (Paid) ödemeler (PaidAt). "Kalan/Gecikmiş" = aktif line'ların anlık borç durumu.
+        // Not: dashboard tek-currency toplar (N5 — TRY varsayımı, mevcut davranış korunur).
+        var paidRows = await _db.Payments.AsNoTracking()
+            .Where(p2 => p2.StudioId == sid && p2.Status == PaymentStatus.Paid
+                && p2.PaidAt != null && p2.PaidAt >= p.UtcStart && p2.PaidAt < p.UtcEnd)
+            .Select(p2 => p2.Amount).ToListAsync(ct);
+        var paidAmt = paidRows.Sum();
+        var paidCnt = paidRows.Count;
+
+        var debtLines = await ContractLineQuery.BuildAsync(_db,
+            _db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == sid && l.Status == StudentContractLineStatus.Active), today, ct);
+        var overdueAmt = debtLines.Sum(l => l.OverdueAmount);
+        var overdueCnt = debtLines.Count(l => l.IsOverdue);
+        var pendingAmt = debtLines.Sum(l => l.Remaining - l.OverdueAmount);   // kalan ama vadesi geçmemiş
+        var pendingCnt = debtLines.Count(l => l.Remaining > 0m && !l.IsOverdue);
         var payments = new PaymentTotalsDto(paidAmt, pendingAmt, overdueAmt, paidCnt, pendingCnt, overdueCnt);
 
         // --- Paketler (effectiveStatus dikkate alınır) ---

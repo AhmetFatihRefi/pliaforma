@@ -56,7 +56,7 @@ const SECTIONS: Section[] = [
     icon: "☺",
     items: [
       { text: "Öğrenci ekleyin; iletişim, sağlık ve seviye bilgilerini tutun.", roles: MANAGER, href: "/dashboard/students" },
-      { text: "Sözleşme ve satır (paket) oluşturun: ders tipi, ders sayısı, fiyat, vade ve tercih gün/saatleri.", roles: MANAGER, href: "/dashboard/students" },
+      { text: "Sözleşme ve satır (paket) oluşturun: ders tipi, ders sayısı, fiyat, son ödeme tarihi ve tercih gün/saatleri.", roles: MANAGER, href: "/dashboard/students" },
       { text: "Öğrencinin borç özetini ve katılım geçmişini görün.", roles: MANAGER, href: "/dashboard/students" },
       { text: "Öğrenciyi kullanıcıya dönüştürün; kendi öğrenci paneline giriş yapabilsin.", roles: MANAGER, href: "/dashboard/students" },
     ],
@@ -65,9 +65,9 @@ const SECTIONS: Section[] = [
     title: "Ödemeler & Borç",
     icon: "₺",
     items: [
-      { text: "Öğrenci bazlı borçları görün: ödenmemiş toplam, taksit sayısı ve geciken tutar özet olarak gelir; tıklayınca detaylanır.", roles: MANAGER, href: "/dashboard/payments" },
+      { text: "Öğrenci bazlı borçları görün: kalan ödeme, gecikmiş borç ve son ödeme tarihi özet olarak gelir; tıklayınca detaylanır.", roles: MANAGER, href: "/dashboard/payments" },
       { text: "Her borcun hangi sözleşmeye ait olduğunu görün; önceki sözleşmelerden kalan borçlar da listelenir.", roles: MANAGER, href: "/dashboard/payments" },
-      { text: "Bir sözleşme satırına bağlı ödeme kaydı oluşturun; “ödendi” işaretleyin veya iptal edin.", roles: MANAGER, href: "/dashboard/payments" },
+      { text: "Bir sözleşme satırına bağlı alınan ödeme kaydı oluşturun (parça parça ödeme yapılabilir); yanlışsa iptal edin. Kalan/gecikmiş borç son ödeme tarihinden hesaplanır.", roles: MANAGER, href: "/dashboard/payments" },
     ],
   },
   {

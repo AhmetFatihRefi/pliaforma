@@ -102,12 +102,14 @@ public sealed record StudentContractViewDto(
     StudentContractStatus Status,
     IReadOnlyList<StudentAmendmentDto> Amendments);
 
-/// <summary>Para birimi bazlı borç bloğu (line toplamları) — cross-currency toplam ÜRETİLMEZ.</summary>
+/// <summary>Para birimi bazlı borç bloğu (line toplamları) — cross-currency toplam ÜRETİLMEZ.
+/// Sprint 45: <c>Overdue</c> = bu para biriminde gecikmiş (vadesi geçmiş + kalanı olan) line'ların toplamı.</summary>
 public sealed record CurrencyDebtDto(
     string Currency,
     decimal Total,
     decimal Paid,
-    decimal Remaining);
+    decimal Remaining,
+    decimal Overdue);
 
 /// <summary>Para birimi bazlı atanmamış (hiçbir line'a sayılmayan) ödeme bloğu (bilgi amaçlı).</summary>
 public sealed record CurrencyPaidDto(string Currency, decimal Paid);

@@ -83,7 +83,8 @@ public sealed class UpdateContractLinePreferencesHandler : ICommandHandler<Updat
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public UpdateContractLinePreferencesHandler(IAppDbContext db, ICurrentUserService currentUser) { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public UpdateContractLinePreferencesHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock) { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<StudentContractLineDto> Handle(UpdateContractLinePreferencesCommand request, CancellationToken ct)
     {
@@ -114,7 +115,8 @@ public sealed class UpdateContractLinePreferencesHandler : ICommandHandler<Updat
 
         await _db.SaveChangesAsync(ct);
 
-        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), ct);
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
+        var dtos = await ContractLineQuery.BuildAsync(_db, _db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), today, ct);
         return dtos[0];
     }
 }

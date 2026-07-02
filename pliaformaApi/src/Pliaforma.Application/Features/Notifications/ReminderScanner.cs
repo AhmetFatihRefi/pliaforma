@@ -172,7 +172,7 @@ public sealed class ReminderScanner
         var dueLineDtos = await ContractLineQuery.BuildAsync(_db,
             _db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId
                 && l.Status == StudentContractLineStatus.Active
-                && l.DueDate != null && l.DueDate <= today), ct);
+                && l.DueDate != null && l.DueDate <= today), today, ct);
         var dueLines = dueLineDtos.Where(l => l.Remaining > 0m).ToList();
         if (dueLines.Count == 0)
             return new LineSummaryBuild([], 0);

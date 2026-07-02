@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # Pliaforma — Sprint 8 smoke (dashboard + raporlar: studio/instructor/student, earning, tenant, rol).
 # Kullanım: scripts/sprint8-smoke.sh [BASE]  (vars. http://localhost:5132)
-# Not: attendance "başlamış seans" ister → seans ileri açılıp psql ile 2020-01'e çekilir; dashboard'lar
-# month=2020-01 ile bu veriyi okur. Postgres container otomatik tespit edilir (native/compose).
+# Not: attendance "başlamış seans" ister → seans ileri açılıp psql ile 2020-01'e çekilir; ders/yoklama
+# sayımları month=2020-01 ile bu veriyi okur. Postgres container otomatik tespit edilir (native/compose).
+# Sprint 45 GÜNCELLEMESİ: para/borç artık line.TotalPrice-paid'ten gelir (Payment.DueDate/Status'ten DEĞİL).
+#   - GA/GB/GC için mkc'nin (price=0, booking amaçlı) sözleşmesinden AYRI, GERÇEK TotalPrice>0 satırlar açılır.
+#   - Payment create artık DOĞRUDAN Paid (mark-paid/Pending akışı yok).
+#   - paidAmount hâlâ AY-BAZLI (Payment.PaidAt = fiili alım anı); pending/overdueAmount artık AY-BAĞIMSIZ,
+#     her zaman GÜNCEL (bugünkü) snapshot — bu yüzden para asertleri iki ayrı ay sorgusuyla (2020-01 ve
+#     bugünün ayı) çapraz doğrulanır: pending/overdue HER İKİSİNDE DE AYNI, paidAmount yalnız "bugünün ayı"nda görünür.
 set -u
 BASE="${1:-http://localhost:5132}"
 TS=$(date +%s); PW="Parola123!"; FAILED=0
@@ -54,30 +60,50 @@ S1=$(mksess "$I1P" "10:00"); BA=$(sbook "$S1" "$GA"); backdate "$S1"; markp "$S1
 S2=$(mksess "$I1P" "11:00"); BB=$(sbook "$S2" "$GB"); backdate "$S2"; markp "$S2" "$BB" >/dev/null
 S3=$(mksess "$I2P" "12:00"); BC=$(sbook "$S3" "$GC"); BD=$(sbook "$S3" "$GD"); backdate "$S3"
 putcode "/api/studio/class-sessions/$S3/attendance" "{\"items\":[{\"bookingId\":\"$BC\",\"status\":\"Present\"},{\"bookingId\":\"$BD\",\"status\":\"Present\"}]}" "$ATOK" >/dev/null
-# Paket + ödeme + makeup (GA)
+# Paket + makeup (GA) — mkc'nin (price=0) TEK line'ı henüz varken grant edilir (deterministik LIMIT 1).
 PL=$(body "$(post /api/studio/package-plans "{\"name\":\"4 Ders $TS\",\"creditCount\":4,\"price\":1000}" "$ATOK")" | jget id)
 post "/api/studio/students/$GA/packages" "{\"packagePlanId\":\"$PL\"}" "$ATOK" >/dev/null
-# Sprint 29A: strict payment → ödeme line'a bağlanır (GA/GB sözleşmeli → line var).
-GAL=$(get "/api/studio/students/$GA/contract-lines" "$ATOK" | jget id)
-GBL=$(get "/api/studio/students/$GB/contract-lines" "$ATOK" | jget id)
-post "/api/studio/students/$GA/payments" "{\"amount\":500,\"dueDate\":\"2020-01-20\",\"studentContractLineId\":\"$GAL\"}" "$ATOK" >/dev/null   # geçmiş vade → Overdue
-PJ=$(post "/api/studio/students/$GB/payments" "{\"amount\":300,\"dueDate\":\"2020-01-20\",\"studentContractLineId\":\"$GBL\"}" "$ATOK"); PID=$(body "$PJ" | jget id)
-pcode "/api/studio/payments/$PID/mark-paid" '{}' "$ATOK" >/dev/null
-# Sprint 28C-2: manuel grant lineId zorunlu → GA'nın line'ına yaz.
+# Sprint 28C-2: manuel grant lineId zorunlu → GA'nın (price=0) mkc line'ına yaz (para/borç ile ilgisiz, ders hakkı testi).
 GALINE=$(sql "SELECT l.\"Id\" FROM \"StudentContractLines\" l JOIN \"StudentContracts\" c ON c.\"Id\"=l.\"StudentContractId\" WHERE c.\"StudentProfileId\"='$GA' LIMIT 1;")
 post "/api/studio/students/$GA/makeup-credits/grant" "{\"studentContractLineId\":\"$GALINE\",\"amount\":1}" "$ATOK" >/dev/null
 
-echo "--- Studio dashboard (month=2020-01) ---"
+# --- Sprint 45: para/borç verisi — GERÇEK TotalPrice>0 satırlar (mkc'nin price=0 sözleşmesinden AYRI; o yalnız booking/attendance/makeup için kullanıldı).
+#     Borç artık line.TotalPrice-paid'ten gelir; Payment.DueDate/Status ile borç üretme (Pending/mark-paid) KALKTI. Payment create DOĞRUDAN Paid.
+PASTFIX="2020-01-20"                       # sabit geçmiş vade (backdate mantığıyla tutarlı, deterministik)
+FUT=$(date -d "+60 days" +%F)              # sabit gelecek vade
+MONTHNOW=$(date +%Y-%m)
+SLOTS8='[{"dayOfWeek":"Monday","preferredStartTime":null,"notes":null}]'
+mkpayline(){ body "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"$I1P\",\"startDate\":\"2020-01-01\",\"endDate\":\"2020-06-01\",\"lessonCount\":1,\"pricePerLesson\":$2,\"makeupAllowance\":0,\"dueDate\":\"$3\",\"currency\":\"TRY\",\"preferredSlots\":$SLOTS8}" "$ATOK")" | jget id; }
+paypaid(){ post "/api/studio/students/$1/payments" "{\"amount\":$3,\"studentContractLineId\":\"$2\"}" "$ATOK" >/dev/null; }   # dogrudan Paid (mark-paid YOK)
+# GA: total 800, vade GEÇMİŞ (PASTFIX) — kısmi ödeme 300 → remaining 500, overdue 500 (isOverdue true; "GA overdue 500" korunur)
+GAL=$(mkpayline "$GA" 800 "$PASTFIX"); paypaid "$GA" "$GAL" 300
+# GB: total 300, vade GEÇMİŞ (PASTFIX) — TAM ödeme → remaining 0, overdue 0 (vade geçse de tam ödendiği için GECİKMİŞ DEĞİL)
+GBL=$(mkpayline "$GB" 300 "$PASTFIX"); paypaid "$GB" "$GBL" 300
+# GC: total 200, vade GELECEK (FUT) — ödemesiz → remaining 200, overdue 0 (henüz gecikmemiş "kalan ödeme")
+GCL=$(mkpayline "$GC" 200 "$FUT")
+# Beklenen (ay-BAĞIMSIZ, GÜNCEL snapshot): pendingAmount=200 (GC), overdueAmount=500 (GA); paidAmount(bu ay, PaidAt=şimdi)=300+300=600
+
+echo "--- Studio dashboard (month=2020-01: seans/yoklama backdated; PARA artık AY-BAĞIMSIZ/GÜNCEL) ---"
 SD=$(get "/api/studio/dashboard?month=2020-01" "$ATOK")
 expect "sessionsThisMonth=3" 3 "$(echo "$SD" | jnum sessionsThisMonth)"
 expect "bookingsThisMonth=4" 4 "$(echo "$SD" | jnum bookingsThisMonth)"
 expect "attendance presentCount=4" 4 "$(echo "$SD" | jnum presentCount)"
-expect "payments overdueAmount=500 (dinamik)" 500 "$(echo "$SD" | jnum overdueAmount)"
-expect "payments paidAmount=300" 300 "$(echo "$SD" | jnum paidAmount)"
+# Sprint 45: pendingAmount/overdueAmount artık line-bazlı + AY-BAĞIMSIZ (GÜNCEL) — 2020-01 sorgusunda da GÜNCEL değer döner.
+expect "payments overdueAmount=500 (line-bazlı, GÜNCEL, aydan bağımsız)" 500 "$(echo "$SD" | jnum overdueAmount)"
+expect "payments pendingAmount=200 (line-bazlı, GÜNCEL, aydan bağımsız)" 200 "$(echo "$SD" | jnum pendingAmount)"
+# Sprint 45: paidAmount artık PaidAt (fiili alım anı) ile AY-BAZLI. 2020-01'de FİİLEN alınan ödeme yok (hepsi "şimdi" alındı) → 0.
+expect "payments paidAmount=0 (2020-01'de fiilen alınan yok — yeni model ay-bazlı, Payment.DueDate DEĞİL)" 0 "$(echo "$SD" | jnum paidAmount)"
 expect "packages remainingCreditTotal=4" 4 "$(echo "$SD" | jnum remainingCreditTotal)"
 expect "makeup totalOutstandingBalance=1" 1 "$(echo "$SD" | jnum totalOutstandingBalance)"
 
-echo "--- Month filter ayırıyor ---"
+echo "--- Studio dashboard (month=$MONTHNOW: bu ay FİİLEN alınan ödemeler) ---"
+SDNOW=$(get "/api/studio/dashboard?month=$MONTHNOW" "$ATOK")
+expect "bu ay paidAmount=600 (300+300, PaidAt=şimdi)" 600 "$(echo "$SDNOW" | jnum paidAmount)"
+expect "bu ay paidCount=2" 2 "$(echo "$SDNOW" | jnum paidCount)"
+expect "overdueAmount=500 (2020-01 sorgusuyla AYNI → ay-bağımsız kanıtı)" 500 "$(echo "$SDNOW" | jnum overdueAmount)"
+expect "pendingAmount=200 (2020-01 sorgusuyla AYNI → ay-bağımsız kanıtı)" 200 "$(echo "$SDNOW" | jnum pendingAmount)"
+
+echo "--- Month filter (seans sayımı hâlâ ay-bazlı) ---"
 expect "boş ay (2025-01) sessionsThisMonth=0" 0 "$(get "/api/studio/dashboard?month=2025-01" "$ATOK" | jnum sessionsThisMonth)"
 
 echo "--- Instructor dashboard (operasyonel, PARASIZ — Sprint 19) ---"
@@ -94,12 +120,21 @@ GAD=$(get "/api/student/dashboard?month=2020-01" "$GATOK")
 expect "GA self dashboard → 200" 200 "$(gcode "/api/student/dashboard?month=2020-01" "$GATOK")"
 expect "GA kalan paket hakkı 4" 4 "$(echo "$GAD" | jnum totalRemainingCredits)"
 expect "GA makeup balance 1" 1 "$(echo "$GAD" | jnum makeupCreditBalance)"
-expect "GA overdue ödeme 500" 500 "$(echo "$GAD" | jnum overdueAmount)"
+# Sprint 45: GA paymentSummary line-bazlı (800 total - 300 kısmi ödeme = 500 kalan, vade geçmiş → 500 gecikmiş). Ay-bağımsız.
+expect "GA overdue 500 (line-bazlı, month=2020-01)" 500 "$(echo "$GAD" | jnum overdueAmount)"
+expect "GA overdue 500 (month=$MONTHNOW ile AYNI → ay-bağımsız kanıtı)" 500 "$(get "/api/student/dashboard?month=$MONTHNOW" "$GATOK" | jnum overdueAmount)"
 expect "GA attendance presentCount 1" 1 "$(echo "$GAD" | jnum presentCount)"
 
 echo "--- Reports ---"
 expect "payments report → 200" 200 "$(gcode "/api/studio/reports/payments?month=2020-01" "$ATOK")"
-expect "payments report overdueAmount=500" 500 "$(get "/api/studio/reports/payments?month=2020-01" "$ATOK" | jnum overdueAmount)"
+REP2020=$(get "/api/studio/reports/payments?month=2020-01" "$ATOK")
+REPNOW=$(get "/api/studio/reports/payments?month=$MONTHNOW" "$ATOK")
+expect "reports overdueAmount=500 (month=2020-01, line-bazlı)" 500 "$(echo "$REP2020" | jnum overdueAmount)"
+expect "reports pendingAmount=200 (month=2020-01, line-bazlı)" 200 "$(echo "$REP2020" | jnum pendingAmount)"
+expect "reports paidAmount=0 (month=2020-01'de fiilen alınan yok)" 0 "$(echo "$REP2020" | jnum paidAmount)"
+expect "reports paidAmount=600 (month=$MONTHNOW, bu ay fiilen alınan)" 600 "$(echo "$REPNOW" | jnum paidAmount)"
+expect "reports overdueAmount=500 (month=$MONTHNOW ile AYNI → ay-bağımsız kanıtı)" 500 "$(echo "$REPNOW" | jnum overdueAmount)"
+expect "reports payments listesi = 2 (yalnız FİİLEN alınan, month=$MONTHNOW)" 2 "$(echo "$REPNOW" | grep -o '"status":"Paid"' | wc -l | tr -d ' ')"
 IR=$(get "/api/studio/reports/instructors?month=2020-01" "$ATOK")
 expect "instructors report PARASIZ (estimatedEarning yok)" no "$(has "$IR" 'estimatedEarning')"
 expect "instructors report operasyonel (distinctStudents var)" yes "$(has "$IR" 'distinctStudents')"

@@ -9,6 +9,7 @@ import {
   studentContractStatusLabels,
 } from "@/lib/domain-types";
 import { Alert, Badge, Card } from "@/components/ui";
+import { formatDate } from "@/lib/format";
 
 const money = (n: number, cur: string) => `${n.toLocaleString("tr-TR")} ${cur}`;
 const statusTone = (s: StudentContractLineDto["status"]) =>
@@ -88,7 +89,16 @@ export default function MyContractsPage() {
                   <div><span className="text-muted">Ödenen</span><div className="font-medium text-foreground">{money(l.paid, l.currency)}</div></div>
                   <div><span className="text-muted">Kalan ödeme</span><div className={`font-semibold ${l.remaining > 0 ? "text-danger" : "text-success"}`}>{money(l.remaining, l.currency)}</div></div>
                 </div>
-                <p className="mt-1 text-xs text-muted">Son ödeme tarihi: {l.dueDate ?? "Belirlenmedi"} · Telafi hakkı: {l.makeupAllowance}</p>
+                <p className="mt-1 text-xs">
+                  {!l.dueDate ? (
+                    <span className="text-muted">Son ödeme tarihi belirlenmemiş</span>
+                  ) : l.isOverdue ? (
+                    <span className="font-medium text-danger">Vadesi geçti · son ödeme tarihi {formatDate(l.dueDate)} ({l.daysOverdue} gün) · gecikmiş borç {money(l.overdueAmount, l.currency)}</span>
+                  ) : (
+                    <span className="text-muted">Son ödeme tarihi: {formatDate(l.dueDate)}</span>
+                  )}
+                  <span className="text-muted"> · Telafi hakkı: {l.makeupAllowance}</span>
+                </p>
               </div>
             </Card>
           ))}
@@ -105,6 +115,7 @@ export default function MyContractsPage() {
               <span className="text-muted">
                 Toplam {money(g.total, g.currency)} · Ödenen {money(g.paid, g.currency)} ·{" "}
                 <span className={g.remaining > 0 ? "font-semibold text-danger" : "font-semibold text-success"}>Kalan {money(g.remaining, g.currency)}</span>
+                {g.overdue > 0 && <span className="ml-1 font-semibold text-danger">· Gecikmiş {money(g.overdue, g.currency)}</span>}
               </span>
             </div>
           ))}

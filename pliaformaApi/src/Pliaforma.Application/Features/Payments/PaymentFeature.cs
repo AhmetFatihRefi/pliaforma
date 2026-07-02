@@ -110,8 +110,9 @@ public sealed class GetPaymentsHandler : IQueryHandler<GetPaymentsQuery, IReadOn
 }
 
 // ---- Oluştur ----
+// Sprint 45: Payment = ALINAN para. Yeni kayıt doğrudan Paid (PaidAt=now); vade (DueDate) UI'dan alınmaz (opsiyonel; verilmezse today).
 public sealed record CreatePaymentCommand(
-    Guid StudentProfileId, Guid? StudentPackageId, decimal Amount, string? Currency, DateOnly DueDate,
+    Guid StudentProfileId, Guid? StudentPackageId, decimal Amount, string? Currency, DateOnly? DueDate,
     PaymentMethod? Method, string? Notes, Guid? StudentContractId = null,
     Guid? StudentContractLineId = null) : ICommand<PaymentDto>, IStudioWriteRequest;
 
@@ -124,7 +125,7 @@ public sealed class CreatePaymentValidator : AbstractValidator<CreatePaymentComm
         // Eski "Diğer ödeme" (line'sız) yeni ödemelerde üretilemez; eski unassigned kayıtlar salt-okunur korunur.
         RuleFor(x => x.StudentContractLineId).NotEmpty().WithMessage("Ödeme bir sözleşme satırına (paket) bağlanmalı.");
         RuleFor(x => x.Amount).GreaterThanOrEqualTo(0);
-        RuleFor(x => x.DueDate).NotEqual(default(DateOnly));
+        // Sprint 45: DueDate zorunlu değil (alınan ödemenin vadesi yok); verilirse geçerli bir tarih olmalı.
         RuleFor(x => x.Currency).Length(3).When(x => !string.IsNullOrWhiteSpace(x.Currency));
         RuleFor(x => x.Notes).MaximumLength(1000);
     }
@@ -143,6 +144,7 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
     {
         var studioId = _currentUser.RequireStudioId();
         var userId = _currentUser.RequireUserId();
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
 
         var student = await _db.StudentProfiles
             .FirstOrDefaultAsync(s => s.Id == request.StudentProfileId && s.StudioId == studioId, ct)
@@ -190,6 +192,7 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
                 ["currency"] = new[] { $"Ödeme para birimi {(line is null ? "sözleşme" : "satır")} ile aynı olmalı ({bindCurrency})." },
             });
 
+        // Sprint 45: kaydedilen ödeme = ALINAN para → doğrudan Paid (PaidAt=now). DueDate verilmezse today (bilgi amaçlı; vade kavramı yok).
         var payment = new Payment
         {
             StudioId = studioId,
@@ -199,8 +202,9 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
             StudentContractLineId = line?.Id,
             Amount = request.Amount,
             Currency = currency,
-            DueDate = request.DueDate,
-            Status = PaymentStatus.Pending,
+            DueDate = request.DueDate ?? today,
+            Status = PaymentStatus.Paid,
+            PaidAt = _clock.UtcNow,
             Method = request.Method,
             Notes = request.Notes?.Trim(),
             CreatedByUserId = userId,
@@ -213,7 +217,6 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
             actorUserId: userId, studioId: studioId, targetType: "Payment", targetId: payment.Id,
             cancellationToken: ct);
 
-        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
         return PaymentMapping.ToDto(payment, student.FullName, today, lineLabel);
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Pliaforma.Application.Common.Cqrs;
 using Pliaforma.Application.Common.Interfaces;
+using Pliaforma.Application.Features.Scheduling;
 using Pliaforma.Domain.Enums;
 
 namespace Pliaforma.Application.Features.Contracts;
@@ -90,8 +91,9 @@ public sealed class GetMyDebtHandler : IQueryHandler<GetMyDebtQuery, MyDebtSumma
 {
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    public GetMyDebtHandler(IAppDbContext db, ICurrentUserService currentUser)
-    { _db = db; _currentUser = currentUser; }
+    private readonly IDateTime _clock;
+    public GetMyDebtHandler(IAppDbContext db, ICurrentUserService currentUser, IDateTime clock)
+    { _db = db; _currentUser = currentUser; _clock = clock; }
 
     public async Task<MyDebtSummaryDto> Handle(GetMyDebtQuery request, CancellationToken ct)
     {
@@ -102,7 +104,8 @@ public sealed class GetMyDebtHandler : IQueryHandler<GetMyDebtQuery, MyDebtSumma
             return new MyDebtSummaryDto([], [], []);
 
         // Sprint 28B: LINE-bazlı borç (amendment KATILMAZ; currency bazında ayrı; cross-currency tek toplam yok).
-        var d = await ContractLineQuery.ComputeDebtAsync(_db, studioId, profileId.Value, ct);
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
+        var d = await ContractLineQuery.ComputeDebtAsync(_db, studioId, profileId.Value, today, ct);
         return new MyDebtSummaryDto(d.ByCurrency, d.Lines, d.UnassignedByCurrency);
     }
 }

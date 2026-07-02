@@ -10,6 +10,12 @@ using Pliaforma.Domain.Exceptions;
 namespace Pliaforma.Application.Features.Contracts;
 
 // =====================================================================================================
+// [LEGACY — Sprint 45 SOFT REMOVAL] Taksitli ödeme planı KULLANICIDAN KALDIRILDI.
+//   Bu dosya (entity/DTO/rules/handler) yalnız geriye-uyum ve olası ileri tech-debt temizliği için DURUYOR.
+//   API uçları 410 Gone döner (ContractsController); yeni line create artık paymentPlan almaz; UI plan göstermez.
+//   Borç/gecikme TEK KAYNAK: StudentContractLine.DueDate + line.Paid (ContractLineFeature). Bu motoru YENİ AKIŞTA KULLANMA.
+//   Not: TreatWarningsAsErrors=true olduğundan [Obsolete] attribute yerine bu uyarı bloğu + docs/TECH-DEBT.md girişi kullanıldı.
+// -----------------------------------------------------------------------------------------------------
 // Sprint 38 — Sözleşme satırı ödeme planı (taksit/vade takibi).
 //   - Plan = beklenen ödeme takvimi (installment satırları). Payment = fiilen alınan para (DEĞİŞMEZ).
 //   - Payment installment'a BAĞLANMAZ; durum okuma anında HESAPLANIR: line ödemesi (line.Paid, legacy-aware)
@@ -123,16 +129,17 @@ internal static class PaymentInstallmentPlanService
     public static async Task<ContractLinePaymentPlanDto> ComputeAsync(
         IAppDbContext db, IDateTime clock, Guid studioId, StudentContractLine line, CancellationToken ct)
     {
+        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(db, clock, studioId, ct));
+
         // line.Paid: mevcut ContractLineQuery ile birebir (DirectPaid + tek-line-header legacy fallback).
         var lineDto = (await ContractLineQuery.BuildAsync(db,
-            db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), ct))[0];
+            db.StudentContractLines.AsNoTracking().Where(l => l.Id == line.Id), today, ct))[0];
 
         var installments = await db.ContractLinePaymentInstallments.AsNoTracking()
             .Where(i => i.StudentContractLineId == line.Id && i.IsActive)
             .OrderBy(i => i.DueDate).ThenBy(i => i.SequenceNo)
             .ToListAsync(ct);
 
-        var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(db, clock, studioId, ct));
         return PaymentInstallmentRules.Compute(line.Id, line.Currency, line.TotalPrice, lineDto.Paid, today, installments);
     }
 }

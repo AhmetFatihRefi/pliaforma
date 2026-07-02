@@ -51,10 +51,16 @@ STD=$(mksess "$(IST -d '+23 hours' +%Y-%m-%dT%H:%M:00)"); sbook "$STD" "$SB" >/d
 
 # Ödemeler (SA): due-soon (yarın), overdue (2020), paid. Sprint 29A: strict payment → SA line'ına bağla.
 SAL=$(get "/api/studio/students/$SA/contract-lines" "$ATOK" | jget id)
-post "/api/studio/students/$SA/payments" "{\"amount\":500,\"dueDate\":\"$TOMOR\",\"studentContractLineId\":\"$SAL\"}" "$ATOK" >/dev/null
-post "/api/studio/students/$SA/payments" "{\"amount\":700,\"dueDate\":\"2020-01-01\",\"studentContractLineId\":\"$SAL\"}" "$ATOK" >/dev/null
-PJ=$(post "/api/studio/students/$SA/payments" "{\"amount\":300,\"dueDate\":\"2020-01-01\",\"studentContractLineId\":\"$SAL\"}" "$ATOK"); PPAID=$(body "$PJ" | jget id)
-pcode "/api/studio/payments/$PPAID/mark-paid" '{}' "$ATOK" >/dev/null
+# Sprint 45: Payment create artık DOĞRUDAN Paid (Pending/vade UI'dan kalktı) — API artık Pending payment ÜRETEMEZ.
+# PaymentDueSoon/PaymentOverdue tarama mantığı (ReminderScanner) DEĞİŞMEDİ ve hâlâ Payment.Status=Pending+DueDate
+# üzerinden çalışır; bu senaryoyu kurmak için legacy Pending durumunu SQL ile simüle ediyoruz (yalnız bu smoke'ta).
+P1=$(body "$(post "/api/studio/students/$SA/payments" "{\"amount\":500,\"studentContractLineId\":\"$SAL\"}" "$ATOK")" | jget id)
+P2=$(body "$(post "/api/studio/students/$SA/payments" "{\"amount\":700,\"studentContractLineId\":\"$SAL\"}" "$ATOK")" | jget id)
+sql(){ docker exec "$PGC" psql -U postgres -d pliaforma -tA -c "$1" 2>/dev/null; }
+sql "UPDATE \"Payments\" SET \"Status\"='Pending', \"PaidAt\"=NULL, \"DueDate\"='$TOMOR' WHERE \"Id\"='$P1';" >/dev/null
+sql "UPDATE \"Payments\" SET \"Status\"='Pending', \"PaidAt\"=NULL, \"DueDate\"='2020-01-01' WHERE \"Id\"='$P2';" >/dev/null
+PJ=$(post "/api/studio/students/$SA/payments" "{\"amount\":300,\"studentContractLineId\":\"$SAL\"}" "$ATOK"); PPAID=$(body "$PJ" | jget id)
+pcode "/api/studio/payments/$PPAID/mark-paid" '{}' "$ATOK" >/dev/null   # zaten Paid (create'te) → 409 no-op, beklenen
 
 echo "--- Manuel trigger üretimi ---"
 R1=$(post /api/studio/notifications/run-reminders '{}' "$ATOK")
