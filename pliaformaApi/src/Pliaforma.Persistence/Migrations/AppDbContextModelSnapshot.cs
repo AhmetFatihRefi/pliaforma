@@ -2366,6 +2366,51 @@ namespace Pliaforma.Persistence.Migrations
                     b.ToTable("UserMfaSettings", (string)null);
                 });
 
+            modelBuilder.Entity("Pliaforma.Domain.Entities.UserTrustedMfaDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("UserTrustedMfaDevices", (string)null);
+                });
+
             modelBuilder.Entity("Pliaforma.Domain.Entities.Attendance", b =>
                 {
                     b.HasOne("Pliaforma.Domain.Entities.ClassBooking", "ClassBooking")
@@ -3053,6 +3098,17 @@ namespace Pliaforma.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Pliaforma.Domain.Entities.UserMfaSettings", b =>
+                {
+                    b.HasOne("Pliaforma.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Pliaforma.Domain.Entities.UserTrustedMfaDevice", b =>
                 {
                     b.HasOne("Pliaforma.Domain.Entities.User", "User")
                         .WithMany()

@@ -41,6 +41,8 @@ services:
       # MFA (Sprint 31-MFA): pilotta ZORUNLU. Mfa:Enabled=true + geçerli Mfa:EncryptionKey yoksa backend AÇILMAZ.
       Mfa__Enabled: ${MFA_ENABLED:-true}
       Mfa__EncryptionKey: ${MFA_ENCRYPTION_KEY}
+      # Sprint 50: "bu cihazı hatırla" güven süresi (gün). MFA'yı KAPATMAZ; yalnız aynı cihazda 2. faktörü atlar.
+      Mfa__TrustedDeviceDays: ${MFA_TRUSTED_DEVICE_DAYS:-30}
       # E-posta (Sprint 16) — prod'da SenderMode=Smtp önerilir; Smtp iken PublicOrigin/Host/From zorunlu (fail-fast).
       # PublicOrigin = kullanıcıya görünen origin (doğrulama/sıfırlama linkleri bununla kurulur).
       Email__SenderMode: ${EMAIL_SENDER_MODE:-Smtp}

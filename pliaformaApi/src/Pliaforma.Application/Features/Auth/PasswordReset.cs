@@ -75,16 +75,18 @@ public sealed class ResetPasswordHandler : ICommandHandler<ResetPasswordCommand,
     private readonly IPasswordHasher _hasher;
     private readonly IDateTime _clock;
     private readonly AuthSessionService _session;
+    private readonly TrustedMfaDeviceService _trusted;
     private readonly ISecurityAuditLogger _audit;
 
     public ResetPasswordHandler(IAppDbContext db, EmailTokenIssuer tokens, IPasswordHasher hasher,
-        IDateTime clock, AuthSessionService session, ISecurityAuditLogger audit)
+        IDateTime clock, AuthSessionService session, TrustedMfaDeviceService trusted, ISecurityAuditLogger audit)
     {
         _db = db;
         _tokens = tokens;
         _hasher = hasher;
         _clock = clock;
         _session = session;
+        _trusted = trusted;
         _audit = audit;
     }
 
@@ -107,6 +109,9 @@ public sealed class ResetPasswordHandler : ICommandHandler<ResetPasswordCommand,
 
         // Çalınmış oturumları kapat: tüm aktif refresh tokenları revoke et.
         await _session.RevokeAllRefreshTokensAsync(user.Id, _clock.UtcNow, cancellationToken);
+
+        // Sprint 50: parola sıfırlanınca güvenilir cihazları da iptal et.
+        await _trusted.RevokeAllAsync(user.Id, _clock.UtcNow, cancellationToken);
 
         await _db.SaveChangesAsync(cancellationToken);
 

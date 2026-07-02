@@ -32,7 +32,8 @@ export interface AuthService {
   // Sprint 31-MFA
   mfaSetupStart(): Promise<MfaSetupStartResponse>;
   mfaSetupVerify(code: string): Promise<MfaSetupCompleteResponse>;
-  mfaChallengeVerify(challengeToken: string, code: string): Promise<AuthResponse>;
+  /** Sprint 50: rememberDevice — "bu cihazda 30 gün tekrar sorma" (güvenilir cihaz cookie'si server'da set edilir). */
+  mfaChallengeVerify(challengeToken: string, code: string, rememberDevice?: boolean): Promise<AuthResponse>;
   mfaRecoveryVerify(challengeToken: string, recoveryCode: string): Promise<AuthResponse>;
 }
 
@@ -67,8 +68,8 @@ const realAuthService: AuthService = {
     api<MfaSetupStartResponse>("/api/auth/mfa/setup/start", { method: "POST" }),
   mfaSetupVerify: (code) =>
     api<MfaSetupCompleteResponse>("/api/auth/mfa/setup/verify", { method: "POST", body: { code } }),
-  mfaChallengeVerify: (challengeToken, code) =>
-    api<AuthResponse>("/api/auth/mfa/challenge/verify", { method: "POST", body: { challengeToken, code }, skipAuthRetry: true }),
+  mfaChallengeVerify: (challengeToken, code, rememberDevice = false) =>
+    api<AuthResponse>("/api/auth/mfa/challenge/verify", { method: "POST", body: { challengeToken, code, rememberDevice }, skipAuthRetry: true }),
   mfaRecoveryVerify: (challengeToken, recoveryCode) =>
     api<AuthResponse>("/api/auth/mfa/recovery-code/verify", { method: "POST", body: { challengeToken, recoveryCode }, skipAuthRetry: true }),
 };

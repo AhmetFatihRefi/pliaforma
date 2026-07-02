@@ -156,7 +156,8 @@ public sealed class RegisterStudioHandler : ICommandHandler<RegisterStudioComman
         }
 
         // Sprint 31-MFA: yeni Owner MFA-zorunlu → setup-pending token (full dashboard token değil).
-        return await _session.IssueWithMfaAsync(user, membership, new[] { membership }, request.Ip, cancellationToken);
+        // Sprint 50: yeni hesabın güvenilir cihazı olamaz → trustedDeviceToken: null.
+        return await _session.IssueWithMfaAsync(user, membership, new[] { membership }, request.Ip, trustedDeviceToken: null, cancellationToken);
     }
 
     private async Task<string> GenerateUniqueSlugAsync(string studioName, CancellationToken ct)

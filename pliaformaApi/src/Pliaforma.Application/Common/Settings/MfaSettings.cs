@@ -22,4 +22,11 @@ public sealed class MfaSettings
 
     /// <summary>Setup sonrası üretilecek tek-kullanımlık recovery code sayısı.</summary>
     public int RecoveryCodeCount { get; set; } = 10;
+
+    /// <summary>
+    /// Sprint 50 — "Bu cihazı hatırla" güven süresi (gün). Kullanıcı MFA doğrularken "bu cihazda tekrar sorma"
+    /// işaretlerse, aynı cihazda bu kadar gün MFA atlanır (fixed window). Varsayılan 30. Prod'da
+    /// <c>Mfa__TrustedDeviceDays</c> ile değiştirilebilir. MFA zorunluluğunu KALDIRMAZ.
+    /// </summary>
+    public int TrustedDeviceDays { get; set; } = 30;
 }

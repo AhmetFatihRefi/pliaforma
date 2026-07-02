@@ -59,5 +59,8 @@ public interface IAppDbContext
     DbSet<UserMfaSettings> UserMfaSettings { get; }
     DbSet<MfaRecoveryCode> MfaRecoveryCodes { get; }
 
+    /// <summary>"Bu cihazı hatırla" güvenilir MFA cihazları (Sprint 50). Yalnız token hash'i saklanır.</summary>
+    DbSet<UserTrustedMfaDevice> UserTrustedMfaDevices { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

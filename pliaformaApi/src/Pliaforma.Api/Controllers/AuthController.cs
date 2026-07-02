@@ -64,7 +64,9 @@ public sealed class AuthController : ControllerBase
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> Login(LoginRequest body, CancellationToken ct)
     {
-        var outcome = await _dispatcher.Send(new LoginCommand(body.Email, body.Password, ClientIp), ct);
+        // Sprint 50: geçerli "bu cihazı hatırla" cookie'si varsa MFA challenge atlanır (handler doğrular).
+        var trustedDeviceToken = TrustedDeviceCookie.Read(Request);
+        var outcome = await _dispatcher.Send(new LoginCommand(body.Email, body.Password, ClientIp, trustedDeviceToken), ct);
         return OutcomeOk(outcome, "Giriş başarılı.");
     }
 
@@ -189,8 +191,14 @@ public sealed class AuthController : ControllerBase
     [EnableRateLimiting(RateLimitPolicies.Auth)]
     public async Task<IActionResult> MfaChallengeVerify(MfaChallengeVerifyRequest body, CancellationToken ct)
     {
-        var result = await _dispatcher.Send(new MfaChallengeVerifyCommand(body.ChallengeToken, body.Code, ClientIp), ct);
-        return AuthOk(result, mfaSetupRequired: false, "Giriş başarılı.");
+        var outcome = await _dispatcher.Send(
+            new MfaChallengeVerifyCommand(body.ChallengeToken, body.Code, body.RememberDevice ?? false, ClientIp), ct);
+
+        // Sprint 50: "bu cihazı hatırla" seçildiyse güvenilir cihaz cookie'sini yaz (httpOnly + Secure + SameSite=Strict).
+        if (outcome.TrustedDeviceToken is { } trustedToken && outcome.TrustedDeviceExpiresAt is { } trustedExpires)
+            TrustedDeviceCookie.Write(Response, trustedToken, trustedExpires, _secureCookie);
+
+        return AuthOk(outcome.Auth, mfaSetupRequired: false, "Giriş başarılı.");
     }
 
     // Anonim: login 2. faktörü (kurtarma kodu); challenge token body'de, tam access token yok.

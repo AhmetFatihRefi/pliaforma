@@ -15,6 +15,12 @@ namespace Pliaforma.Application.Features.Auth;
 public sealed record MfaSetupStartResult(string OtpauthUri, string ManualKey);
 public sealed record MfaSetupVerifyResult(AuthResult Auth, IReadOnlyList<string> RecoveryCodes);
 
+/// <summary>
+/// Sprint 50 — MFA challenge doğrulama sonucu. <see cref="TrustedDeviceToken"/> yalnız "bu cihazı hatırla"
+/// işaretliyse doludur; controller onu httpOnly güvenilir-cihaz cookie'sine yazar (body'ye KOYMAZ).
+/// </summary>
+public sealed record MfaVerifyOutcome(AuthResult Auth, string? TrustedDeviceToken, DateTime? TrustedDeviceExpiresAt);
+
 internal static class MfaSupport
 {
     public static StudioMembership? PickActive(List<StudioMembership> active) => active.Count == 1 ? active[0] : null;
@@ -77,14 +83,15 @@ public sealed class MfaSetupVerifyHandler : ICommandHandler<MfaSetupVerifyComman
     private readonly ISecurityAuditLogger _audit;
     private readonly IDateTime _clock;
     private readonly AuthSessionService _session;
+    private readonly TrustedMfaDeviceService _trusted;
     private readonly MfaSettings _mfa;
 
     public MfaSetupVerifyHandler(IAppDbContext db, ICurrentUserService current, ITotpService totp,
         IMfaSecretProtector protector, ISecurityAuditLogger audit, IDateTime clock, AuthSessionService session,
-        IOptions<MfaSettings> mfa)
+        TrustedMfaDeviceService trusted, IOptions<MfaSettings> mfa)
     {
         _db = db; _current = current; _totp = totp; _protector = protector; _audit = audit; _clock = clock;
-        _session = session; _mfa = mfa.Value;
+        _session = session; _trusted = trusted; _mfa = mfa.Value;
     }
 
     public async Task<MfaSetupVerifyResult> Handle(MfaSetupVerifyCommand request, CancellationToken ct)
@@ -108,6 +115,9 @@ public sealed class MfaSetupVerifyHandler : ICommandHandler<MfaSetupVerifyComman
         settings.LastUsedTimestep = matchedTimestep;
         user.MfaEnabled = true;
 
+        // Sprint 50: (yeniden) kurulumda eski güvenilir cihazları iptal et (ilk kurulumda no-op).
+        await _trusted.RevokeAllAsync(userId, _clock.UtcNow, ct);
+
         // Recovery code'lar: plain bir kez döner, hash'li saklanır.
         var plainCodes = new List<string>();
         for (int i = 0; i < _mfa.RecoveryCodeCount; i++)
@@ -128,9 +138,10 @@ public sealed class MfaSetupVerifyHandler : ICommandHandler<MfaSetupVerifyComman
 }
 
 // ============================ challenge/verify ============================
-public sealed record MfaChallengeVerifyCommand(string ChallengeToken, string Code, string? Ip = null) : ICommand<AuthResult>;
+// Sprint 50: RememberDevice — "bu cihazda 30 gün tekrar sorma" işaretiyse güvenilir cihaz kaydı + cookie üretilir.
+public sealed record MfaChallengeVerifyCommand(string ChallengeToken, string Code, bool RememberDevice = false, string? Ip = null) : ICommand<MfaVerifyOutcome>;
 
-public sealed class MfaChallengeVerifyHandler : ICommandHandler<MfaChallengeVerifyCommand, AuthResult>
+public sealed class MfaChallengeVerifyHandler : ICommandHandler<MfaChallengeVerifyCommand, MfaVerifyOutcome>
 {
     private readonly IAppDbContext _db;
     private readonly IMfaChallengeService _challenge;
@@ -138,14 +149,15 @@ public sealed class MfaChallengeVerifyHandler : ICommandHandler<MfaChallengeVeri
     private readonly IMfaSecretProtector _protector;
     private readonly ISecurityAuditLogger _audit;
     private readonly AuthSessionService _session;
+    private readonly TrustedMfaDeviceService _trusted;
 
     public MfaChallengeVerifyHandler(IAppDbContext db, IMfaChallengeService challenge, ITotpService totp,
-        IMfaSecretProtector protector, ISecurityAuditLogger audit, AuthSessionService session)
+        IMfaSecretProtector protector, ISecurityAuditLogger audit, AuthSessionService session, TrustedMfaDeviceService trusted)
     {
-        _db = db; _challenge = challenge; _totp = totp; _protector = protector; _audit = audit; _session = session;
+        _db = db; _challenge = challenge; _totp = totp; _protector = protector; _audit = audit; _session = session; _trusted = trusted;
     }
 
-    public async Task<AuthResult> Handle(MfaChallengeVerifyCommand request, CancellationToken ct)
+    public async Task<MfaVerifyOutcome> Handle(MfaChallengeVerifyCommand request, CancellationToken ct)
     {
         var userId = _challenge.ValidateChallengeToken(request.ChallengeToken)
             ?? throw new UnauthorizedException("MFA oturumu geçersiz veya süresi dolmuş. Lütfen tekrar giriş yapın.");
@@ -165,13 +177,17 @@ public sealed class MfaChallengeVerifyHandler : ICommandHandler<MfaChallengeVeri
         }
 
         settings.LastUsedTimestep = matchedTimestep; // replay koruması
+
+        // Sprint 50: "bu cihazı hatırla" işaretliyse güvenilir cihaz kaydı EKLE (IssueAsync SaveChanges'ıyla kalıcılaşır).
+        TrustedDeviceIssue? trustedIssue = request.RememberDevice ? _trusted.Remember(userId, request.Ip) : null;
+
         var active = await MfaSupport.ActiveMembershipsAsync(_db, userId, ct);
         var auth = await _session.IssueAsync(user, MfaSupport.PickActive(active), request.Ip, ct);
 
         await _audit.LogAsync(SecurityAuditEventType.MFASucceeded, SecurityAuditOutcome.Success,
             actorUserId: userId, actorEmail: user.Email, cancellationToken: ct);
 
-        return auth;
+        return new MfaVerifyOutcome(auth, trustedIssue?.RawToken, trustedIssue?.ExpiresAt);
     }
 }
 
@@ -230,10 +246,13 @@ public sealed class MfaResetHandler : ICommandHandler<MfaResetCommand, Unit>
     private readonly IAppDbContext _db;
     private readonly ICurrentUserService _current;
     private readonly ISecurityAuditLogger _audit;
+    private readonly TrustedMfaDeviceService _trusted;
+    private readonly IDateTime _clock;
 
-    public MfaResetHandler(IAppDbContext db, ICurrentUserService current, ISecurityAuditLogger audit)
+    public MfaResetHandler(IAppDbContext db, ICurrentUserService current, ISecurityAuditLogger audit,
+        TrustedMfaDeviceService trusted, IDateTime clock)
     {
-        _db = db; _current = current; _audit = audit;
+        _db = db; _current = current; _audit = audit; _trusted = trusted; _clock = clock;
     }
 
     public async Task<Unit> Handle(MfaResetCommand request, CancellationToken ct)
@@ -258,6 +277,9 @@ public sealed class MfaResetHandler : ICommandHandler<MfaResetCommand, Unit>
 
         var codes = await _db.MfaRecoveryCodes.Where(c => c.UserId == request.TargetUserId).ToListAsync(ct);
         _db.MfaRecoveryCodes.RemoveRange(codes); // soft-delete (AuditInterceptor)
+
+        // Sprint 50: MFA reset → hedef kullanıcının tüm güvenilir cihazlarını iptal et.
+        await _trusted.RevokeAllAsync(request.TargetUserId, _clock.UtcNow, ct);
 
         await _db.SaveChangesAsync(ct);
 

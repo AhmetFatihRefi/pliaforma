@@ -20,28 +20,39 @@ public sealed class AuthSessionService
     private readonly IMfaChallengeService _challenge;
     private readonly MfaSettings _mfa;
     private readonly IPilotModeInfo _pilotMode;
+    private readonly TrustedMfaDeviceService _trustedDevices;
 
-    public AuthSessionService(IAppDbContext db, ITokenService tokens, IMfaChallengeService challenge, IOptions<MfaSettings> mfa, IPilotModeInfo pilotMode)
+    public AuthSessionService(IAppDbContext db, ITokenService tokens, IMfaChallengeService challenge, IOptions<MfaSettings> mfa, IPilotModeInfo pilotMode, TrustedMfaDeviceService trustedDevices)
     {
         _db = db;
         _tokens = tokens;
         _challenge = challenge;
         _mfa = mfa.Value;
         _pilotMode = pilotMode;
+        _trustedDevices = trustedDevices;
     }
 
     /// <summary>
     /// LOGIN/register-studio için MFA-farkında token üretimi (Sprint 31-MFA):
     /// MFA gerekli + aktif → challenge (tam token YOK); MFA gerekli + kurulmamış → kısıtlı mfa_pending token;
     /// aksi halde normal tam token.
+    /// <para>Sprint 50: MFA gerekli + aktif iken geçerli bir "güvenilir cihaz" cookie'si (<paramref name="trustedDeviceToken"/>)
+    /// varsa challenge ATLANIR ve tam token verilir (MFA zorunluluğu kalkmaz; yalnız bu cihazda süre boyunca 2. faktör istenmez).</para>
     /// </summary>
     public async Task<AuthOutcome> IssueWithMfaAsync(User user, StudioMembership? activeMembership,
-        IReadOnlyList<StudioMembership> activeMemberships, string? ip, CancellationToken ct)
+        IReadOnlyList<StudioMembership> activeMemberships, string? ip, string? trustedDeviceToken, CancellationToken ct)
     {
         var required = _mfa.Enabled && MfaPolicy.AccountRequiresMfa(activeMemberships);
 
         if (required && user.MfaEnabled)
         {
+            // Sprint 50: bu cihaz güvenilir mi? (geçerli/expire olmamış/revoke edilmemiş kayıt). Öyleyse challenge atla.
+            if (await _trustedDevices.IsTrustedAsync(user.Id, trustedDeviceToken, ct))
+            {
+                var trustedAuth = await IssueAsync(user, activeMembership, ip, ct, mfaPending: false);
+                return new AuthOutcome(trustedAuth, MfaChallengeRequired: false, ChallengeToken: null, MfaSetupRequired: false);
+            }
+
             // MFA aktif → challenge. Bekleyen user state'i (LastLoginAt, sayaç sıfırlama) kalıcılaştır; tam token verme.
             await _db.SaveChangesAsync(ct);
             return new AuthOutcome(null, MfaChallengeRequired: true, _challenge.CreateChallengeToken(user.Id), MfaSetupRequired: false);

@@ -33,16 +33,18 @@ public sealed class ChangePasswordHandler : ICommandHandler<ChangePasswordComman
     private readonly IPasswordHasher _hasher;
     private readonly IDateTime _clock;
     private readonly AuthSessionService _session;
+    private readonly TrustedMfaDeviceService _trusted;
     private readonly ISecurityAuditLogger _audit;
 
     public ChangePasswordHandler(IAppDbContext db, ICurrentUserService current, IPasswordHasher hasher,
-        IDateTime clock, AuthSessionService session, ISecurityAuditLogger audit)
+        IDateTime clock, AuthSessionService session, TrustedMfaDeviceService trusted, ISecurityAuditLogger audit)
     {
         _db = db;
         _current = current;
         _hasher = hasher;
         _clock = clock;
         _session = session;
+        _trusted = trusted;
         _audit = audit;
     }
 
@@ -68,6 +70,9 @@ public sealed class ChangePasswordHandler : ICommandHandler<ChangePasswordComman
 
         // Tüm aktif oturumları kapat (yeni parolayla yeniden login gerekebilir).
         await _session.RevokeAllRefreshTokensAsync(user.Id, _clock.UtcNow, cancellationToken);
+
+        // Sprint 50: parola değişince güvenilir cihazlar da iptal (çalıntı cihaz artık MFA atlayamaz).
+        await _trusted.RevokeAllAsync(user.Id, _clock.UtcNow, cancellationToken);
 
         await _db.SaveChangesAsync(cancellationToken);
 

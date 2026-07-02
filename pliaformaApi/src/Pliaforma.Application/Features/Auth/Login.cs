@@ -16,7 +16,8 @@ namespace Pliaforma.Application.Features.Auth;
 /// switch-studio ile seçer.
 /// <para>Sprint 31B-2: hesap kilitleme (N başarısız → geçici kilit) + güvenlik denetimi (audit).</para>
 /// </summary>
-public sealed record LoginCommand(string Email, string Password, string? Ip = null) : ICommand<AuthOutcome>;
+// Sprint 50: TrustedDeviceToken — istemcinin "bu cihazı hatırla" cookie'sinin ham değeri (controller okur).
+public sealed record LoginCommand(string Email, string Password, string? Ip = null, string? TrustedDeviceToken = null) : ICommand<AuthOutcome>;
 
 public sealed class LoginValidator : AbstractValidator<LoginCommand>
 {
@@ -105,7 +106,8 @@ public sealed class LoginHandler : ICommandHandler<LoginCommand, AuthOutcome>
         var activeMembership = activeMemberships.Count == 1 ? activeMemberships[0] : null;
 
         // Sprint 31-MFA: MFA gerekiyorsa challenge / setup-pending dallanması.
-        var outcome = await _session.IssueWithMfaAsync(user, activeMembership, activeMemberships, request.Ip, cancellationToken);
+        // Sprint 50: geçerli güvenilir-cihaz cookie'si varsa challenge atlanır (trustedDeviceToken).
+        var outcome = await _session.IssueWithMfaAsync(user, activeMembership, activeMemberships, request.Ip, request.TrustedDeviceToken, cancellationToken);
 
         if (outcome.MfaChallengeRequired)
             await _audit.LogAsync(SecurityAuditEventType.MFAChallengeCreated, SecurityAuditOutcome.Success,

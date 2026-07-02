@@ -48,6 +48,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<SecurityAuditLog> SecurityAuditLogs => Set<SecurityAuditLog>();
     public DbSet<UserMfaSettings> UserMfaSettings => Set<UserMfaSettings>();
     public DbSet<MfaRecoveryCode> MfaRecoveryCodes => Set<MfaRecoveryCode>();
+    public DbSet<UserTrustedMfaDevice> UserTrustedMfaDevices => Set<UserTrustedMfaDevice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

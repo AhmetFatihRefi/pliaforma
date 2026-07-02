@@ -21,6 +21,8 @@ export default function LoginPage() {
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [useRecovery, setUseRecovery] = useState(false);
+  // Sprint 50: "bu cihazı hatırla" (varsayılan kapalı; yalnız authenticator kodu akışında sunulur).
+  const [rememberDevice, setRememberDevice] = useState(false);
 
   const routeAfterAuth = (auth: AuthResponse) => {
     if (auth.mfaSetupRequired) return router.replace("/mfa-setup");
@@ -53,7 +55,7 @@ export default function LoginPage() {
     try {
       const auth = useRecovery
         ? await authService.mfaRecoveryVerify(challengeToken, code)
-        : await authService.mfaChallengeVerify(challengeToken, code);
+        : await authService.mfaChallengeVerify(challengeToken, code, rememberDevice);
       applyAuth(auth);
       routeAfterAuth(auth);
     } catch (err) {
@@ -76,6 +78,22 @@ export default function LoginPage() {
             <Input id="code" inputMode={useRecovery ? "text" : "numeric"} autoComplete="one-time-code"
               value={code} onChange={(e) => setCode(e.target.value)} required autoFocus />
           </FormField>
+          {/* Sprint 50: yalnız authenticator kodu akışında; kurtarma kodunda gösterme. Varsayılan kapalı. */}
+          {!useRecovery && (
+            <label htmlFor="rememberDevice" className="flex items-start gap-2.5 text-sm text-foreground">
+              <input
+                id="rememberDevice"
+                type="checkbox"
+                checked={rememberDevice}
+                onChange={(e) => setRememberDevice(e.target.checked)}
+                className="mt-0.5 size-4 rounded border-border text-primary focus:ring-primary"
+              />
+              <span>
+                Bu cihazda 30 gün tekrar sorma
+                <span className="mt-0.5 block text-xs text-muted">Ortak bilgisayarlarda kullanmayın.</span>
+              </span>
+            </label>
+          )}
           <Button type="submit" loading={loading} className="w-full">Doğrula</Button>
         </form>
         <button type="button" onClick={() => { setUseRecovery((v) => !v); setCode(""); setError(null); }}

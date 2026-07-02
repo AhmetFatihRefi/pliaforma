@@ -24,7 +24,8 @@ public sealed record ChangePasswordRequest(string CurrentPassword, string NewPas
 
 // Sprint 31-MFA: MFA istek gövdeleri
 public sealed record MfaSetupVerifyRequest(string Code);
-public sealed record MfaChallengeVerifyRequest(string ChallengeToken, string Code);
+// Sprint 50: RememberDevice — "bu cihazda 30 gün tekrar sorma" (opsiyonel; null → false).
+public sealed record MfaChallengeVerifyRequest(string ChallengeToken, string Code, bool? RememberDevice = null);
 public sealed record MfaRecoveryCodeVerifyRequest(string ChallengeToken, string RecoveryCode);
 public sealed record MfaResetRequest(Guid UserId);
 
