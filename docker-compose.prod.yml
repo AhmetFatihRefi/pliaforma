@@ -52,6 +52,9 @@ services:
       Email__Smtp__Username: ${SMTP_USERNAME}
       Email__Smtp__Password: ${SMTP_PASSWORD}
       Email__Smtp__UseTls: ${SMTP_USE_TLS:-true}
+      # Sprint 46/47: Pilot Simple People Mode (hoca ad-soyad guest öğrenci ekler; StudentContract/Line.IsPilot ile
+      # gizlenir). Varsayılan KAPALI — yalnız pilot stüdyo için deploy/.env'de PILOT_SIMPLE_PEOPLE_MODE=true set edin.
+      Pilot__SimplePeopleMode: ${PILOT_SIMPLE_PEOPLE_MODE:-false}
     depends_on:
       postgres:
         condition: service_healthy

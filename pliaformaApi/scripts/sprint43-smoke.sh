@@ -34,7 +34,10 @@ CT=$(bdy "$(post /api/class-types "{\"name\":\"Mat\",\"defaultDurationMinutes\":
 TODAY=$(date +%F); END=$(date -d "+60 days" +%F)
 D(){ date -d "+$1 days" +%F; }
 # addline: $1=student $2=instructorProfile (vars I1P) $3=startDate (vars TODAY) → group line lessonCount 6
-addline(){ bdy "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"${2:-$I1P}\",\"startDate\":\"${3:-$TODAY}\",\"endDate\":\"$END\",\"lessonCount\":6,\"pricePerLesson\":100,\"makeupAllowance\":1,\"preferredMaxCapacity\":null,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]}" "$ATOK")" | jget id; }
+# Sprint 47 düzeltmesi: dueDate Sprint 45'ten beri ZORUNLU (yoksa 400 → line hiç açılmaz, booking pilot fallback'e
+# düşer). Bu script'in odağı Sprint 43 move olduğundan vade/gecikme davranışı testin dışıdır — sabit, uzak GELECEK
+# bir tarih (+30 gün) verilir; hiçbir T-senaryosu bunu asla geçmişe çekmez/gecikmiş üretmez.
+addline(){ bdy "$(post "/api/studio/students/$1/contract-lines" "{\"classTypeId\":\"$CT\",\"instructorProfileId\":\"${2:-$I1P}\",\"startDate\":\"${3:-$TODAY}\",\"endDate\":\"$END\",\"lessonCount\":6,\"pricePerLesson\":100,\"makeupAllowance\":1,\"dueDate\":\"$(D 30)\",\"preferredMaxCapacity\":null,\"currency\":\"TRY\",\"preferredSlots\":[{\"dayOfWeek\":\"Monday\",\"preferredStartTime\":null}]}" "$ATOK")" | jget id; }
 # mksession: $1=instr $2=date $3=time $4=capacity? $5=kind?
 mksession(){ local x=""; [ -n "${4:-}" ] && x="$x,\"capacity\":$4"; [ -n "${5:-}" ] && x="$x,\"sessionKind\":\"$5\""; bdy "$(post /api/studio/class-sessions "{\"instructorProfileId\":\"$1\",\"classTypeId\":\"$CT\",\"startAt\":\"${2}T${3}:00\"$x}" "$ATOK")" | jget id; }
 bookcode(){ pcode "/api/studio/class-sessions/$1/bookings" "{\"studentProfileId\":\"$2\"}" "$ATOK"; }

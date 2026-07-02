@@ -60,11 +60,13 @@ public sealed class GetRegularBookingCandidatesHandler
         var sessionTime = TimeOnly.FromDateTime(session.StartAt);
 
         // Aday line'lar (DB filtresi): Active + classType + instructor (28C-1) + tarih-aralığı + öğrenci aktif + level.
+        // Sprint 47: gizli pilot line (IsPilot) aday listesinde görünmez — staff'a "100000 hak" gibi anlamsız satır sunulmaz.
         var lines = await _db.StudentContractLines
             .Include(l => l.StudentContract!).ThenInclude(c => c.StudentProfile)
             .Include(l => l.ClassType)
             .Where(l => l.StudioId == studioId
                         && l.Status == StudentContractLineStatus.Active
+                        && !l.IsPilot
                         && l.ClassTypeId == session.ClassTypeId
                         // Sprint 33: line hocası null → herhangi bir hoca; dolu → eşleşme zorunlu.
                         && (l.InstructorProfileId == null || l.InstructorProfileId == session.InstructorProfileId)

@@ -223,8 +223,9 @@ public sealed class CancelStudentContractHandler : ICommandHandler<CancelStudent
 /// <summary>Sözleşme DTO projeksiyonu — türetilen ScheduledLessonCount/AvailableLessonCount dahil.</summary>
 internal static class ContractProjection
 {
+    // Sprint 47: gizli pilot header (IsPilot) hiçbir header listesi/detay yüzeyinde görünmez (line filtresiyle simetrik).
     public static IQueryable<StudentContract> Query(IAppDbContext db, Guid studioId) =>
-        db.StudentContracts.AsNoTracking().Where(c => c.StudioId == studioId);
+        db.StudentContracts.AsNoTracking().Where(c => c.StudioId == studioId && !c.IsPilot);
 
     public static System.Linq.Expressions.Expression<Func<StudentContract, StudentContractDto>> ToDto(IAppDbContext db) =>
         c => new StudentContractDto(

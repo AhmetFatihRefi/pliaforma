@@ -71,6 +71,10 @@ public sealed class StaffCreateBookingHandler : ICommandHandler<StaffCreateBooki
                 .AnyAsync(p => p.Id == session.InstructorProfileId && p.UserId == userId, cancellationToken);
             if (!ownsSession)
                 throw new ForbiddenException("Yalnızca kendi seanslarınıza rezervasyon yapabilirsiniz.");
+            // Sprint 47: geçmiş seansa backfill (Sprint 42) yalnız Owner/StudioAdmin'e ait bir yetki — pilot modda
+            // Instructor'a rezervasyon eklemesi açılmış olması bu kuralı GENİŞLETMEZ.
+            if (request.AllowPastBooking)
+                throw new ForbiddenException("Geçmiş derse rezervasyon eklemek yalnızca stüdyo yöneticisine aittir.");
         }
 
         // Sprint 18a: verilen sözleşme bu öğrenciye + bu stüdyoya ait olmalı (uygunluk BookingCreator'da).

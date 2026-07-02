@@ -1,6 +1,12 @@
 # Pilot Go-Live Checklist — Pliaforma
 
-**Tek GO/NO-GO kaynağı.** Release: **v1.20.0-pilot** (`472e556`) · Doldurma tarihi: ______ · Karar: **GO / NO-GO**
+**Tek GO/NO-GO kaynağı.** Release: ______ (operatör doldurur — o anki `git rev-parse HEAD` / release tag) · Doldurma tarihi: ______ · Karar: **GO / NO-GO**
+
+> **Sprint 47 (Pre-live Pilot Hardening) notu:** bu checklist artık belirli bir tag/commit'e SABİTLENMEZ — §1.1/§1.5
+> operatör her doldurduğunda o anki HEAD ile doğrulanır (`ops/restore-drill.sh` son migration'ı repo'dan otomatik
+> okur, elle güncellenmesi gerekmez). Sprint 47 kapsamı: pilot UI erişim düzeltmesi, pilot fallback guest-only guard,
+> pilot header/line finans izolasyonu, Instructor past-booking guard, iptal edilmiş satırın borç rollup'ından
+> çıkarılması. Detay: `sprint47-smoke.sh` + Sprint 47 validation raporu.
 
 > Bu doküman operatör için **tek** go-live karar kaynağıdır; teknik detay için ilgili runbook/spec'lere atıf verir.
 > **Lejant:** **[B]** = pilot-öncesi **blocker** (biri bile fail → NO-GO) · **[P]** = post-pilot takip · **[A]** = otomatik doğrulanabilir (smoke/komut) · **[O]** = operatör/manuel.
@@ -12,11 +18,11 @@
 ## 1. Version / release state
 | # | Check | Tip | Beklenen | Komut / Evidence | Status |
 |---|---|---|---|---|---|
-|1.1| `v1.20.0-pilot` commit | [A] | `472e556` | `git rev-list -n1 v1.20.0-pilot` | ☐ |
+|1.1| Release tag/commit | [A] | operatör doldurur (o anki HEAD) | `git rev-parse HEAD` / `git rev-list -n1 <tag>` | ☐ |
 |1.2| main = origin/main senkron | [A] | ahead/behind 0/0 | `git rev-list --left-right --count origin/main...HEAD` | ☐ |
 |1.3| git status clean | [A] | boş | `git status --porcelain` | ☐ |
-|1.4| Eski tag'ler yerinde | [A] | v1.12→v1.19 taşınmadı | `git ls-remote --tags origin` | ☐ |
-|1.5| Son migration | [A] | `Sprint31D_AuditAppendOnly` | migration listesi | ☐ |
+|1.4| Eski tag'ler yerinde | [A] | önceki pilot tag'leri taşınmadı/silinmedi | `git ls-remote --tags origin` | ☐ |
+|1.5| Son migration | [A] | repo `Migrations/` klasöründeki EN SON dosya ile DB `__EFMigrationsHistory` eşleşir (elle sabit isim YOK) | `ops/restore-drill.sh` §6 (Sprint 47 — otomatik karşılaştırır) | ☐ |
 |1.6| has-pending clean | [A] | "No changes…" | bkz. §10 | ☐ |
 
 ## 2. Production env / config **[B]**
@@ -34,6 +40,7 @@
 |2.10| CORS + cookie `Secure` | prod `https://` origin; Secure/HttpOnly/SameSite | HTTPS zorunlu | ☐ |
 |2.11| Seed admin / weak-secret guard | prod startup `CHANGE_ME`/`Admin!2345` reddediyor | 31B-1 | ☐ |
 |2.12| `.env.example` placeholder | gerçek değer repo'da **yok** | gitleaks teyit | ☐ |
+|2.13| `Pilot:SimplePeopleMode` (`PILOT_SIMPLE_PEOPLE_MODE`) | bilinçli karar: pilot stüdyo sade-mod (hoca ad-soyad guest ekler) kullanacaksa `true`; kullanmayacaksa **varsayılan `false`** | Sprint 46/47 — kapalıyken hoca guest-create/minimal-liste/booking 403 alır (regresyon DEĞİL, beklenen) | ☐ |
 
 ## 3. TLS / domain / nginx **[B]**
 | # | Check | Beklenen | Status |
@@ -58,11 +65,18 @@
 |4.5| `/metrics` nginx üzerinden 404 | [A] | ☐ |
 |4.6| `/health` çalışıyor | [A] | ☐ |
 
+> **Sprint 47 karar notu:** `monitoring/prometheus.yml` şu an yalnız DEV backend'i (`host.docker.internal:5132`)
+> hedefler; `docker-compose.monitoring.yml` başlığı "PROD'da bu yığın ÇALIŞTIRILMAZ (varsayım)" der. **Pilot boyunca
+> Prometheus/Grafana KULLANILMAYACAK** — bilinçli karar, prod scrape hedefi eklemek [P] post-pilot işidir. Yerine:
+> (a) `/health` — operatör günlük elle veya harici ücretsiz bir uptime servisiyle (`https://<domain>/health`) izler,
+> (b) `docker compose -f docker-compose.prod.yml logs -f backend` ile hata/exception taraması (bkz.
+> [PILOT-RUNBOOK.md](PILOT-RUNBOOK.md) §4 günlük sağlık kontrolleri).
+
 ## 5. Database / migration **[B]**
 | # | Check | Tip | Status |
 |---|---|---|---|
 |5.1| Migration apply (startup) | [A] | ☐ |
-|5.2| Son migration `Sprint31D_AuditAppendOnly` dahil | [A] | ☐ |
+|5.2| Son migration repo ile eşleşiyor (bkz. §1.5) | [A] | ☐ |
 |5.3| DB trigger + function mevcut | [A] | ☐ |
 |5.4| has-pending clean | [A] | ☐ |
 |5.5| append-only normal UPDATE/DELETE blocked | [A] | ☐ |
@@ -97,7 +111,7 @@
 ## 8. CI / repository
 | # | Check | Tip | Status |
 |---|---|---|---|
-|8.1| **Actions security workflow `472e556` üzerinde yeşil** | **[B][O]** | ☐ |
+|8.1| **Actions security workflow §1.1'deki commit üzerinde yeşil** | **[B][O]** | ☐ |
 |8.2| gitleaks secret-scan geçti | [B][O-UI] | ☐ |
 |8.3| advisory bulguları notlandı | [O] | ☐ |
 |8.4| npm moderate (postcss/next) ayrı bakım işi notlandı | [P] | ☐ |
@@ -118,6 +132,11 @@
 
 > Atıf: [DATA_PROCESSORS.md](security/DATA_PROCESSORS.md) · [INCIDENT_RESPONSE_PLAN.md](security/INCIDENT_RESPONSE_PLAN.md) · [BREACH_NOTIFICATION_RUNBOOK.md](security/BREACH_NOTIFICATION_RUNBOOK.md) · [INCIDENT_TABLETOP_DRILL.md](security/INCIDENT_TABLETOP_DRILL.md) · [DATA_INVENTORY.md](security/DATA_INVENTORY.md).
 
+> **Sprint 47 beklenti notu — bildirimler:** `LoggingNotificationSender` prod'da da Email/Sms/WhatsApp kanallarını
+> **gerçekten göndermez** (no-op; `Status=Failed` olarak loglanır). Pilot boyunca TÜM ders/ödeme hatırlatmaları
+> yalnız **uygulama içi (in-app)** bildirimdir — e-posta/SMS entegrasyonu bu sprint kapsamında YAZILMADI. Stüdyo
+> sahibiyle bu beklenti go-live öncesi netleştirilmeli (bkz. [PILOT-RUNBOOK.md](PILOT-RUNBOOK.md) §4).
+
 ## 10. Pilot smoke **[B][O]**
 
 ### 10a. Otomatik doğrulama (staging/izole stack — pilot ÖNCESİ)
@@ -134,6 +153,13 @@ cd ../pliaformaFrontend && npx tsc --noEmit && npm run build
 
 # Full smoke 38/38  (pliaformaApi/)
 cd ../pliaformaApi && bash scripts/run-smokes.sh <BASE>
+# Sprint 32a+ suite'leri (43/45/46/47) run-smokes.sh KAPSAMI DIŞI — özel ön koşulları var, ayrı çalıştırılır:
+bash scripts/sprint43-smoke.sh <BASE>                    # move — Postgres + node gerekir
+bash scripts/sprint45-smoke.sh <BASE>                    # finans (tek son ödeme tarihi)
+bash scripts/sprint46-smoke.sh <BASE>                    # pilot mode — Pilot__SimplePeopleMode=true stack'te KOŞ
+bash scripts/sprint46-smoke.sh <BASE>                    # AYNI script Pilot__SimplePeopleMode=false stack'te TEKRAR KOŞ
+bash scripts/sprint47-smoke.sh <BASE>                    # Sprint 47 pilot guard'ları — ikisi de false/true stack'te
+bash scripts/sprint47-legacy-installment-check.sh        # salt-okunur dry-run (backfill gerekiyor mu?)
 # MFA smoke (Mfa__Enabled=true stack)
 bash scripts/mfa-setup-smoke.sh <BASE>; bash scripts/mfa-login-smoke.sh <BASE>
 bash scripts/mfa-recovery-code-smoke.sh <BASE>
@@ -152,7 +178,7 @@ bash scripts/ci-security-smoke.sh ; bash scripts/security-scan.sh
 # Full E2E 66  (pliaformaFrontend/, staging)
 cd ../pliaformaFrontend && E2E_BASE_URL=http://localhost:3100 npm run test:e2e
 ```
-**GitHub Actions UI kontrolü:** `472e556` security workflow run'ı **yeşil mi** — operatör GitHub Actions UI'da teyit eder (§8.1, blocker).
+**GitHub Actions UI kontrolü:** §1.1'deki commit üzerinde security workflow run'ı **yeşil mi** — operatör GitHub Actions UI'da teyit eder (§8.1, blocker).
 
 ### 10b. Canlı manuel smoke (gerçek domain üzerinden — pilot SIRASINDA)
 > **UYARI: Otomatik smoke TEK BAŞINA YETMEZ.** Pilot canlıda, **gerçek domain (HTTPS) üzerinden** aşağıdaki akış manuel doğrulanır:
@@ -181,7 +207,7 @@ payment create/mark-paid → class session create → regular booking → comple
 - **§4.1–4.3** monitoring public değil + Grafana anon kapalı + admin parolası değişmiş.
 - **§5.7** deploy-öncesi DB yedeği.
 - **§6** backup encryption + restore-drill (wrong/correct key + tarihli kayıt).
-- **§8.1–8.2** GitHub Actions security workflow `472e556` **yeşil** (operatör UI teyidi) + gitleaks geçti.
+- **§8.1–8.2** GitHub Actions security workflow §1.1'deki commit üzerinde **yeşil** (operatör UI teyidi) + gitleaks geçti.
 - **§9.1–9.3, 9.5, 9.6** DATA_PROCESSORS + IRP rolleri dolu + KVKK metinleri avukat onayı (legal blocker) + HealthNotes rıza/erişim/audit (toplanıyorsa) + tabletop drill kaydı.
 - **§10** otomatik smoke yeşil + canlı manuel smoke (gerçek domain).
 

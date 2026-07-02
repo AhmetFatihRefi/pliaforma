@@ -141,11 +141,14 @@ internal static class ContractLineQuery
     }
 
     /// <summary>Line-bazlı borç özeti: currency rollup + line kalemleri + atanmamış (hiçbir line'a sayılmayan) Paid ödemeler.
-    /// Sprint 45: currency rollup gecikmiş (Overdue) toplamını da içerir; <paramref name="today"/> stüdyo-yerel gün.</summary>
+    /// Sprint 45: currency rollup gecikmiş (Overdue) toplamını da içerir; <paramref name="today"/> stüdyo-yerel gün.
+    /// Sprint 47: İPTAL EDİLMİŞ (Cancelled) satırlar rollup'a girmez — iptal edilebilen satırın ödemesi yoktur
+    /// (CancelContractLineHandler garantisi) → remaining her zaman TotalPrice olurdu ve kalıcı "gecikmiş" görünürdü.</summary>
     public static async Task<LineDebtSummaryDto> ComputeDebtAsync(IAppDbContext db, Guid studioId, Guid studentProfileId, DateOnly today, CancellationToken ct)
     {
         var lines = await BuildAsync(db,
-            db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == studentProfileId), today, ct);
+            db.StudentContractLines.AsNoTracking().Where(l => l.StudioId == studioId && l.StudentContract!.StudentProfileId == studentProfileId
+                && l.Status != StudentContractLineStatus.Cancelled), today, ct);
 
         var byCurrency = lines
             .GroupBy(l => l.Currency)
@@ -166,17 +169,18 @@ internal static class ContractLineQuery
         return new LineDebtSummaryDto(byCurrency, lines, unassigned);
     }
 
-    /// <summary>Header çözümü (28B): id verilirse aktif header'ı doğrula; yoksa öğrencinin en güncel aktif header'ı; o da yoksa null (çağıran yeni header açar).</summary>
+    /// <summary>Header çözümü (28B): id verilirse aktif header'ı doğrula; yoksa öğrencinin en güncel aktif header'ı; o da yoksa null (çağıran yeni header açar).
+    /// Sprint 47: pilot header (<c>IsPilot</c>) hiçbir dalda seçilmez — gerçek bir line asla gizli pilot sözleşmesinin altına yazılmaz.</summary>
     public static async Task<StudentContract?> ResolveActiveHeaderAsync(IAppDbContext db, Guid studioId, Guid studentProfileId, Guid? headerId, CancellationToken ct)
     {
         if (headerId is { } hid)
         {
             return await db.StudentContracts
-                .FirstOrDefaultAsync(c => c.Id == hid && c.StudioId == studioId && c.StudentProfileId == studentProfileId, ct)
+                .FirstOrDefaultAsync(c => c.Id == hid && c.StudioId == studioId && c.StudentProfileId == studentProfileId && !c.IsPilot, ct)
                 ?? throw new NotFoundException("Sözleşme (header)", hid);
         }
         return await db.StudentContracts
-            .Where(c => c.StudioId == studioId && c.StudentProfileId == studentProfileId && c.Status == StudentContractStatus.Active)
+            .Where(c => c.StudioId == studioId && c.StudentProfileId == studentProfileId && c.Status == StudentContractStatus.Active && !c.IsPilot)
             .OrderByDescending(c => c.CreatedAt)
             .FirstOrDefaultAsync(ct);
     }
@@ -409,6 +413,10 @@ public sealed class UpdateContractLineHandler : ICommandHandler<UpdateContractLi
         var studioId = _currentUser.RequireStudioId();
         var line = await _db.StudentContractLines.FirstOrDefaultAsync(l => l.Id == request.LineId && l.StudioId == studioId, ct)
             ?? throw new NotFoundException("Sözleşme satırı", request.LineId);
+        // Sprint 47: gizli pilot satır staff finans akışından yönetilemez (BuildAsync onu zaten filtrelediği için
+        // mutasyon sonrası DTO yeniden kurulumu 500 atardı — kaynağında engellenir).
+        if (line.IsPilot)
+            throw new ConflictException("Pilot kaydı bu ekrandan yönetilemez.");
 
         // 28B: yalnız son ödeme tarihi + not değişebilir (ders sayısı/ücret/tarih yanlışsa yeni line açılır).
         // Sprint 45: DueDate edit'te opsiyonel kalır (legacy null satıra vade atama / güncelleme yolu).
@@ -438,6 +446,9 @@ public sealed class CancelContractLineHandler : ICommandHandler<CancelContractLi
         var today = DateOnly.FromDateTime(await SessionRules.StudioNowAsync(_db, _clock, studioId, ct));
         var line = await _db.StudentContractLines.FirstOrDefaultAsync(l => l.Id == request.LineId && l.StudioId == studioId, ct)
             ?? throw new NotFoundException("Sözleşme satırı", request.LineId);
+        // Sprint 47: gizli pilot satır staff finans akışından iptal edilemez (yaşam döngüsü booking motoruna aittir).
+        if (line.IsPilot)
+            throw new ConflictException("Pilot kaydı bu ekrandan yönetilemez.");
 
         if (line.Status == StudentContractLineStatus.Cancelled)
         {

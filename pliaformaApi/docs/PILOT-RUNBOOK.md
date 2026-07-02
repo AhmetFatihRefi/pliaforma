@@ -12,6 +12,8 @@ Pilot sırasında operatörün günlük işletme rehberi. Kurulum/deploy adımla
 - [ ] PlatformAdmin hesabı kuruldu (SEED_ADMIN_* ya da manuel) ve giriş yapılabiliyor.
 - [ ] İlk gerçek stüdyo Owner'ı oluşturuldu (register-studio) ve giriş doğrulandı.
 - [ ] Yedek cron kuruldu (`ops/backup-postgres.sh`, günlük) + **bir kez restore tatbikatı yapıldı**.
+- [ ] (Sprint 47) `PILOT_SIMPLE_PEOPLE_MODE` bilinçli karar verildi (bu pilot stüdyo sade-mod kullanacak mı?);
+      `deploy/.env`'de doğru değerle set edildi (varsayılan `false`).
 
 ## 2. Demo veriyle tanıtım (opsiyonel — gerçek stüdyo öncesi sunum)
 Pilot demosu için gerçekçi örnek veri:
@@ -51,6 +53,11 @@ Zeynep ödemesi tam · Burak telafi hakkı (devamsızlık) · fiilî hoca örne�
 - `/platform/health` → sistem durumu.
 - Disk/DB boyutu + yedek log'u (`/var/log/pliaforma-backup.log`).
 - Bildirim worker prod'da açık (300s); beklenen hatırlatmalar üretiliyor mu.
+- **(Sprint 47) `/health` — harici bir uptime servisiyle veya elle günlük kontrol.** Pilot boyunca Prometheus/Grafana
+  KULLANILMAYACAK (dev-only scrape hedefi, bilinçli karar — bkz. PILOT-GO-LIVE-CHECKLIST.md §4); `/health` + log
+  taraması tek gözlem yüzeyidir.
+- **(Sprint 47) Hatırlatmalar yalnız uygulama içidir.** E-posta/SMS/WhatsApp kanalı YOK (`LoggingNotificationSender`
+  no-op); "hatırlatma gitmedi" şikayeti gelirse önce bunu hatırlat, bug değildir.
 
 ## 5. Yedek / geri yükleme (hatırlatma)
 - Günlük cron: `ops/backup-postgres.sh /var/backups/pliaforma` (RETENTION_DAYS ile rotasyon).

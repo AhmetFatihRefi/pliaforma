@@ -41,7 +41,8 @@ public sealed class GetMyContractsHandler : IQueryHandler<GetMyContractsQuery, I
             return [];
 
         var contracts = await _db.StudentContracts.AsNoTracking()
-            .Where(c => c.StudioId == studioId && c.StudentProfileId == profileId)
+            // Sprint 47: gizli pilot header (IsPilot) öğrencinin kendi sözleşme listesinde de görünmez.
+            .Where(c => c.StudioId == studioId && c.StudentProfileId == profileId && !c.IsPilot)
             .OrderByDescending(c => c.StartDate)
             .Select(c => new
             {

@@ -159,8 +159,9 @@ internal static class MakeupEligibleLineQuery
         IAppDbContext db, MakeupCreditService credits, Guid studioId,
         Guid? onlyInstructorProfileId, StudentLevel? level, CancellationToken ct)
     {
+        // Sprint 47: gizli pilot line (IsPilot, MakeupAllowance=0) telafi-uygun listesine hiç girmez.
         var lines = await db.StudentContractLines
-            .Where(l => l.StudioId == studioId && l.Status == StudentContractLineStatus.Active
+            .Where(l => l.StudioId == studioId && l.Status == StudentContractLineStatus.Active && !l.IsPilot
                         && l.StudentContract!.StudentProfile!.Status != StudentStatus.Inactive
                         && (onlyInstructorProfileId == null || l.InstructorProfileId == onlyInstructorProfileId)
                         && (level == null || l.StudentContract!.StudentProfile!.Level == level))

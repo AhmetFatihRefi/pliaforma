@@ -23,10 +23,12 @@ export interface DrawerActions {
 }
 
 export function SessionDetailDrawer({
-  session, isManager, canConfirm, busy, students, onClose, actions, onSaveNotes,
+  session, isManager, canBookStudent, canConfirm, busy, students, onClose, actions, onSaveNotes,
 }: {
   session: ClassSessionDto | null;
   isManager: boolean;
+  /** Sprint 47: isManager DIŞINDA "Öğrenci ekle" aksiyonuna izinli mi (pilot modda kendi seansına ekleyen hoca). */
+  canBookStudent: boolean;
   canConfirm: boolean;
   busy: boolean;
   students?: string[];
@@ -105,7 +107,7 @@ export function SessionDetailDrawer({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted">Bu derse kayıtlı öğrenci yok.{isManager && s.status === "Scheduled" && " “Öğrenci ekle” ile ekleyin."}</p>
+              <p className="text-xs text-muted">Bu derse kayıtlı öğrenci yok.{canBookStudent && s.status === "Scheduled" && " “Öğrenci ekle” ile ekleyin."}</p>
             )}
           </div>
 
@@ -136,7 +138,7 @@ export function SessionDetailDrawer({
             <div className="grid grid-cols-2 gap-2">
               {s.status === "Scheduled" && (
                 <>
-                  {isManager && <Button variant="secondary" size="sm" disabled={s.isFull} onClick={actions.book}>{s.isFull ? "Dolu" : "Öğrenci ekle"}</Button>}
+                  {canBookStudent && <Button variant="secondary" size="sm" disabled={s.isFull} onClick={actions.book}>{s.isFull ? "Dolu" : "Öğrenci ekle"}</Button>}
                   {canConfirm && <Button size="sm" loading={busy} onClick={actions.confirm}>Onayla</Button>}
                   <Button variant="ghost" size="sm" onClick={actions.reschedule}>Ertele</Button>
                   {isManager && s.bookedCount > 0 && (

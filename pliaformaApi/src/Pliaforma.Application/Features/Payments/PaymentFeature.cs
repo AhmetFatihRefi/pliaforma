@@ -170,6 +170,9 @@ public sealed class CreatePaymentHandler : ICommandHandler<CreatePaymentCommand,
                 ?? throw new NotFoundException("Sözleşme satırı", lid);
             if (line.Status == StudentContractLineStatus.Cancelled)
                 throw new BusinessRuleException("İptal edilmiş satıra ödeme eklenemez.");
+            // Sprint 47: gizli pilot satır (TotalPrice=0) raw API ile dahi ödeme alamaz — borç/rapor bütünlüğü bozulmasın.
+            if (line.IsPilot)
+                throw new ConflictException("Pilot kaydına ödeme eklenemez.");
             contractId = line.StudentContractId;                  // türet
             bindCurrency = line.Currency;
             lineLabel = PaymentMapping.LineLabel(line.ClassType?.Name, line.StartDate, line.EndDate);

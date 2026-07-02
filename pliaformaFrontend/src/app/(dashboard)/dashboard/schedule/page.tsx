@@ -75,10 +75,15 @@ function buildStartOptions(fromIso: string, toIso: string, incrementMin: number)
 
 export default function SchedulePage() {
   const { instructors, isManager } = useInstructors();
+  const { pilotSimplePeopleMode } = useAuth();
   // Sprint 25: Instructor için useInstructors yalnız kendi profilini döndürür → kendi dersini ayırt et.
   const myInstructorId = isManager ? null : instructors[0]?.id ?? null;
   const canConfirm = (s: ClassSessionDto) =>
     isManager || (myInstructorId != null && (s.instructorProfileId === myInstructorId || s.actualInstructorProfileId === myInstructorId));
+  // Sprint 47: pilot modda hoca YALNIZ kendi seansına (instructorProfileId eşleşmesi — backend StaffCreateBooking
+  // ile birebir aynı kural, fiilî hoca hariç) öğrenci ekleyebilir. Owner/StudioAdmin her zaman ekleyebilir.
+  const canBookStudent = (s: ClassSessionDto) =>
+    isManager || (pilotSimplePeopleMode && myInstructorId != null && s.instructorProfileId === myInstructorId);
   const [classTypes, setClassTypes] = useState<ClassTypeDto[]>([]);
   const [from, setFrom] = useState(todayStr());
   const [to, setTo] = useState(addDays(todayStr(), 7));
@@ -513,6 +518,7 @@ export default function SchedulePage() {
       <SessionDetailDrawer
         session={detailFor}
         isManager={isManager}
+        canBookStudent={detailFor ? canBookStudent(detailFor) : false}
         canConfirm={detailFor ? canConfirm(detailFor) : false}
         busy={busyId === detailFor?.id}
         students={detailFor ? studentsBySession.get(detailFor.id) : undefined}

@@ -111,9 +111,11 @@ public sealed class BookingCreator
                 var resolved = await _lineResolver.ResolveAsync(studioId, student.Id, session.ClassTypeId, sessionDate, session.InstructorProfileId, ct, headerId: studentContractId);
                 if (resolved is null)
                 {
-                    // Sprint 46: pilot sade mod açıksa uygun gerçek line yerine GİZLİ pilot line lazy bulunur/oluşturulur
-                    // (null-line yoluna GİDİLMEZ; gerçek line ile devam → engine/move/attendance bozulmaz). Aksi halde 409.
-                    if (_pilotMode.SimplePeopleModeEnabled)
+                    // Sprint 46/47: pilot sade mod açıksa uygun gerçek line yerine GİZLİ pilot line lazy bulunur/oluşturulur
+                    // (null-line yoluna GİDİLMEZ; gerçek line ile devam → engine/move/attendance bozulmaz). SADECE hesapsız
+                    // (misafir, UserId=null) öğrenci için: gerçek hesaba bağlı öğrenci paket hakkı bitince/tarih dışı kalınca
+                    // yine 409 almalı (Sprint 47 — pilot fallback gerçek öğrencinin paket hakkını asla aşmamalı).
+                    if (_pilotMode.SimplePeopleModeEnabled && student.UserId is null)
                         resolved = await _pilotProvisioner.ResolveOrCreatePilotLineAsync(studioId, student, session, bookedByUserId, ct);
                     if (resolved is null)
                         throw new ConflictException("Bu ders için uygun aktif sözleşme satırı yok (hoca/ders tipi/tarih/hak). Önce satır oluşturun.");

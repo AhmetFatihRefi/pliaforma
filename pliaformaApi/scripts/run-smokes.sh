@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Pliaforma — tüm API smoke + güvenlik denetimi tek koşuda. ÖN KOŞUL: backend BASE'de çalışıyor.
 # Kullanım: scripts/run-smokes.sh [BASE]   (vars. http://localhost:5132)
+# NOT (Sprint 47): sprint32a+ suite'leri (32a/32b/32c/33/34/35/37/43/45/46/47) bu listede DEĞİL — özel ön koşulları
+# var (Postgres+node, iki farklı Pilot__SimplePeopleMode stack'i, vb.) ve tek biçimli döngüye uymaz. Bunlar
+# PILOT-GO-LIVE-CHECKLIST.md §10a'da ayrı komutlar olarak listelenir; go-live öncesi ELLE de çalıştırılmalıdır.
 set -u
 BASE="${1:-http://localhost:5132}"
 DIR="$(dirname "$0")"

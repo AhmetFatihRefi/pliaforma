@@ -45,7 +45,15 @@ if BACKUP_ENCRYPTION_KEY="$KEY" PG_CONTAINER="$PGC" POSTGRES_USER="$USER" bash "
 
 echo "== 6) Doğrulama (migration history + tablolar) =="
 LAST=$(q "SELECT \"MigrationId\" FROM \"__EFMigrationsHistory\" ORDER BY \"MigrationId\" DESC LIMIT 1;")
-echo "$LAST" | grep -q "Sprint31D_AuditAppendOnly" && ok "son migration doğru ($LAST)" || bad "migration history beklenmedik: '${LAST:-yok}'"
+# Sprint 47: hard-coded migration adı yerine repo'daki GÜNCEL son migration dosyası referans alınır — her yeni
+# sprint migration eklendiğinde bu satır elle güncellenmek ZORUNDA kalınmaz (eski pin unutulup yanlış FAIL vermez).
+MIGRATIONS_DIR="$DIR/../pliaformaApi/src/Pliaforma.Persistence/Migrations"
+EXPECTED_LAST=$(ls -1 "$MIGRATIONS_DIR" 2>/dev/null | grep -v '\.Designer\.cs$\|ModelSnapshot\.cs$' | sed 's/\.cs$//' | sort | tail -1)
+if [ -n "$EXPECTED_LAST" ]; then
+  [ "$LAST" = "$EXPECTED_LAST" ] && ok "son migration repo ile uyumlu ($LAST)" || bad "migration history repo'dan farklı: DB='${LAST:-yok}' repo='$EXPECTED_LAST'"
+else
+  echo "$LAST" | grep -q "." && ok "son migration mevcut ($LAST) — repo Migrations klasörü bulunamadı, karşılaştırma atlandı" || bad "migration history boş"
+fi
 for t in Users Studios Payments SecurityAuditLogs UserMfaSettings MfaRecoveryCodes; do
   c=$(q "SELECT count(*) FROM \"$t\";")
   case "$c" in (''|*[!0-9]*) bad "$t restore edilemedi (sayım='$c')";; (*) ok "$t restore (n=$c)";; esac
