@@ -1,0 +1,113 @@
+name: ci
+
+# Sprint 51 — CI build validation. Yalnız DOĞRULAMA yapar: deploy / registry push / SSH / container run YOK.
+# Amaç: main'e derlenemeyen backend/frontend/Docker build'i girmesin. Secret KULLANILMAZ.
+# Güvenlik taramaları ayrı workflow'dadır (security.yml) — bu dosya ona dokunmaz.
+on:
+  push:
+    branches: [main]
+    # Tag push'ta da doğrulama koşar (v1.41.0-pilot gibi); deploy TETİKLEMEZ.
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# Minimal yetki (least privilege): yalnız okuma.
+permissions:
+  contents: read
+
+# Aynı ref'e art arda push'ta eski koşuyu iptal et (runner dakikası israfını önler).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Sürümler tek yerde pinli. Kaynaklar: backend Dockerfile sdk:10.0 (global.json yok),
+# frontend Dockerfile node:22-alpine — security.yml ile de tutarlı.
+env:
+  DOTNET_VERSION: '10.0.x'
+  NODE_VERSION: '22'
+
+jobs:
+  # ---- backend: restore + build (+ test, proje eklendiğinde) ----
+  backend-build:
+    name: backend build (dotnet Release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      # NuGet cache: repo'da packages.lock.json olmadığından setup-dotnet'in kendi cache'i yerine
+      # actions/cache. Cache miss build'i KIRMAZ, yalnız yavaşlatır (restore-keys ile kısmi isabet).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('pliaformaApi/Directory.Packages.props', 'pliaformaApi/src/**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - name: dotnet restore
+        working-directory: pliaformaApi
+        run: dotnet restore pliaformaApi.sln
+      # Directory.Build.props: TreatWarningsAsErrors=true → uyarılar da build'i kırar (bilinçli).
+      - name: dotnet build (Release)
+        working-directory: pliaformaApi
+        run: dotnet build pliaformaApi.sln -c Release --no-restore
+      # Sprint 51 itibarıyla test projesi YOK — bu adım durumu loglar ama FAIL ETMEZ.
+      # İleride solution'a *Tests*.csproj eklenirse otomatik olarak dotnet test koşar.
+      - name: dotnet test (test projesi varsa)
+        working-directory: pliaformaApi
+        run: |
+          if find src tests -name '*Tests*.csproj' -print -quit 2>/dev/null | grep -q .; then
+            dotnet test pliaformaApi.sln -c Release --no-build
+          else
+            echo "::notice title=dotnet test atlandı::Solution'da test projesi yok (Sprint 51 bilinen durum) — build-only doğrulama."
+          fi
+
+  # ---- frontend: npm ci + lint + build (next build TS hatalarında da kırar) ----
+  frontend-build:
+    name: frontend lint + build (next)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: pliaformaFrontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: pliaformaFrontend/package-lock.json
+      - name: npm ci
+        run: npm ci
+      # ADVISORY (Sprint 51): eslint-config-next 16'nın yeni kuralları (react-hooks/set-state-in-effect vb.)
+      # mevcut kodda ~56 hata veriyor. Bunları düzeltmek bu sprintin kapsamı DIŞI (feature koduna dokunma yok).
+      # Lint temizlendiğinde continue-on-error kaldırılıp BLOCKING yapılmalı.
+      - name: lint (eslint, advisory)
+        continue-on-error: true
+        run: npm run lint
+      # Ayrı typecheck script'i yok; `next build` typecheck içerir ve TS hatasında build'i KIRAR
+      # (typescript.ignoreBuildErrors default false, next.config.ts'te override edilmiyor).
+      # BACKEND_ORIGIN gerekmiyor: next.config.ts localhost default'una düşer, build'i etkilemez.
+      - name: build (next build)
+        run: npm run build
+
+  # ---- Docker build doğrulaması: yalnız `docker build`, push/login/run YOK ----
+  docker-backend:
+    name: docker build backend (validation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build (pliaformaApi)
+        run: docker build -t pliaforma-backend:ci ./pliaformaApi
+
+  docker-frontend:
+    name: docker build frontend (validation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # BACKEND_ORIGIN build-arg'ı NON-SECRET dummy değerdir (compose'taki iç servis adı);
+      # runtime'da gerçek değeri compose verir. Başka env/secret GEREKMEZ.
+      - name: docker build (pliaformaFrontend)
+        run: docker build --build-arg BACKEND_ORIGIN=http://backend:8080 -t pliaforma-frontend:ci ./pliaformaFrontend
