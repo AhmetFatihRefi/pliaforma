@@ -8,8 +8,10 @@ namespace Pliaforma.Application.Features.Auth;
 /// <summary>
 /// Verilen refresh token'ı revoke eder (best-effort). Token bulunamasa/zaten geçersiz
 /// olsa bile sessizce başarılı döner — logout idempotenttir.
+/// <para>Sprint 53: kanal tutarlılığı — yalnız aynı kanaldan verilmiş token revoke edilir
+/// (uyumsuz kanal sessiz no-op; yanıt aynı, bilgi sızmaz).</para>
 /// </summary>
-public sealed record LogoutCommand(string? RefreshToken) : ICommand<Unit>;
+public sealed record LogoutCommand(string? RefreshToken, AuthClient Client = AuthClient.Web) : ICommand<Unit>;
 
 public sealed class LogoutHandler : ICommandHandler<LogoutCommand, Unit>
 {
@@ -33,7 +35,7 @@ public sealed class LogoutHandler : ICommandHandler<LogoutCommand, Unit>
 
         var hash = _tokens.HashRefreshToken(request.RefreshToken);
         var stored = await _db.RefreshTokens
-            .FirstOrDefaultAsync(t => t.TokenHash == hash && t.RevokedAt == null, cancellationToken);
+            .FirstOrDefaultAsync(t => t.TokenHash == hash && t.RevokedAt == null && t.Client == request.Client, cancellationToken);
 
         if (stored is not null)
         {

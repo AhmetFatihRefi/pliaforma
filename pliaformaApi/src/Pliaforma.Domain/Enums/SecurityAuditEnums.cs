@@ -55,6 +55,10 @@ public enum SecurityAuditEventType
 
     // Sprint 43 — öğrenci taşıma (kaynak dersten çıkar → hedef derse ekle; Owner/StudioAdmin)
     BookingMoved = 31,
+
+    /// <summary>Sprint 53 — iptal edilmiş refresh token yeniden sunuldu (grace dışı): olası token hırsızlığı.
+    /// Kullanıcının TÜM aktif refresh token'ları iptal edilir. DB string saklandığı için migration gerektirmez.</summary>
+    RefreshTokenReuseDetected = 32,
 }
 
 /// <summary>Denetim olayının sonucu.</summary>

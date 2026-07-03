@@ -15,4 +15,11 @@ public sealed class JwtSettings
 
     /// <summary>Refresh token ömrü (varsayılan 7 gün).</summary>
     public int RefreshTokenDays { get; set; } = 7;
+
+    /// <summary>
+    /// Sprint 53 — MOBİL istemci refresh token ömrü (varsayılan 45 gün, rotasyonlu). Mobilde haftalık
+    /// yeniden-login UX'i ağır olduğundan web'den uzundur; risk, reuse tespiti + OS güvenli deposu ile dengelenir.
+    /// Env: <c>Jwt__MobileRefreshTokenDays</c>.
+    /// </summary>
+    public int MobileRefreshTokenDays { get; set; } = 45;
 }

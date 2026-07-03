@@ -1,4 +1,5 @@
 using Pliaforma.Domain.Entities;
+using Pliaforma.Domain.Enums;
 
 namespace Pliaforma.Application.Common.Interfaces;
 
@@ -17,7 +18,8 @@ public interface ITokenService
     /// </summary>
     AccessToken GenerateAccessToken(User user, StudioMembership? activeMembership, bool mfaPending = false);
 
-    GeneratedRefreshToken GenerateRefreshToken();
+    /// <summary>Sprint 53: ömür kanala göre — Web: Jwt:RefreshTokenDays (7), Mobile: Jwt:MobileRefreshTokenDays (45).</summary>
+    GeneratedRefreshToken GenerateRefreshToken(AuthClient client = AuthClient.Web);
 
     /// <summary>Ham refresh token'ın DB'de aranacak hash'ini üretir (deterministik).</summary>
     string HashRefreshToken(string rawToken);

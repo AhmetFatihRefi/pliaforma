@@ -40,7 +40,8 @@ public sealed class AuthSessionService
     /// varsa challenge ATLANIR ve tam token verilir (MFA zorunluluğu kalkmaz; yalnız bu cihazda süre boyunca 2. faktör istenmez).</para>
     /// </summary>
     public async Task<AuthOutcome> IssueWithMfaAsync(User user, StudioMembership? activeMembership,
-        IReadOnlyList<StudioMembership> activeMemberships, string? ip, string? trustedDeviceToken, CancellationToken ct)
+        IReadOnlyList<StudioMembership> activeMemberships, string? ip, string? trustedDeviceToken, CancellationToken ct,
+        AuthClient client = AuthClient.Web)
     {
         var required = _mfa.Enabled && MfaPolicy.AccountRequiresMfa(activeMemberships);
 
@@ -49,7 +50,7 @@ public sealed class AuthSessionService
             // Sprint 50: bu cihaz güvenilir mi? (geçerli/expire olmamış/revoke edilmemiş kayıt). Öyleyse challenge atla.
             if (await _trustedDevices.IsTrustedAsync(user.Id, trustedDeviceToken, ct))
             {
-                var trustedAuth = await IssueAsync(user, activeMembership, ip, ct, mfaPending: false);
+                var trustedAuth = await IssueAsync(user, activeMembership, ip, ct, mfaPending: false, client: client);
                 return new AuthOutcome(trustedAuth, MfaChallengeRequired: false, ChallengeToken: null, MfaSetupRequired: false);
             }
 
@@ -58,7 +59,7 @@ public sealed class AuthSessionService
             return new AuthOutcome(null, MfaChallengeRequired: true, _challenge.CreateChallengeToken(user.Id), MfaSetupRequired: false);
         }
 
-        var auth = await IssueAsync(user, activeMembership, ip, ct, mfaPending: required);
+        var auth = await IssueAsync(user, activeMembership, ip, ct, mfaPending: required, client: client);
         return new AuthOutcome(auth, MfaChallengeRequired: false, ChallengeToken: null, MfaSetupRequired: required);
     }
 
@@ -67,10 +68,11 @@ public sealed class AuthSessionService
     /// (MFA gerekli ama kurulmamış) durumunda kısıtlı token üretilir; full'a dönülmez.
     /// </summary>
     public async Task<AuthOutcome> IssuePostAuthAsync(User user, StudioMembership? activeMembership,
-        IReadOnlyList<StudioMembership> activeMemberships, string? ip, CancellationToken ct)
+        IReadOnlyList<StudioMembership> activeMemberships, string? ip, CancellationToken ct,
+        AuthClient client = AuthClient.Web)
     {
         var setupPending = _mfa.Enabled && !user.MfaEnabled && MfaPolicy.AccountRequiresMfa(activeMemberships);
-        var auth = await IssueAsync(user, activeMembership, ip, ct, mfaPending: setupPending);
+        var auth = await IssueAsync(user, activeMembership, ip, ct, mfaPending: setupPending, client: client);
         return new AuthOutcome(auth, MfaChallengeRequired: false, ChallengeToken: null, MfaSetupRequired: setupPending);
     }
 
@@ -78,9 +80,11 @@ public sealed class AuthSessionService
     /// Kullanıcı için access + refresh token üretir, refresh'i hash'leyip kaydeder ve
     /// üyelik listesi + (varsa) aktif stüdyo bağlamı ile AuthResult döner.
     /// </summary>
-    public async Task<AuthResult> IssueAsync(User user, StudioMembership? activeMembership, string? ip, CancellationToken ct, bool mfaPending = false)
+    public async Task<AuthResult> IssueAsync(User user, StudioMembership? activeMembership, string? ip, CancellationToken ct,
+        bool mfaPending = false, AuthClient client = AuthClient.Web)
     {
-        var refresh = _tokens.GenerateRefreshToken();
+        // Sprint 53: kanal bazlı ömür + kanal bağlama (Client kolonu) — web token'ı mobil uçta geçersizdir (ve tersi).
+        var refresh = _tokens.GenerateRefreshToken(client);
 
         _db.RefreshTokens.Add(new RefreshToken
         {
@@ -88,6 +92,7 @@ public sealed class AuthSessionService
             TokenHash = refresh.TokenHash,
             ExpiresAt = refresh.ExpiresAt,
             CreatedByIp = ip,
+            Client = client,
         });
         await _db.SaveChangesAsync(ct);
 

@@ -72,7 +72,8 @@ public sealed class MfaSetupStartHandler : ICommandHandler<MfaSetupStartCommand,
 }
 
 // ============================ setup/verify ============================
-public sealed record MfaSetupVerifyCommand(string Code, string? Ip = null) : ICommand<MfaSetupVerifyResult>;
+// Sprint 53: Client — üretilecek refresh token'ın kanalı (web cookie / mobil body).
+public sealed record MfaSetupVerifyCommand(string Code, string? Ip = null, AuthClient Client = AuthClient.Web) : ICommand<MfaSetupVerifyResult>;
 
 public sealed class MfaSetupVerifyHandler : ICommandHandler<MfaSetupVerifyCommand, MfaSetupVerifyResult>
 {
@@ -128,7 +129,7 @@ public sealed class MfaSetupVerifyHandler : ICommandHandler<MfaSetupVerifyComman
         }
 
         var active = await MfaSupport.ActiveMembershipsAsync(_db, userId, ct);
-        var auth = await _session.IssueAsync(user, MfaSupport.PickActive(active), request.Ip, ct); // artık tam token
+        var auth = await _session.IssueAsync(user, MfaSupport.PickActive(active), request.Ip, ct, client: request.Client); // artık tam token
 
         await _audit.LogAsync(SecurityAuditEventType.MFASetupCompleted, SecurityAuditOutcome.Success,
             actorUserId: userId, actorEmail: user.Email, cancellationToken: ct);
@@ -139,7 +140,9 @@ public sealed class MfaSetupVerifyHandler : ICommandHandler<MfaSetupVerifyComman
 
 // ============================ challenge/verify ============================
 // Sprint 50: RememberDevice — "bu cihazda 30 gün tekrar sorma" işaretiyse güvenilir cihaz kaydı + cookie üretilir.
-public sealed record MfaChallengeVerifyCommand(string ChallengeToken, string Code, bool RememberDevice = false, string? Ip = null) : ICommand<MfaVerifyOutcome>;
+// Sprint 53: Client=Mobile iken ham trusted token'ı controller cookie yerine BODY'ye koyar (mobil güvenli depo).
+public sealed record MfaChallengeVerifyCommand(string ChallengeToken, string Code, bool RememberDevice = false, string? Ip = null,
+    AuthClient Client = AuthClient.Web) : ICommand<MfaVerifyOutcome>;
 
 public sealed class MfaChallengeVerifyHandler : ICommandHandler<MfaChallengeVerifyCommand, MfaVerifyOutcome>
 {
@@ -182,7 +185,7 @@ public sealed class MfaChallengeVerifyHandler : ICommandHandler<MfaChallengeVeri
         TrustedDeviceIssue? trustedIssue = request.RememberDevice ? _trusted.Remember(userId, request.Ip) : null;
 
         var active = await MfaSupport.ActiveMembershipsAsync(_db, userId, ct);
-        var auth = await _session.IssueAsync(user, MfaSupport.PickActive(active), request.Ip, ct);
+        var auth = await _session.IssueAsync(user, MfaSupport.PickActive(active), request.Ip, ct, client: request.Client);
 
         await _audit.LogAsync(SecurityAuditEventType.MFASucceeded, SecurityAuditOutcome.Success,
             actorUserId: userId, actorEmail: user.Email, cancellationToken: ct);
@@ -192,7 +195,9 @@ public sealed class MfaChallengeVerifyHandler : ICommandHandler<MfaChallengeVeri
 }
 
 // ============================ recovery-code/verify ============================
-public sealed record MfaRecoveryCodeVerifyCommand(string ChallengeToken, string RecoveryCode, string? Ip = null) : ICommand<AuthResult>;
+// Sprint 53: Client — refresh token kanalı. Recovery-code yolu trusted device ÜRETMEZ (kanaldan bağımsız kural).
+public sealed record MfaRecoveryCodeVerifyCommand(string ChallengeToken, string RecoveryCode, string? Ip = null,
+    AuthClient Client = AuthClient.Web) : ICommand<AuthResult>;
 
 public sealed class MfaRecoveryCodeVerifyHandler : ICommandHandler<MfaRecoveryCodeVerifyCommand, AuthResult>
 {
@@ -229,7 +234,7 @@ public sealed class MfaRecoveryCodeVerifyHandler : ICommandHandler<MfaRecoveryCo
 
         match.ConsumedAt = _clock.UtcNow;
         var active = await MfaSupport.ActiveMembershipsAsync(_db, userId, ct);
-        var auth = await _session.IssueAsync(user, MfaSupport.PickActive(active), request.Ip, ct);
+        var auth = await _session.IssueAsync(user, MfaSupport.PickActive(active), request.Ip, ct, client: request.Client);
 
         await _audit.LogAsync(SecurityAuditEventType.MFARecoveryCodeUsed, SecurityAuditOutcome.Success,
             actorUserId: userId, actorEmail: user.Email, cancellationToken: ct);

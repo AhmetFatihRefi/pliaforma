@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 using Pliaforma.Application.Common.Interfaces;
 using Pliaforma.Application.Common.Security;
 using Pliaforma.Domain.Entities;
+using Pliaforma.Domain.Enums;
 using Pliaforma.Infrastructure.Settings;
 
 namespace Pliaforma.Infrastructure.Services;
@@ -54,10 +55,12 @@ public sealed class TokenService : ITokenService
         return new AccessToken(new JwtSecurityTokenHandler().WriteToken(token), expires);
     }
 
-    public GeneratedRefreshToken GenerateRefreshToken()
+    public GeneratedRefreshToken GenerateRefreshToken(AuthClient client = AuthClient.Web)
     {
         var raw = Base64UrlEncode(RandomNumberGenerator.GetBytes(64));
-        var expires = DateTime.UtcNow.AddDays(_settings.RefreshTokenDays);
+        // Sprint 53: kanal bazlı ömür — mobil OS güvenli deposunda saklandığından daha uzun (default 45 gün).
+        var days = client == AuthClient.Mobile ? _settings.MobileRefreshTokenDays : _settings.RefreshTokenDays;
+        var expires = DateTime.UtcNow.AddDays(days);
         return new GeneratedRefreshToken(raw, HashRefreshToken(raw), expires);
     }
 

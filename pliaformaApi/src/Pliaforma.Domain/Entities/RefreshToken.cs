@@ -1,4 +1,5 @@
 using Pliaforma.Domain.Common;
+using Pliaforma.Domain.Enums;
 
 namespace Pliaforma.Domain.Entities;
 
@@ -21,6 +22,12 @@ public class RefreshToken : BaseEntity
     public string? ReplacedByTokenHash { get; set; }
 
     public string? CreatedByIp { get; set; }
+
+    /// <summary>
+    /// Sprint 53 — token'ın verildiği kanal (kanal bağlama). Web token'ı mobil uçta geçersizdir (ve tersi);
+    /// böylece cookie'deki token body-tabanlı uçlardan asla "exfiltrate" edilemez. Default Web (mevcut satırlar).
+    /// </summary>
+    public AuthClient Client { get; set; } = AuthClient.Web;
 
     public bool IsActive => RevokedAt is null && DateTime.UtcNow < ExpiresAt;
 }

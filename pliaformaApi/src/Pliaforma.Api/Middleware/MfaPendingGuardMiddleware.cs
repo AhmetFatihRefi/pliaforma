@@ -20,6 +20,9 @@ public sealed class MfaPendingGuardMiddleware
         "/api/auth/logout",
         "/api/auth/mfa/setup/start",
         "/api/auth/mfa/setup/verify",
+        // Sprint 53: mobil taşıma karşılıkları (setup/start taşıma-bağımsız olduğundan ortak uç kullanılır).
+        "/api/auth/mobile/logout",
+        "/api/auth/mobile/mfa/setup/verify",
     };
 
     public MfaPendingGuardMiddleware(RequestDelegate next) => _next = next;

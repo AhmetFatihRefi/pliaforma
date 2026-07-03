@@ -28,6 +28,8 @@ public static class DependencyInjection
         // Sprint 31B-2: bağımsız bağlamla yazan güvenlik servisleri (ana transaction rollback olsa bile kalıcı).
         services.AddScoped<ISecurityAuditSink, EfSecurityAuditSink>();
         services.AddScoped<ILoginAttemptStore, EfLoginAttemptStore>();
+        // Sprint 53: reuse tespitinde aile iptali de bağımsız bağlamla (401 rollback'inden etkilenmez).
+        services.AddScoped<IRefreshTokenFamilyRevoker, EfRefreshTokenFamilyRevoker>();
         services.AddScoped<IClassSessionCapacityService, EfClassSessionCapacityService>();
         services.AddScoped<IMakeupCreditLock, EfMakeupCreditLock>();
         services.AddScoped<IEquipmentPoolLock, EfEquipmentPoolLock>();
