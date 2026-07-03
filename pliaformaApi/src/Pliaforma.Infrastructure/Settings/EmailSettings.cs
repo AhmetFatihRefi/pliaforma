@@ -28,6 +28,13 @@ public sealed class EmailSettings
     /// <summary>Prod'da Disabled modunu BİLİNÇLİ açmak için (aksi halde fail-fast).</summary>
     public bool AllowDisabledInProduction { get; set; }
 
+    /// <summary>
+    /// Sprint 52: public iletişim/demo formunun iletileceği PRIVATE alıcı (Email__ContactToAddress /
+    /// deploy/.env CONTACT_TO_EMAIL). Frontend'e ASLA gönderilmez. Boşsa contact endpoint'i 503 döner
+    /// (fail-fast YOK — form opsiyonel bir özelliktir, uygulama açılışını engellemez).
+    /// </summary>
+    public string ContactToAddress { get; set; } = string.Empty;
+
     public SmtpSettings Smtp { get; set; } = new();
 }
 

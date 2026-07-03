@@ -8,6 +8,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { Brand } from "./Brand";
+import { NavIcon } from "./NavIcon";
 import { isNavActive, type NavItem } from "./nav-items";
 
 export function MobileNav({ items, footer }: { items: NavItem[]; footer?: React.ReactNode }) {
@@ -75,7 +76,7 @@ export function MobileNav({ items, footer }: { items: NavItem[]; footer?: React.
                       active ? "bg-primary-soft text-primary-hover" : "text-muted hover:bg-surface-muted hover:text-foreground",
                     )}
                   >
-                    <span className="text-base">{item.icon}</span>
+                    <NavIcon icon={item.icon} />
                     <span className="truncate">{item.label}</span>
                   </Link>
                 );

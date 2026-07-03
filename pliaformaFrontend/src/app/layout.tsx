@@ -11,9 +11,17 @@ const sans = Nunito_Sans({
   weight: ["400", "500", "600", "700"],
 });
 
+// Sprint 52 — SEO baseline: metadataBase canonical/OG URL'lerinin mutlak tabanıdır (Sprint 49 canonical
+// host kararı: https://pliaforma.com). Public sayfalar kendi title/description/canonical'ını override eder
+// (bkz. app/page.tsx); private rotalar proxy.ts'in X-Robots-Tag: noindex header'ı ile index dışıdır.
 export const metadata: Metadata = {
-  title: "Pliaforma — Pilates Stüdyo Yönetimi",
-  description: "Pilates stüdyoları için sade, modern ve premium yönetim platformu.",
+  metadataBase: new URL("https://pliaforma.com"),
+  applicationName: "Pliaforma",
+  title: {
+    default: "Pliaforma — Pilates Stüdyo Yönetimi",
+    template: "%s | Pliaforma",
+  },
+  description: "Pilates stüdyoları için sade, modern ve premium yönetim uygulaması.",
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

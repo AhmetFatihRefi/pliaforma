@@ -43,8 +43,31 @@ export function proxy(request: NextRequest) {
   if (mode === "enforce") response.headers.set("Content-Security-Policy", csp);
   else if (mode !== "disabled") response.headers.set("Content-Security-Policy-Report-Only", csp);
 
+  // Sprint 52 — SEO: app içi / auth / panel rotaları arama motorlarınca INDEXLENMEZ. robots.txt disallow
+  // tek başına yeterli değildir (disallow edilen URL referansla yine index'e girebilir); bu header crawl
+  // edilen private sayfayı da index dışı tutar. Public landing (/) bu listede DEĞİLDİR.
+  const { pathname } = request.nextUrl;
+  const isPrivate = PRIVATE_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  if (isPrivate) response.headers.set("X-Robots-Tag", "noindex, nofollow");
+
   return response;
 }
+
+// robots.ts disallow listesiyle tutarlı tutulmalı (yeni private route grubu eklenirse ikisine de ekleyin).
+const PRIVATE_PREFIXES = [
+  "/dashboard",
+  "/platform",
+  "/login",
+  "/register",
+  "/register-studio",
+  "/join-studio",
+  "/select-studio",
+  "/mfa-setup",
+  "/verify-email",
+  "/reset-password",
+  "/forgot-password",
+  "/check-email",
+];
 
 // api (backend'e proxy) + statik asset'ler hariç tüm sayfa route'larına uygulanır.
 export const config = {

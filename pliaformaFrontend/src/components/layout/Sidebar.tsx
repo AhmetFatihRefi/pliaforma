@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import { Brand, PliaformaMark } from "./Brand";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/lib/auth";
-import { dashboardGuide as GUIDE, dashboardNav, filterNavByRole, isNavActive, type NavItem } from "./nav-items";
+import { NavIcon } from "./NavIcon";
+import { dashboardGuide as GUIDE, dashboardNav, filterNavByRole, isNavActive, platformAdminLink, type NavItem } from "./nav-items";
 
 const STORAGE_KEY = "pf-sidebar-collapsed";
 
@@ -40,7 +41,7 @@ export function Sidebar() {
               : "text-muted hover:bg-surface-muted hover:text-foreground",
         )}
       >
-        <span className="text-base">{item.icon}</span>
+        <NavIcon icon={item.icon} />
         {!collapsed && <span className="truncate">{item.label}</span>}
       </Link>
     );
@@ -77,7 +78,7 @@ export function Sidebar() {
       {/* Alt sabit bölüm: Rehber (+ varsa Platform Yönetimi) */}
       <div className="space-y-1 border-t border-border px-3 py-3">
         {link(GUIDE)}
-        {isPlatformAdmin && link({ href: "/platform", label: "Platform Yönetimi", icon: "❖" }, { primary: true })}
+        {isPlatformAdmin && link(platformAdminLink, { primary: true })}
       </div>
 
       {!collapsed && <div className="px-4 py-3 text-xs text-muted">Pliaforma · Stüdyo Yönetimi</div>}

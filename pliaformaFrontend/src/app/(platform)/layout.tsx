@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { Brand } from "@/components/layout/Brand";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { NavIcon } from "@/components/layout/NavIcon";
 import { platformNav as nav, isNavActive } from "@/components/layout/nav-items";
 import { Button, ConfirmProvider, ToastProvider } from "@/components/ui";
 import { FullscreenLoader } from "@/components/layout/FullscreenLoader";
@@ -54,7 +55,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
                   active ? "bg-primary-soft text-primary-hover" : "text-muted hover:bg-surface-muted hover:text-foreground",
                 )}
               >
-                <span className="text-base">{item.icon}</span>
+                <NavIcon icon={item.icon} />
                 {item.label}
               </Link>
             );

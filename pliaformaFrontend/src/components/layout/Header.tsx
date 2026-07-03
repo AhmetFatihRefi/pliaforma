@@ -7,7 +7,8 @@ import { Button } from "@/components/ui";
 import { ThemeToggle } from "./ThemeToggle";
 import { NotificationBell } from "./NotificationBell";
 import { MobileNav } from "./MobileNav";
-import { dashboardGuide, dashboardNav, filterNavByRole } from "./nav-items";
+import { NavIcon } from "./NavIcon";
+import { dashboardGuide, dashboardNav, filterNavByRole, platformAdminLink } from "./nav-items";
 import { studioRoleLabels, globalRoleLabels } from "@/lib/domain-types";
 
 export function Header() {
@@ -33,9 +34,9 @@ export function Header() {
         <MobileNav
           items={mobileItems}
           footer={isPlatformAdmin && (
-            <Link href="/platform" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary-soft">
-              <span className="text-base">❖</span>
-              <span className="truncate">Platform Yönetimi</span>
+            <Link href={platformAdminLink.href} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-primary-soft">
+              <NavIcon icon={platformAdminLink.icon} />
+              <span className="truncate">{platformAdminLink.label}</span>
             </Link>
           )}
         />
