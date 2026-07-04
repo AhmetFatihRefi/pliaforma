@@ -26,6 +26,8 @@ bad(){ printf "  \033[31mFAIL\033[0m %s\n" "$1"; FAILED=1; }
 skip(){ printf "  \033[33mSKIP\033[0m %s\n" "$1"; }
 expect(){ [ "$2" = "$3" ] && ok "$1 ($3)" || bad "$1 (beklenen $2, gelen $3)"; }
 jget(){ grep -o "\"$1\":\"[^\"]*\"" | head -1 | sed "s/\"$1\":\"\\([^\"]*\\)\"/\\1/"; }
+# Sayısal JSON alanı (Sprint 54 K6: epoch-seconds alanları string değil number'dır).
+jgetn(){ grep -o "\"$1\":[0-9]*" | head -1 | sed "s/\"$1\"://"; }
 totp(){ node "$DIR/totp.mjs" "$1" "${2:-0}"; }
 post(){ curl -sk -w "\n%{http_code}" -X POST "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
 posth(){ curl -sk -D "$HDRS" -w "\n%{http_code}" -X POST "$BASE$1" -H 'Content-Type: application/json' ${3:+-H "Authorization: Bearer $3"} -d "${2:-{\}}"; }
@@ -57,6 +59,13 @@ MRT=$(body "$ML" | jget refreshToken)
 no_cookie "mobil login"; no_store "mobil login"
 MEXP=$(body "$ML" | jget refreshTokenExpiresAt); MD=$(days_until "$MEXP")
 { [ "$MD" -ge 43 ] && [ "$MD" -le 46 ]; } && ok "mobil refresh ömrü ~45 gün ($MD g)" || bad "mobil refresh ömrü beklenmedik: $MD gün ($MEXP)"
+# Sprint 54 K6: makine-tüketimi epoch alanları (mobil istemci YALNIZ bunları kullanır).
+RUNIX=$(body "$ML" | jgetn refreshTokenExpiresAtUnix); AUNIX=$(body "$ML" | jgetn accessTokenExpiresAtUnix)
+NOW=$(date +%s)
+{ [ -n "$RUNIX" ] && [ $(( (RUNIX - NOW) / 86400 )) -ge 43 ] && [ $(( (RUNIX - NOW) / 86400 )) -le 46 ]; } \
+  && ok "K6: refreshTokenExpiresAtUnix ~45 gün (epoch)" || bad "K6: refreshTokenExpiresAtUnix eksik/yanlış ($RUNIX)"
+{ [ -n "$AUNIX" ] && [ $(( (AUNIX - NOW) / 60 )) -ge 10 ] && [ $(( (AUNIX - NOW) / 60 )) -le 20 ]; } \
+  && ok "K6: accessTokenExpiresAtUnix ~15 dk (epoch)" || bad "K6: accessTokenExpiresAtUnix eksik/yanlış ($AUNIX)"
 
 echo "== 2) Rotasyon + grace İÇİ reuse: 401, aile KORUNUR, audit(grace=true) =="
 MR=$(posth /api/auth/mobile/refresh "{\"refreshToken\":\"$MRT\"}")
@@ -182,6 +191,9 @@ CV=$(posth /api/auth/mobile/mfa/challenge/verify "{\"challengeToken\":\"$CT1\",\
 expect "mobil challenge verify → 200" 200 "$(code "$CV")"
 TDT=$(body "$CV" | jget trustedDeviceToken)
 [ -n "$TDT" ] && ok "rememberDevice: trustedDeviceToken BODY'de" || bad "trusted token body'de YOK"
+TUNIX=$(body "$CV" | jgetn trustedDeviceExpiresAtUnix)
+{ [ -n "$TUNIX" ] && [ $(( (TUNIX - $(date +%s)) / 86400 )) -ge 28 ] && [ $(( (TUNIX - $(date +%s)) / 86400 )) -le 31 ]; } \
+  && ok "K6: trustedDeviceExpiresAtUnix ~30 gün (epoch)" || bad "K6: trustedDeviceExpiresAtUnix eksik/yanlış ($TUNIX)"
 no_cookie "mobil challenge verify"; no_store "mobil challenge verify"
 
 ML3=$(post /api/auth/mobile/login "{\"email\":\"$OEMAIL\",\"password\":\"$PW\",\"trustedDeviceToken\":\"$TDT\"}")
