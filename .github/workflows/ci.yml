@@ -111,3 +111,41 @@ jobs:
       # runtime'da gerçek değeri compose verir. Başka env/secret GEREKMEZ.
       - name: docker build (pliaformaFrontend)
         run: docker build --build-arg BACKEND_ORIGIN=http://backend:8080 -t pliaforma-frontend:ci ./pliaformaFrontend
+
+  # ---- mobil: npm ci + typecheck + doctor(advisory) + export + statik güvenlik smoke (Sprint 54.1) ----
+  # Yalnız DOĞRULAMA: store/EAS/imzalama YOK; secret GEREKMEZ (expo export ve expo-doctor kimliksiz çalışır;
+  # EXPO_TOKEN dahi kullanılmaz). EXPO_PUBLIC_API_URL set edilmez (default public origin derlenir).
+  mobile-validation:
+    name: mobile validation (expo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: pliaformaMobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          # Mobil lockfile'a bağlı ayrı cache anahtarı — frontend-build'in cache'iyle çakışmaz.
+          cache-dependency-path: pliaformaMobile/package-lock.json
+      # npm ci: lockfile tutarlılığını da zorlar (npm install BİLİNÇLİ kullanılmıyor).
+      - name: npm ci
+        run: npm ci
+      - name: typecheck (tsc --noEmit)
+        run: npx tsc --noEmit
+      # ADVISORY (Sprint 54.1 K4): expo-doctor Expo'nun CANLI sürüm kayıtlarına bakar; upstream bir SDK-57
+      # patch yayını repo'da sıfır değişiklikle bu adımı kızartabilir (lint/deps-taramaları emsali).
+      # Deterministik kapılar (npm ci/tsc/export/smoke) blocking kaldığından koruma zayıflamaz.
+      - name: expo-doctor (advisory)
+        continue-on-error: true
+        run: npx expo-doctor
+      # BLOCKING: Metro tüm importları uçtan uca derler — "tsc geçer ama bundle kırılır" sınıfını yakalar.
+      - name: expo export (android bundle)
+        run: npx expo export --platform android
+      # Statik güvenlik bekçisi (kök AGENTS.md §10.2 kuralları). Script konum-bağımsızdır; karışıklık
+      # olmasın diye açıkça repo root'tan koşulur. npm ci'dan SONRA olmalı (içinde tsc koşar).
+      - name: mobile security smoke
+        working-directory: .
+        run: bash pliaformaApi/scripts/sprint54-mobile-smoke.sh
